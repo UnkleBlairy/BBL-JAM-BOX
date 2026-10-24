@@ -34,9 +34,32 @@
 
 static uint8_t nor[0x100000];            /* the SPI NOR (erased: 0xFF) */
 #define SMP_USER_XIP(k) ((const uint8_t *)nor + SMP_USER_BASE + (k) * SMP_USER_SIZE)   /* eng_sample.c */
-#define main hostsim_main
-#include "../../tests/hostsim.c"
-#undef main
+#include <stdio.h>
+#include <math.h>
+#include <stdlib.h>
+#include <string.h>
+#define __attribute__(x)
+#define memset felucca_memset
+#define memcpy felucca_memcpy
+#define memcmp felucca_memcmp
+#include "felucca_tables.h"
+#include "../../firmware/src/libc.c"
+#undef memset
+#undef memcpy
+#undef memcmp
+static struct { volatile uint32_t notes, buttons; } fm1_in;
+#include "../../firmware/src/core.h"
+#include "../../firmware/src/engines.c"
+#include "../../firmware/src/params.c"
+#include "../../firmware/src/mod.c"
+#include "../../firmware/src/voice.c"
+#include "../../firmware/src/slicer.c"
+#include "../../firmware/src/fx.c"
+static void fm1_delay_ms(uint32_t ms) { (void)ms; }
+#include "../../firmware/src/usb.c"
+#include "../../firmware/src/midi_uart.c"
+#include "../../firmware/src/song_chain.c"
+#include "../../firmware/src/seq.c"
 
 /* ------------------------------------------------------------ the clock --- */
 #define FM1_TICKS_PER_US 24u             /* TIMER4: 24 MHz */
@@ -160,14 +183,12 @@ static void lcd_init(void) {}
 #include "../../firmware/src/gfx.c"
 #include "../../firmware/src/panel.c"
 #include "../../firmware/src/ui.c"
-#include "../../firmware/src/menu_items.c"
 #include "../../firmware/src/icons.c"
 #include "../../firmware/src/ui_graph.c"
 #include "../../firmware/src/ui_gb.c"
 #include "../../firmware/src/ui_draw.c"
-#include "../../firmware/src/ui_menu.c"
 #include "../../firmware/src/ui_input.c"
-#include "../../firmware/src/ui_layer.c"
+#include "../../firmware/src/ui_buttons.c"          /* the page buttons' taps */
 
 /* ------------------------------------------------------------ the flash --- */
 static uint32_t web_flash_writes;
@@ -204,11 +225,8 @@ static uint32_t fl_jedec_ram(void) { return 0x856014u; }             /* the FM-1
 static void fl_plain_window_init(void) {}
 #define FL_FAR(fn) (fn)
 #include "../../firmware/src/storage.c"
-#include "../../firmware/src/upreset.c"
-#include "../../firmware/src/project.c"
-#if FELUCCA_SIMPLE
+#include "../../firmware/src/persist.c"            /* the device's settings */
 #include "../../firmware/src/gb_store.c"         /* the groovebox's sounds and kits */
-#endif
 
 /* ------------------------------------------------- main.c and its HAL --- */
 #if FELUCCA_CPU2
@@ -284,7 +302,6 @@ static void web_power_on(void)
     kb_boot_hold = 1;                     /* main.c (#137): the keys silent under the splash */
     audio_init();
     boot_leds();                          /* main.c: the power-on LED sweep, from the scan's start */
-    autosave_boot(boot_clean);            /* main.c: the last session's music (1.2, project.c) */
     web_boot_ms = fm1_ms + 430u;         /* main.c: 30 + 400 ms before the first frame */
     web_booted = 1;
 }
@@ -299,7 +316,6 @@ static void web_frame(void)
     felucca_dbg.ui_frames++;
     ui_input();
     settings_poll();
-    autosave_poll();
     ui_leds();
     ui_draw();
 }
@@ -459,42 +475,6 @@ EXPORT uint8_t *web_anim_levels(void)
                                                                           web_anim_glow);
     return lv;
 }
-
-/* for the test and the bench (web/emu/emu_test.mjs), a heavy song straight into the tracks (as hostsim's
- * renders set them): T1 FM6 PAD, T2 PHYS DRONE STRING (SYMP), T3 GRAIN CLOUD PAD, 4-note chords on all 16
- * steps, held; T4 DRUM, kick snare and hats. PLAY is the page's (or the test's) to press */
-EXPORT void web_test_heavy(void)
-{
-    static const uint8_t ENG[3][2] = {{12, 4}, {ENGI_PHYS, 7}, {8, 0}};
-    static const uint8_t CH[4][4] = {{48, 55, 60, 64}, {45, 52, 57, 60}, {41, 48, 53, 57}, {43, 50, 55, 59}};
-    uint32_t p, i;
-    for (p = 0; p < 3u; p++) {
-        track_t *t = &trk[p];
-        host_preset(t, ENG[p][0], ENG[p][1]);
-        t->p[P_VOICE] = V_POLY;
-        t->p[P_SUS] = 127;
-        for (i = 0; i < 16u; i++) {
-            uint8_t n[4], k;
-            for (k = 0; k < 4u; k++)
-                n[k] = (uint8_t)(CH[i / 4u][k] + 12u * p);
-            put_step(t, i, 4, n, ST_NOTE, 0);
-        }
-    }
-    host_drums(&trk[3]);
-    for (i = 0; i < 16u; i++) {
-        uint8_t n[4];
-        uint32_t k = 0;
-        if (i % 4u == 0u)
-            n[k++] = 36;
-        if (i == 4u || i == 12u)
-            n[k++] = 38;
-        n[k++] = i % 2u ? 42 : 46;
-        put_step(&trk[3], i, k, n, ST_NOTE, 0);
-    }
-    ui.force = 1;
-}
-
-EXPORT uint32_t web_test_user_preset(uint32_t i) { return (uint32_t)up_used(i); }
 
 EXPORT uint16_t *web_screen(void) { return web_fb; }
 EXPORT uint32_t web_screen_draws(void) { return web_draws; }

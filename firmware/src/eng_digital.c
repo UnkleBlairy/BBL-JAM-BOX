@@ -1,10 +1,59 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
-/* DIGITAL: four-operator FM. Retired (replaced by FM6): built with FELUCCA_FM4=1 only (engines.c); its tables,
- * presets and the conversion of its sounds to FM6 are in fm4_convert.c. */
-/* Four sine operators, eight classic 4-operator algorithms (ALG = P_E0, EDIT 1 KNOB 1),
+/* DIGITAL: four-operator FM, the groovebox's engine: the machines SYN BD SD HH CYM PERC (E7 = MACH).
+ * Four sine operators, eight classic 4-operator algorithms (ALG = P_E0, EDIT 1 KNOB 1),
  * op 4 with feedback, one modulation INDEX shaped by a modulator envelope.
  * Phase modulation wraps naturally in the 32-bit phase. */
+/* ------------------------------------------------- DIGITAL's tables --- */
+static const char *const N_FMALG[] = {"1", "2", "3", "4", "5", "6", "7", "8"};
+static const char *const N_MACH[] = {"SYN", "BD", "SD", "HH", "CYM", "PERC"};
+static const char *const N_RATIO[] = {".5", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "14", "16"};
+
+/* the factory presets (the stores' preset numbers of engine 1 index this table) */
+static const preset_t DIGITAL_PRESETS[] = {
+    /* ALG R2 R3 R4 INDEX MODDEC FDBK - */
+    {"INIT", {-56, 8, 8, 8, 70, 50, 0, 0}, {0, 70, 60, 40}, 0, 0, FX(0, 0, 0, 0), PAT(0)},
+    {"BELL", {8, 64, 8, 32, 90, 70, 0, 0}, {0, 95, 0, 85}, 0, 0, FX(0, 0, 0, 0), PAT(7)},
+    {"BASS", {-56, 8, 8, 8, 48, 40, 8, 0}, {0, 60, 70, 25}, 0, 1, FX(0, 0, 0, 0), PAT(2)},
+    {"BRASS", {-56, 8, 8, 8, 70, 40, 20, 0}, {40, 70, 100, 40}, 0, 0, FX(0, 0, 0, 0), PAT(6)},
+    {"ORGAN", {56, 16, 24, 32, 0, 0, 0, 0}, {2, 60, 127, 20}, 0, 0, FX(0, 0, 0, 0), PAT(6)},
+    {"PAD", {24, 16, 8, 24, 40, 90, 10, 0}, {80, 90, 110, 95}, 0, 0, FX(0, 0, 0, 0), PAT(5)},
+    {"MARIMBA", {8, 32, 8, 8, 60, 30, 0, 0}, {0, 80, 0, 60}, 0, 0, FX(0, 0, 0, 0), PAT(3)},
+    {"FUNK KEY", {-8, 8, 24, 40, 90, 25, 20, 0}, {0, 45, 30, 30}, 0, 0, FX(0, 0, 0, 0), PAT(6)},
+    /* the FM drum machines (E7 = MACH): E4..E6 are their macros (eng_digital.c MACH_D) */
+    {"BD", {0, 64, 60, 0, 0, 0, 0, 1}, {0, 100, 0, 40}, 0, 0, FX(0, 0, 0, 0), PAT(0)},
+    {"SD", {-24, 70, 71, 16, 35, 0, 0, 2}, {0, 84, 0, 40}, 0, 0, FX(0, 0, 0, 0), PAT(0)},
+    {"CH", {-44, 95, 90, 29, 103, 0, 0, 3}, {0, 58, 0, 30}, 0, 0, FX(0, 0, 0, 0), PAT(0)},
+    {"OH", {-44, 95, 90, 29, 103, 0, 0, 3}, {0, 95, 0, 60}, 0, 0, FX(0, 0, 0, 0), PAT(0)},
+    {"CYM", {0, 117, 70, 42, 47, 0, 0, 4}, {0, 108, 0, 70}, 0, 0, FX(0, 0, 0, 0), PAT(0)},
+    {"TOM", {0, 8, 50, 70, 30, 0, 0, 5}, {0, 92, 0, 40}, 0, 0, FX(0, 0, 0, 0), PAT(0)},
+};
+#define FM4_NPRESETS 14u
+_Static_assert(NELEM(DIGITAL_PRESETS) == FM4_NPRESETS, "DIGITAL presets");
+
+/* EDIT: the ranges are the stores' (a value of engine 1 is clamped to them before it converts) */
+/* SIMPLE: E0 ALG / TUNE -64..63 (SYN: (E0 + 64) / 16 = the algorithm 0..7), E1..E3 the ratios in 1/8 steps (8 = 1.0, up to
+ * 15.9; the drum machines' macros), E4..E6 0..127, E7 the machine */
+#define FM4_EDIT(l0, l1, l2, l3, l4, l5, l6, f0, f1, n0, n1) {                                              \
+        {l0, F_INT, -64, 63, 0, 0, 0}, {l1, F_INT, 0, 127, 8, 0, 0}, {l2, F_INT, 0, 127, 8, 0, 0},         \
+        {l3, F_INT, 0, 127, 8, 0, 0}, {l4, F_PCT, 0, 127, 60, 0, 0}, {l5, f1, 0, 127, 60, 0, 0},            \
+        {l6, F_PCT, 0, 127, 0, 0, 0}, {"MACH", F_ENUM, 0, 5, 0, N_MACH, 0}}
+
+
+/* the filter: a TPT state-variable filter (dsp.c tsvf_*), LP / BP / HP (TYPE 0 1 2) */
+#define ANALOG_K(res) (8192 - (res) * 7600 / 127)     /* the damping, Q12 */
+static inline int32_t analog_tap(const tsvf_t *c, int32_t k, int32_t in, int32_t *ic1, int32_t *ic2, uint32_t ft)
+{
+    int32_t v3 = in - *ic2;
+    int32_t v1 = (c->a1 * *ic1 + c->a2 * v3) >> 13;
+    int32_t v2 = *ic2 + ((c->a2 * *ic1 + c->a3 * v3) >> 13);
+    *ic1 = clamp(2 * v1 - *ic1, -150000, 150000);
+    *ic2 = clamp(2 * v2 - *ic2, -150000, 150000);
+    if (!ft)
+        return v2;
+    return ft == 1u ? v1 : in - ((k * v1) >> 12) - v2;
+}
+
 static const uint16_t RATIO_Q8[15] = {128, 256, 512, 768, 1024, 1280, 1536, 1792, 2048, 2304, 2560, 2816,
                                       3072, 3584, 4096};
 
@@ -47,7 +96,6 @@ static void digital_note_on(track_t *t, voice_t *v)
     v->s[3] = t->p[P_FE_ATK] ? 1 : 2;         /* .. its stage: 1 attack, 2 decay to END */
     v->s[4] = 1 << 24;           /* modulator envelope, Q24 */
     v->s[5] = v->s[6] = 0;       /* feedback history */
-#if FELUCCA_SIMPLE
     if (t->p[P_E7] > 0) {        /* a drum machine: s[6] its noise, s[7] its fast sweep envelope */
         v->s[6] = (int32_t)(0x2545F491u ^ (vi * 0x9E3779B9u));
         v->s[7] = 1 << 24;
@@ -56,7 +104,6 @@ static void digital_note_on(track_t *t, voice_t *v)
         else if (t->p[P_E7] == 2)
             v->ph[0] = (uint32_t)LAB(22, 0) << 24;           /* SD: the tone's start phase */
     }
-#endif
 }
 
 /* operator increment = carrier * ratio (Q8) without 32-bit overflow; kept below Nyquist */
@@ -91,7 +138,6 @@ static __attribute__((noinline)) void digital_render_legacy(track_t *t, voice_t 
     uint32_t ph0, ph1, ph2, ph4;
     uint32_t mach = FELUCCA_SIMPLE ? (uint32_t)p[P_E7] % 6u : 0u, mi0 = 0, mi1 = 0, mi2 = 0;   /* 0 = SYN, 1 BD 2 SD 3 HH 4 CYM 5 PERC */
     int32_t mT = 32767, mA = 0, mB = 0, mC = 0, mD = 0, mE = 0, mF = 0, mG = 0, mH = 0, mR = 1, mHold = 0;
-#if FELUCCA_SIMPLE
     int32_t cut = (p[P_FLT_CUT] << 8) + m->cutoff + (p[P_FLT_KTR] * (v->pitch16 - 60 * 16) >> 4);
     {   /* the filter envelope (ATK DEC SUS REL, AMT deep, per block): 0 .. 1 in Q24 */
         int32_t fe = v->s[2], fs = v->s[3], sus = (int32_t)p[P_FE_SUS] * (1 << 17);
@@ -115,17 +161,12 @@ static __attribute__((noinline)) void digital_render_legacy(track_t *t, voice_t 
     uint32_t ft = (uint32_t)p[P_FTYPE];
     tsvf_t flt;
     tsvf_coef(&flt, cut, p[P_FLT_RES]);
-#endif
     /* modulator envelope: decays (MODDEC) towards 25 %, per block */
     if (!mach)
         v->s[4] += mulq16((1 << 22) - v->s[4], ENV_EXP[p[P_E5] & 127]);
     me = v->s[4] >> 9;                                         /* Q15 */
     idx = (p[P_E4] * me) >> 15;                                 /* 0..127 */
-#if FELUCCA_SIMPLE                                                /* ENV / LFO DEST FLT go to the filter, SHP to the index */
     idx = clamp(idx + ((m->shape - (64 << 8)) >> 8) + (v->vel - 96) / 4, 0, 127);
-#else
-    idx = clamp(idx + ((m->cutoff + m->shape - (64 << 8)) >> 8) + (v->vel - 96) / 4, 0, 127);
-#endif
     ph0 = v->ph[0];                                             /* state in locals: out[] may alias v->s[] */
     ph1 = v->ph[1];
     ph2 = v->ph[2];
@@ -265,11 +306,9 @@ static __attribute__((noinline)) void digital_render_legacy(track_t *t, voice_t 
         ph2 += i3;
         ph4 += i4;
         }
-#if FELUCCA_SIMPLE
         if (drv)
             s = softclip(((s >> 2) * (drive >> 2)) >> 11);
         s = digital_filter(&flt, fk, ft, s, &ic1, &ic2);
-#endif
         out[i] += voice_amp(s, m, i);   /* full-scale sines: 6 dB below the others */
     }
     v->ph[0] = ph0;
@@ -278,10 +317,8 @@ static __attribute__((noinline)) void digital_render_legacy(track_t *t, voice_t 
     v->s[7] = (int32_t)ph4;
     v->s[5] = fb1;
     v->s[6] = fb2;
-#if FELUCCA_SIMPLE
     v->s[0] = ic1;
     v->s[1] = ic2;
-#endif
 }
 
 /* Independent operator envelopes use a shared 640-byte runtime table, never
@@ -289,10 +326,8 @@ static __attribute__((noinline)) void digital_render_legacy(track_t *t, voice_t 
 static int digital_custom(const track_t *t)
 {
     uint32_t op;
-#if FELUCCA_SIMPLE
     (void)t; (void)op;
     return 0;                                   /* the operator envelopes are gone: ids 61..64 are the filter's */
-#endif
     for (op = 0; op < 4u; op++) {
         const int16_t *p = &t->p[P_FM1_ATK + op * 5u];
         if (p[0] || p[1] || p[2] != 127 || p[3] || p[4] != 127) return 1;
@@ -424,7 +459,6 @@ static void digital_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, con
     else digital_render_legacy(t, v, out, n, m);
 }
 
-#if FELUCCA_SIMPLE
 /* the macros of the drum machines (E7 = MACH): the same ranges and defaults as EDIT, other names */
 #define MD(l, f, mn, mx, df) {l, f, mn, mx, df, 0, 0}
 #define MD_T MD("TUNE", F_INT, -64, 63, 0)
@@ -441,7 +475,6 @@ static const param_desc_t *digital_desc(const track_t *t, uint32_t k)
     uint32_t mach = (uint32_t)t->p[P_E7] % 6u;
     return mach && k < 7u ? &MACH_D[mach - 1u][k] : 0;
 }
-#endif
 
 static const engine_t ENG_DIGITAL = {
     .name = "DIGITAL",
@@ -452,14 +485,29 @@ static const engine_t ENG_DIGITAL = {
     .note_on = digital_note_on,
     .render = digital_render,
     .knob = {P_E7, P_E0, P_E1, P_E2},
-#if FELUCCA_SIMPLE
     .desc = digital_desc,
     .poly = 4,                   /* the 4-voice poly machine; the shared budget of 8 still holds */
-#endif
-#if FELUCCA_SIMPLE
     .keep = 0x63,                /* the filter and feedback history; the modulator envelope and (drums) the pitch sweep restart on a
                                   * hit that finds its voice still sounding (the same drum twice in a row) */
-#else
-    .keep = 0xE3,                /* the feedback history and op 4's phase; the modulator envelope restarts */
-#endif
 };
+
+/* DIGITAL preset k's values into p as a preset load sets them (ui.c apply_preset_to: the EDIT values, ENV, ENV ->
+ * FLT, VOICE, the sends; the OP ENV values their defaults); the track's own values (param_kept) are the caller's */
+static void fm4_preset_values(int16_t *p, uint32_t k)
+{
+    static const uint8_t FX_DEF[4] = {0, 24, 28, 36};
+    const preset_t *pr = &DIGITAL_PRESETS[k % FM4_NPRESETS];
+    uint32_t i;
+    for (i = 0; i < 8u; i++)
+        p[P_E0 + i] = pr->e[i];
+    p[P_ATK] = pr->env[0];
+    p[P_DEC] = pr->env[1];
+    p[P_SUS] = pr->env[2];
+    p[P_REL] = pr->env[3];
+    p[P_ED_FLT] = pr->fenv;
+    p[P_VOICE] = pr->mono ? V_LEGATO : V_POLY;
+    for (i = 0; i < 4u; i++)
+        p[P_DIST + i] = (int16_t)(pr->fx[i] ? pr->fx[i] - 1 : FX_DEF[i]);
+    for (i = P_FM1_ATK; i <= P_FM4_LEVEL; i++)
+        p[i] = (i - P_FM1_ATK) % 5u == 2u || (i - P_FM1_ATK) % 5u == 4u ? 127 : 0;
+}

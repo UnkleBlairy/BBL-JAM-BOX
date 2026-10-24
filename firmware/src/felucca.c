@@ -91,14 +91,12 @@
 /* -------------------------------------------------------------- UI --- */
 #include "panel.c"
 #include "ui.c"
-#include "menu_items.c"          /* MENU's rows and settings (ui_menu.c, editor_menu.c) */
 #include "icons.c"               /* parameter icons (FELUCCA_ICONS), used by ui_draw.c */
 #include "ui_graph.c"
 #include "ui_gb.c"               /* stage 15: the groovebox look (two-tone, pixel pass) */
 #include "ui_draw.c"
-#include "ui_menu.c"
 #include "ui_input.c"
-#include "ui_layer.c"              /* the quick layers (FX GLO SCL EDIT REC held; SEQ TOOLS: ui_tools.c) */
+#include "ui_buttons.c"          /* the page buttons' taps */
 
 /* --------------------------------------------- storage, update, editor --- */
 #if FELUCCA_FLASH
@@ -106,18 +104,21 @@
 #include "storage_hw.c"
 #include "storage.c"
 #endif
-#include "upreset.c"             /* user presets (RAM mirror; flash with FELUCCA_FLASH) */
-#include "project.c"
-#if FELUCCA_SIMPLE
+#include "persist.c"            /* the device's settings */
 #include "gb_store.c"            /* the groovebox's sounds and kits (SAVE) */
-#endif
 #if FELUCCA_OTA
 #include "ota.c"
 #include "ota_hw.c"
-#include "editor.c"              /* web editor SysEx (needs the OTA SysEx plumbing) */
 #endif
 #if FELUCCA_CDC
-#include "console.c"
+/* the serial port is still presented (the USB layout stays as the installer knows it); what comes in is dropped */
+static void cdc_task(void)
+{
+    while (ci_r != ci_w) {
+        RING_PUBLISH();
+        ci_r++;
+    }
+}
 #endif
 #include "master.c"              /* the MASTER pot (#137: read before the audio starts) */
 #include "main.c"

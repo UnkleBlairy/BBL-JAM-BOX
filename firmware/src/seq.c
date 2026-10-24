@@ -78,7 +78,7 @@ static uint32_t trk_midi_ch(uint32_t i)
     return (b > 0 ? (uint32_t)b : 0u) + i % NTRK;
 }
 
-static int drum_track(const track_t *t) { return ENGINES[eng_idx(t->eng_req)] == &ENG_DRUM; }
+static int drum_track(const track_t *t) { (void)t; return 0; }   /* (no DRUM engine: the grid code below is off) */
 
 /* the 27 keys from F: black or white, and the key's place among the keys of its colour (white 0..15, black
  * 0..10). The DRUM grid: white keys are steps, black keys 1..8 lanes, 9 ACC, 10 / 11 the page */
@@ -103,11 +103,8 @@ static uint8_t grid_note_of(const track_t *t)
 static uint32_t grid_chord(const track_t *t, uint8_t *out);
 static __attribute__((noinline)) uint8_t grid_key_note(uint32_t k)
 {
-#if FELUCCA_SIMPLE
     uint8_t c[4];
     return key_black(k) && key_place(k) < NTRK ? (grid_chord(&trk[key_place(k)], c), c[0]) : KB_SILENT;
-#endif
-    return key_black(k) && key_place(k) < NLANE ? DRUM_LANE_NOTE[key_place(k)] : KB_SILENT;
 }
 /* GLO > SONG (song.grid 3): key k's slot, the white keys A3 B3 C4 D4 (white places 2..5: keys 4 6 7 9 from F) A..D; -1 = a
  * key that plays. A table, not key_place (a loop); the audio ISR's key loop reads SONG_KEYS, the same keys */
@@ -502,42 +499,6 @@ static void rec_note(track_t *t, uint32_t note, uint32_t vel)
     /* the step's notes play later in this pass (it is the next one, not played early yet, or the one playing whose
      * nudge has not come yet): what sounds now must not play again there (rskip) */
     sounds = next ? t->nd_fired != idx + 1u : t->nd_late != ND_NONE;
-    if (drum_track(t)) {                            /* DRUM: into the grid, no holds (hits) */
-        uint32_t l = drum_lane(note);
-        if (s->time != ST_NOTE || (!s->n && !s->hit)) {
-            s->n = s->hit = s->acc = 0;
-            s->flags = 0;
-            s->vel = 0;
-            step_set_nudge(s, off);
-        }
-        s->time = ST_NOTE;
-        if (note == DRUM_LANE_NOTE[l]) {            /* a lane's note: its hit */
-            s->hit |= (uint8_t)(1u << l);
-            if (vel > 110)
-                s->acc |= (uint8_t)(1u << l);
-        } else {                                    /* another GM drum (a low tom, a crash): a note */
-            for (k = 0; k < s->n && s->note[k] != note; k++)
-                ;
-            if (k == s->n) {
-                if (s->n < 4u)
-                    s->n++;
-                s->note[s->n - 1u] = (uint8_t)note;
-            }
-            if (vel > 110)
-                s->flags |= SF_ACCENT;
-        }
-        if (vel > s->vel)
-            s->vel = (uint8_t)vel;
-        t->seq_active = 1;
-        if (sounds) {
-            if (t->rskip_idx != idx)
-                t->rskip_n = 0;
-            t->rskip_idx = (uint8_t)idx;
-            if (t->rskip_n < NLANE)
-                t->rskip[t->rskip_n++] = (uint8_t)note;
-        }
-        return;
-    }
     if (s->time != ST_NOTE || !s->n || trk_vmode(t) != V_POLY) {
         s->n = 0;                                   /* a fresh step */
         s->flags = 0;
@@ -750,7 +711,6 @@ static void key_on(uint32_t k, track_t *t)
     in_key = 0;
     kb_chn[k] = (uint8_t)n;
     last_note = kb_note[k];                         /* (step entry, the SAMPLE zone: the key's note) */
-#if FELUCCA_SIMPLE
     if (song.grid != 1u) {                          /* played on the keys: the track's last chord (a new one when none is held) */
         uint32_t ti = trk_index(t) % NTRK, j;
         if (!lheld[ti])
@@ -763,16 +723,13 @@ static void key_on(uint32_t k, track_t *t)
         }
         lheld[ti]++;
     }
-#endif
 }
 
 /* key k is up: the notes it started end, but those another key still holds */
 static void key_off(uint32_t k, track_t *t)
 {
-#if FELUCCA_SIMPLE
     if (lheld[trk_index(t) % NTRK] && song.grid != 1u)
         lheld[trk_index(t) % NTRK]--;
-#endif
     uint32_t n = kb_chn[k], i, mc = trk_midi_ch(trk_index(t));
     kb_chn[k] = 0;
     for (i = 0; i < n; i++) {
@@ -802,12 +759,10 @@ static __attribute__((noinline)) void kb_lat(uint32_t k)
 }
 #endif
 
-#if FELUCCA_SIMPLE
 /* OCT+ held and one of the first four black keys (the track keys): that track's mute. A tap toggles it; held (350 ms) it is only for as
  * long as the key is down */
 static uint8_t kb_octup, mt_used, kb_mt[27], mt_prev[4];
 static uint32_t mt_t0[4];
-#endif
 static void keyboard_block(void)
 {
     uint32_t cur = fm1_in.notes, ch, k;
@@ -832,15 +787,12 @@ static void keyboard_block(void)
             continue;
         if ((cur >> k) & 1u) {                    /* the selected track; the key-up goes to the same one */
             kb_trk[k] = song.sel;
-#if FELUCCA_SIMPLE
             if (song.grid == 1u && key_black(k) && key_place(k) < NTRK)
                 kb_trk[k] = (uint8_t)key_place(k);          /* the step keys: black key n plays track n */
-#endif
             if (kb_asleep) {                      /* (SCREEN OFF: the wake press is swallowed) */
                 kb_note[k] = KB_SILENT;
                 continue;
             }
-#if FELUCCA_SIMPLE
             if (kb_octup && key_black(k) && key_place(k) < NTRK) {
                 uint32_t tr = key_place(k);
                 kb_note[k] = KB_SILENT;
@@ -852,7 +804,6 @@ static void keyboard_block(void)
                 mt_used = 1;
                 continue;
             }
-#endif
             if (lay) {                            /* a layer's button held (or locked): the key is the layer's */
                 kb_note[k] = KB_SILENT;           /* (ui_layer.c), with FX an effect (perform.c) */
                 kb_layer |= 1u << k;
@@ -883,7 +834,6 @@ static void keyboard_block(void)
         } else {
             if ((kb_layer >> k) & 1u) {
                 kb_layer &= ~(1u << k);
-#if FELUCCA_SIMPLE
                 if (kb_mt[k]) {
                     uint32_t tr = kb_mt[k] - 1u;
                     kb_mt[k] = 0;
@@ -891,7 +841,6 @@ static void keyboard_block(void)
                         trk[tr].p[P_MUTE] = (int16_t)mt_prev[tr];
                     continue;
                 }
-#endif
                 perf_key_press(k, 0);
                 continue;
             }
@@ -993,7 +942,6 @@ static __attribute__((noinline)) int seq_cond_miss(const track_t *t, const step_
 /* the step does not play: its condition fails, or its chance's roll */
 static int seq_miss(const track_t *t, const step_t *s, uint32_t idx)
 {
-#if FELUCCA_SIMPLE                                      /* its TRIG (core.h GB_TRIG), then its CHANCE or the track's */
     uint32_t c;
     const step_t *tg = idx < GB_TRIG ? &seq_steps(t)[idx + GB_TRIG] : 0;
     if (s->probability >= COND_FIRST && seq_cond_miss(t, s, idx))
@@ -1002,7 +950,6 @@ static int seq_miss(const track_t *t, const step_t *s, uint32_t idx)
         return 1;
     c = s->probability && s->probability < COND_FIRST ? step_chance(s) : (uint32_t)t->p[P_APROB];
     return c < 100u && rng() % 100u >= c;
-#endif
     if (s->probability >= COND_FIRST)
         return seq_cond_miss(t, s, idx);
     return step_chance(s) < 100u && rng() % 100u >= step_chance(s);
@@ -1063,13 +1010,6 @@ static __attribute__((noinline)) void seq_step(track_t *t, const step_t *s, uint
         sk |= ((skip >> i) & 1u) << m;
         m++;
     }
-    for (i = 0; i < NLANE; i++)
-        if ((s->hit >> i) & 1u) {
-            nn[m] = DRUM_LANE_NOTE[i];
-            vv[m] = (uint8_t)((s->acc >> i) & 1u ? 127u : vel);
-            sk |= ((skip >> (8u + i)) & 1u) << m;
-            m++;
-        }
     t->slide_glide = (uint8_t)slide_in;
     if (!slide_in)
         seq_release(t);
@@ -1146,9 +1086,9 @@ static __attribute__((noinline)) uint32_t seq_time(track_t *t, uint32_t idx, uin
 {
     const step_t *s = &seq_steps(t)[idx];
     uint32_t vel = (s->flags & SF_ACCENT) ? 127u : (s->vel ? s->vel : 96u);
-    if (s->time != ST_NOTE || (!s->n && !s->hit) || step_ratchet(s) != 1u)
+    if (s->time != ST_NOTE || !s->n || step_ratchet(s) != 1u)
         return 0;
-    return mod_time(t, s->n ? s->note[0] : DRUM_LANE_NOTE[__builtin_ctz(s->hit) & (NLANE - 1u)], vel, period);
+    return mod_time(t, s->note[0], vel, period);
 }
 
 /* the automation a track plays: its slot's while a song plays (song_chain.c lanes; 0: a silent lane, none) */
@@ -1175,9 +1115,6 @@ static __attribute__((noinline)) void seq_play(track_t *t, uint32_t idx, uint32_
             for (i = 0; i < s->n; i++)
                 if (s->note[i] == t->rskip[k])
                     skip |= 1u << i;
-            for (i = 0; i < NLANE; i++)
-                if (((s->hit >> i) & 1u) && DRUM_LANE_NOTE[i] == t->rskip[k])
-                    skip |= 1u << (8u + i);
         }
         t->rskip_n = 0;
     }

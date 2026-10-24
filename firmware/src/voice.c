@@ -217,11 +217,6 @@ static voice_t *voice_alloc(track_t *t, uint32_t note)
 {
     uint32_t i, np = trk_nvoice(t), best = np, low = np, nfree = 0;
     int32_t bd = 0x7FFFFFFF;
-    if (t->engine == ENGI_DRUM) {
-        voice_t *v = drum_reuse(t, note);
-        if (v)
-            return voice_reuse(t, v);
-    }
     for (i = 0; i < np; i++) {
         if (t->v[i].active && t->v[i].note == note)
             return voice_reuse(t, &t->v[i]);
@@ -513,7 +508,6 @@ static void engine_block(track_t *t)
             v->env = v->env_out = 0;
         }
         t->engine = eng_idx(t->eng_req);
-        eng_mem_claim(t);                               /* its state region, before the waiting notes */
         t->xf_on = 0;
         t->nmono = 0;
         t->mono_note = 0;
@@ -524,7 +518,6 @@ static void engine_block(track_t *t)
                 trk_note_on(t, t->xp_note[i], t->xp_vel[i]);
         }
     }
-    eng_mem_claim(t);                                   /* (an engine set directly: power-on, a test) */
     for (i = 0; i < 8u; i++)                            /* the engine's own values, for a later fade */
         t->pe_old[i] = t->p[P_E0 + i];
 }
@@ -582,14 +575,12 @@ static int32_t env_tick(track_t *t, voice_t *v)
 {
     const int16_t *p = t->p;
     int32_t sus = (int32_t)p[P_SUS] << 17;              /* Q24 */
-#if FELUCCA_SIMPLE
     int ad = p[P_E7] % 6 != 0;                          /* a drum machine: attack and decay only, it rings out */
     if (ad) {
         sus = 0;
         if (v->stage == 3)
             v->stage = 2;
     }
-#endif
     switch (v->stage) {
     case 1:
         v->env += (int32_t)T_ESYNC(t)[0];                  /* ATK's step (esync_coef: the table's, or ENV SYNC's) */
@@ -600,13 +591,11 @@ static int32_t env_tick(track_t *t, voice_t *v)
         break;
     case 2:
         v->env += mulq16(sus - v->env, T_ESYNC(t)[1]);
-#if FELUCCA_SIMPLE
         if (ad && v->env < (1 << 12)) {
             v->env = 0;
             v->stage = 0;
             v->active = 0;
         }
-#endif
         break;
     case 3:
         v->env -= mulq16(v->env, T_ESYNC(t)[2]);
@@ -685,9 +674,7 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
     int32_t tune_fine = (song.g[G_TUNE] * 16 - tune * 100) * 2367 / 16000;   /* rest, in 1/4096 (1 ct = 2.367) */
     int32_t bend, bend16, bend_fine;
     uint32_t ti = (uint32_t)(t - trk);
-    if (ENGINES[eng_idx(t->eng_req)] == &ENG_DRUM) {
-        midi_bend_q8[ti] = midi_bend_target[ti] = 0;
-    } else {
+    {
         int32_t d = midi_bend_target[ti] - midi_bend_q8[ti];
         /* ~6 ms smoothing, with an exact landing (no permanent small offset). */
         midi_bend_q8[ti] += d > 0 ? (d < 4 ? d : (d + 3) / 4) : (d > -4 ? d : (d - 3) / 4);

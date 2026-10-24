@@ -230,15 +230,12 @@ static uint32_t div_samples(uint32_t div)
 }
 
 #include "perform.c"                                 /* the FX hold layer's effects (the master) */
-#if FELUCCA_SIMPLE
 #include "mfx.c"                                     /* the groovebox's master DJ filter and comb */
-#endif
 #include "click.c"                                   /* the metronome's click (after the master: audio.c) */
 
 /* the delay's TIME (params.c N_DTIME): N_DIV's ten (div_samples), then 1.5.1's dotted 1/8D 1/16D 1/4D (10, 11, 12: 3/4,
  * 3/8, 3/2 of a quarter); at most DLY_LEN - 1 samples (1.486 s): 1/4D clamps at 60 BPM and below (1/2 below 81) */
 static const uint8_t DIV_DOT[3] = {2, 3, 1};           /* 3 quarters >> this */
-#if FELUCCA_SIMPLE
 /* SIMPLE: the delay runs free of the tempo: TIME 0..127 is 20 ms .. 1.45 s, exponential (6.2 octaves). -> samples, Q8 */
 static const uint32_t EXP2_Q15[17] = {32768, 34219, 35734, 37316, 38968, 40693, 42495, 44376, 46341, 48393, 50535, 52773, 55109, 57549, 60097, 62757, 65536};
 static int32_t delay_q8(void)
@@ -248,7 +245,6 @@ static int32_t delay_q8(void)
     uint32_t s = ((880u << oct) * m) >> 15;
     return (int32_t)(s >= DLY_LEN - 2u ? DLY_LEN - 2u : s) << 8;
 }
-#endif
 static uint32_t delay_samples(void)
 {
     uint32_t d = (uint32_t)song.g[G_DTIME];
@@ -256,260 +252,8 @@ static uint32_t delay_samples(void)
     return s < 16u ? 16u : s >= DLY_LEN ? DLY_LEN - 1u : s;
 }
 
-#if !FELUCCA_SIMPLE                                      /* (SIMPLE: one reverb, QUAD below) */
-/* ROOM (G_RTYPE 0): 4 damped combs + 2 allpasses (Freeverb-like, mono), added to out */
-static __attribute__((noinline)) void rev_room(const int32_t *rev_in, int32_t *out, uint32_t n)
-{
-    uint32_t i, k;
-    int32_t size = 25000 + song.g[G_RSIZE] * 50, damp = 32767 - song.g[G_RDAMP] * 200;
-    for (i = 0; i < n; i++) {
-        int32_t a = 0;
-        int16_t *c = rev_comb;
-        int32_t in = mulq15(rev_in[i], 2580);           /* 1/8 at -4 dB: level as before the allpass fix */
-        for (k = 0; k < 4u; k++) {
-            int32_t o = c[fx.comb_i[k]];
-            fx.comb_lp[k] = o + mulq15(fx.comb_lp[k] - o, 32767 - damp);
-            c[fx.comb_i[k]] = (int16_t)clamp(in + mulq15(fx.comb_lp[k], size), -32768, 32767);
-            if (++fx.comb_i[k] >= REV_COMB[k])
-                fx.comb_i[k] = 0;
-            a += o;
-            c += REV_COMB[k];
-        }
-        c = rev_ap;
-        for (k = 0; k < 2u; k++) {
-            int32_t o = c[fx.ap_i[k]];
-            int32_t v = a + (o >> 1);
-            c[fx.ap_i[k]] = (int16_t)clamp(v, -32768, 32767);
-            a = o - a;                                  /* Freeverb: out = buf - in (o - v is a notch comb) */
-            if (++fx.ap_i[k] >= REV_AP[k])
-                fx.ap_i[k] = 0;
-            c += REV_AP[k];
-        }
-        out[i] += a;
-    }
-}
-
-/* SPRING (see the top), added to out */
-static __attribute__((noinline)) void rev_spring(const int32_t *rev_in, int32_t *out, uint32_t n)
-{
-    uint32_t i, k, s = (uint32_t)song.g[G_RSIZE];
-    int32_t g = 19661 + (int32_t)s * 85;                /* the loop's gain: 0.6 .. 0.93 */
-    int32_t kl = 26000 - song.g[G_RDAMP] * 160;         /* its low-pass: ~9 kHz .. ~1.3 kHz */
-    int32_t len = (int32_t)(1323u + ((s * 1323u) >> 7)) << 8, L, L2, L3, f, w;
-    int16_t *ln = rev_comb;
-    int32_t *ap = rev_u.sp;
-    if (!fx.sp_size)
-        fx.sp_size = len;
-    fx.sp_size += clamp(len - fx.sp_size, -256, 256);   /* SIZE glides (a sample a block at most) */
-    L = fx.sp_size >> 8;
-    fx.sp_ph += 2u * LFO_INC[24];                       /* the wobble: a slow sine, 1.5 samples deep */
-    w = (fx.sp_size >> 1) + ((osc_sine(fx.sp_ph) * 3) >> 8);   /* the far end, Q8 */
-    L2 = w >> 8;
-    f = w & 255;
-    L3 = (L * 3) >> 2;
-    for (i = 0; i < n; i++) {
-        uint32_t wp = fx.sp_w, j = (wp & 3u) * (SP_N + 1u);
-        int32_t x = mulq15(rev_in[i], 2580), r = ln[(wp - (uint32_t)L) & SP_MASK], p, o;
-        int32_t t0 = ln[(wp - (uint32_t)L2) & SP_MASK], t1 = ln[(wp - (uint32_t)L2 - 1u) & SP_MASK];
-        fx.sp_lp += mulq15(r - fx.sp_lp, kl);
-        o = fx.sp_lp * g;
-        x += (o + ((o >> 31) & 32767)) >> 15;           /* towards 0: a loop of floors would hold an offset */
-        o = x - fx.sp_hp + fx.sp_he;                    /* the low cut, its step's remainder kept (as */
-        fx.sp_he = o & 63;                              /* dc_block): no dead band to hold an offset in the loop */
-        fx.sp_hp += o >> 6;
-        x -= fx.sp_hp;
-        p = ap[j];                                      /* the chain: ap[j + k], stage k's output 4 samples ago */
-        ap[j] = x;
-        for (k = 1; k <= SP_N; k++) {                   /* (lossless: bounded by the loop's input, no clamp) */
-            int32_t v = (x - ap[j + k]) * SP_A;         /* towards 0, as the loop's gain: floors would feed */
-            o = ap[j + k];                              /* the loop a little offset and noise for ever */
-            x = ((v + ((v >> 31) & 4095)) >> 12) + p;
-            p = o;
-            ap[j + k] = x;
-        }
-        ln[wp & SP_MASK] = (int16_t)clamp(x, -32768, 32767);
-        fx.sp_w = (uint16_t)(wp + 1u);
-        out[i] += (t0 + (((t1 - t0) * f) >> 8)) * 4 + ln[(wp - (uint32_t)L3) & SP_MASK] * 2;
-    }
-}
-
-/* HALL's helpers: m / 2^sh rounded towards zero (a product that feeds back must not floor: a loop of floors
- * holds an offset and a little noise for ever) */
-static inline int32_t sh_tz(int32_t m, uint32_t sh) { return (m + ((m >> 31) & ((1 << sh) - 1))) >> sh; }
-/* 2^-x, x Q16 (0 .. 16): Q15 (32768 at x = 0). 2^-x = 2^u / 2^(i + 1), u = 1 - frac(x); 2^u by a cubic (1e-4) */
-static uint32_t exp2_neg(uint32_t x)
-{
-    uint32_t i = x >> 16, u = 32768u - ((x & 0xFFFFu) >> 1), p = 2579u;
-    p = ((p * u) >> 15) + 7409u;
-    p = ((p * u) >> 15) + 22780u;
-    p = ((p * u) >> 15) + 32768u;
-    return i < 15u ? p >> (i + 1u) : 0u;
-}
-/* the lines' gains for SIZE s: RT60 = 0.5 s * 2^(s / 30); a line of D samples (22.05 kHz) loses 60 dB in
- * RT60 * 22050 / D passes: g = 2^(-D * 3 log2(10) / (22050 * RT60)) = 2^(-D * 59.2 / 65536 * 2^(-s / 30)),
- * at most 0.99, over sqrt(7) (the matrix's rows have 7 entries of +-1: / sqrt(7) makes it orthogonal) */
-static __attribute__((noinline)) void hall_gains(int32_t s)
-{
-    uint32_t q = exp2_neg((uint32_t)s * 65536u / 30u), k, g;
-    for (k = 0; k < HL_NL; k++) {
-        g = exp2_neg((HL_LEN[k] * 59u * q) >> 15);
-        hl.g[k] = (int16_t)(((g > 32440u ? 32440u : g) * 6193u) >> 15);
-    }
-    hl.sz = (int16_t)(s + 1);
-}
-
-/* an allpass diffuser over x[0 .. n) from q (its next samples, no wrap): its state rounded towards zero */
-static inline void hall_ap(int16_t *q, int32_t g, int32_t *x, uint32_t n)
-{
-    uint32_t i;
-    for (i = 0; i < n; i++) {
-        int32_t y = q[i], v = x[i] + sh_tz(y * g, 14);
-        q[i] = (int16_t)clamp(v, -32768, 32767);
-        x[i] = y - ((v * g + 8192) >> 14);
-    }
-}
-/* a line's end over y[0 .. n) from b (no wrap; b[n] is still the line's: its mirror at the end): between b[i]
- * and b[i + 1], f / 256 of the way (rounded to the nearest: it stays between the two), times its gain g (Q14).
- * The gain's product: rounded to the nearest while the line is loud (lo 0: the tail decays as it should; a
- * truncation would make it die early, the sooner the quieter), towards zero once it is quiet (lo 1: the last
- * steps of the tail, which then ends in exact silence) */
-static inline void hall_end(const int16_t *b, int32_t f, int16_t *y, uint32_t n, int32_t g, int lo)
-{
-    uint32_t i;
-    if (lo)
-        for (i = 0; i < n; i++)
-            y[i] = (int16_t)sh_tz((b[i] + (((b[i + 1u] - b[i]) * f + 128) >> 8)) * g, 14);
-    else
-        for (i = 0; i < n; i++)
-            y[i] = (int16_t)(((b[i] + (((b[i + 1u] - b[i]) * f + 128) >> 8)) * g + 8192) >> 14);
-}
-/* a line's end over y[0 .. n) from b (no wrap), through the low-pass (kd, Q15; the state *lp and its step's
- * remainder *le), times its gain g (rounded as hall_end's) */
-static inline void hall_end_lp(const int16_t *b, int16_t *y, uint32_t n, int32_t g, int lo, int32_t *lp, int32_t *le,
-                               int32_t kd)
-{
-    uint32_t i;
-    int32_t l = *lp, r = *le, e;
-    if (lo)
-        for (i = 0; i < n; i++) {
-            e = (b[i] - l) * kd + r, r = e & 32767, l += e >> 15;
-            y[i] = (int16_t)sh_tz(l * g, 14);
-        }
-    else
-        for (i = 0; i < n; i++) {
-            e = (b[i] - l) * kd + r, r = e & 32767, l += e >> 15;
-            y[i] = (int16_t)((l * g + 8192) >> 14);
-        }
-    *lp = l;
-    *le = r;
-}
-/* the block's HL_NC samples of a circular buffer of len from index d in at most two runs, no wrap inside them:
- * body with s (the run's start in the block) and k (its length); d moves on */
-#define HL_RUNS(d, len, k, s, body)                                                         \
-    for (s = 0; s < HL_NC; s += k) {                                                        \
-        k = (len) - (d) < HL_NC - s ? (len) - (d) : HL_NC - s;                              \
-        body;                                                                               \
-        d = (d) + k >= (len) ? 0u : (d) + k;                                                \
-    }
-
-/* HALL (see the top): a block of the send (n = CTL samples: audio.c) -> the mid added to out, the side into
- * rev_side. At half the rate (HL_NC samples) in passes over the block, each with few states (every line is
- * longer than a block: what the lines give in this block was written before it): the send, every other
- * sample, low cut, diffusers (hl.bx); the lines' ends at their drifting taps, low-passed, scaled (hl.y); the
- * outputs and the matrix; back into the lines; the outputs back to 44.1 kHz. */
-#define HL_LFO ((uint32_t)(0.37 * CTL / FS * 4294967296.0))   /* the drift: 0.37 Hz (even lines), 0.74 Hz (odd) */
-static __attribute__((noinline)) void rev_hall(const int32_t *rev_in, int32_t *out, uint32_t n)
-{
-    int16_t *b = rev_comb, *a = rev_ap;
-    uint32_t i, k, s, m, d;
-    int32_t kd = HL_KD(song.g[G_RDAMP]);
-    int32_t xp = hl.x, hp = hl.hp, he = hl.he, mp = hl.m, sp = hl.s;
-    (void)n;
-    if (hl.sz != song.g[G_RSIZE] + 1)
-        hall_gains(song.g[G_RSIZE]);
-    for (i = 0; i < HL_NC; i++) {
-        int32_t x = (xp + 2 * rev_in[2u * i] + rev_in[2u * i + 1u]) >> 2, v;   /* every other sample, 1 2 1 */
-        xp = rev_in[2u * i + 1u];
-        x = mulq15(clamp(x, -262143, 262143), 2580);    /* (ROOM's level) */
-        v = x - hp + he;                                /* the low cut, its step's remainder kept */
-        he = v & 31;
-        hp += v >> 5;
-        hl.bx[i] = x - hp;
-    }
-    hl.x = xp, hl.hp = hp, hl.he = he;
-    for (k = 0; k < HL_NAP; k++) {                      /* the diffusers */
-        d = hl.d[k];
-        HL_RUNS(d, HL_AP[k], m, s, hall_ap(a + d, HL_APG[k], hl.bx + s, m));
-        hl.d[k] = (uint16_t)d;
-        a += HL_AP[k];
-    }
-    hl.ph += HL_LFO;
-    for (k = 0; k < HL_NL; k++) {                       /* the lines' ends */
-        int32_t g = hl.g[k], f = 0, lo;
-        if ((HL_LPM >> k) & 1u)
-            d = hl.i[k];                                /* (low-passed: the line's end) */
-        else {                                          /* (drifting: HL_MOD + 2 +- HL_MOD samples short of it) */
-            uint32_t r = (uint32_t)(((HL_MOD + 2) << 8) +
-                                    ((osc_sine(hl.ph * (1u + (k & 1u)) + k * 0x2C000000u) * HL_MOD) >> 7));
-            f = (int32_t)(r & 255u);
-            d = hl.i[k] + (r >> 8);
-            d = d >= HL_LEN[k] ? d - HL_LEN[k] : d;
-        }
-        s = d + HL_LEN[k] / 2u;                         /* quiet? (two samples half a line apart) */
-        s = s >= HL_LEN[k] ? s - HL_LEN[k] : s;
-        lo = (b[d] < 0 ? -b[d] : b[d]) + (b[s] < 0 ? -b[s] : b[s]) < HL_LOUD;
-        if ((HL_LPM >> k) & 1u) {
-            HL_RUNS(d, HL_LEN[k], m, s, hall_end_lp(b + d, hl.y[k] + s, m, g, lo, &hl.lp[k], &hl.le[k], kd));
-        } else {
-            HL_RUNS(d, HL_LEN[k], m, s, hall_end(b + d, f, hl.y[k] + s, m, g, lo));
-        }
-        b += HL_LEN[k] + 1u;
-    }
-    for (i = 0; i < HL_NC; i++) {
-        int32_t y0 = hl.y[0][i], y1 = hl.y[1][i], y2 = hl.y[2][i], y3 = hl.y[3][i];
-        int32_t y4 = hl.y[4][i], y5 = hl.y[5][i], y6 = hl.y[6][i], y7 = hl.y[7][i], x = hl.bx[i];
-        int32_t t, p0, p1, p2, p3, p4, p5, p6;
-        hl.l[i] = y0 + y3 + y4 - y7;                    /* the outputs */
-        hl.r[i] = y1 + y2 + y5 + y6;
-        /* the matrix: C = [0 1; -1 Q], Q (7 x 7) = chi(j - i), the quadratic character mod 7 (+1 at distances
-         * 1 2 4, -1 at 3 5 6): row 1 + i of Q y = 2 (the three at +1) - (the sum of the 7) + y_1+i */
-        t = y1 + y2 + y3 + y4 + y5 + y6 + y7;
-        p0 = y2 + y3 + y5, p1 = y3 + y4 + y6, p2 = y4 + y5 + y7, p3 = y5 + y6 + y1;
-        p4 = y6 + y7 + y2, p5 = y7 + y1 + y3, p6 = y1 + y2 + y4;
-        y0 += t;
-        hl.y[0][i] = (int16_t)clamp(t + x, -32768, 32767);   /* (+ the send: signs spread over the rows) */
-        hl.y[1][i] = (int16_t)clamp(2 * p0 + y1 - y0 + x, -32768, 32767);
-        hl.y[2][i] = (int16_t)clamp(2 * p1 + y2 - y0 + x, -32768, 32767);
-        hl.y[3][i] = (int16_t)clamp(2 * p2 + y3 - y0 + x, -32768, 32767);
-        hl.y[4][i] = (int16_t)clamp(2 * p3 + y4 - y0 + x, -32768, 32767);
-        hl.y[5][i] = (int16_t)clamp(2 * p4 + y5 - y0 + x, -32768, 32767);
-        hl.y[6][i] = (int16_t)clamp(2 * p5 + y6 - y0 + x, -32768, 32767);
-        hl.y[7][i] = (int16_t)clamp(2 * p6 + y7 - y0 - x, -32768, 32767);
-    }
-    b = rev_comb;
-    for (k = 0; k < HL_NL; k++) {                       /* back into the lines (and the mirror after a wrap) */
-        d = hl.i[k];
-        HL_RUNS(d, HL_LEN[k], m, s, for (i = 0; i < m; i++) b[d + i] = hl.y[k][s + i]; if (!d) b[HL_LEN[k]] = b[0]);
-        hl.i[k] = (uint16_t)d;
-        b += HL_LEN[k] + 1u;
-    }
-    for (i = 0; i < HL_NC; i++) {                       /* back to 44.1 kHz, between samples */
-        int32_t mm = (hl.l[i] + hl.r[i]) * HL_OUT, ss = (hl.l[i] - hl.r[i]) * HL_OUT;
-        out[2u * i] += (mp + mm) >> 1;
-        out[2u * i + 1u] += mm;
-        rev_side[2u * i] = (sp + ss) >> 1;
-        rev_side[2u * i + 1u] = ss;
-        mp = mm;
-        sp = ss;
-    }
-    hl.m = mp, hl.s = sp;
-    hl.side = 1;
-}
-
-#endif
 
 #define QV_GAIN 22                                       /* QUAD's outputs: about ROOM's tail */
-#if FELUCCA_SIMPLE
 /* QUAD (SIMPLE: the one reverb): a 90s rack reverb, a plate tank of the Dattorro kind (Griesinger's figure-of-eight:
  * four input diffusers, then two halves each a modulated allpass, a delay, a damping low-pass, the decay, an allpass, a
  * delay, crossing into the other half) run at a quarter of the rate (11 kHz: the band stops ~5 kHz), filtered in and
@@ -663,7 +407,6 @@ static __attribute__((noinline)) void rev_quad(const int32_t *rev_in, int32_t *o
     qv.pr = pr;
     hl.side = 1;
 }
-#endif
 
 /* the reverb's buffers and states to silence (the model changed) */
 static void rev_clear(void)
@@ -679,12 +422,10 @@ static void rev_clear(void)
         hl.lp[i] = hl.le[i] = 0;
     fx.sp_lp = fx.sp_hp = fx.sp_he = 0;
     hl.x = hl.m = hl.s = hl.hp = hl.he = 0;
-#if FELUCCA_SIMPLE
     for (i = 0; i < QV_NL; i++)
         qv.w[i] = 0;
     qv.bw = qv.dl = qv.dr = qv.le = qv.re = qv.pl = qv.pr = qv.frz = 0;
     qv.fi[0] = qv.fi[1] = qv.fo[0] = qv.fo[1] = qv.fo[2] = qv.fo[3] = 0;
-#endif
 }
 
 #if FELUCCA_CPU2
@@ -715,34 +456,6 @@ static int32_t part_buf[CTL];                            /* a part's block (mix_
 #define SM1_b part_buf
 #endif
 
-#if !FELUCCA_SIMPLE
-/* the model changed (to rt): the old one's block fades out (HALL's stereo difference with it), its buffers are
- * cleared, the new one starts from silence */
-static __attribute__((noinline)) void rev_switch(const int32_t *rev_in, int32_t *wet, uint32_t n, int32_t rt)
-{
-    int32_t *t = part_buf, g = 65536, d = 65536 / (int32_t)n;
-    uint32_t i;
-    for (i = 0; i < n; i++)
-        t[i] = 0;
-#if FELUCCA_SIMPLE
-    if (fx.rtype == 3u)
-        rev_quad(rev_in, t, n);
-    else
-#endif
-    if (fx.rtype == 2u)
-        rev_hall(rev_in, t, n);
-    else if (fx.rtype)
-        rev_spring(rev_in, t, n);
-    else
-        rev_room(rev_in, t, n);
-    for (i = 0; i < n; i++, g -= d) {
-        wet[i] += mulq16(t[i], (uint32_t)g);
-        rev_side[i] = mulq16(rev_side[i], (uint32_t)g);   /* (HALL only: hl.side set) */
-    }
-    rev_clear();
-    fx.rtype = (uint8_t)rt;
-}
-#endif
 
 /* process the three buses for one block; sends in, wet stereo-equal out */
 static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t *rev_in, int32_t *wet,
@@ -750,7 +463,6 @@ static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t
 {
     uint32_t i, dl = delay_samples();
     int32_t fb = song.g[G_DFDBK] * 260, col = 2000 + song.g[G_DCOLOR] * 240, hpk = 700;
-#if FELUCCA_SIMPLE
     int32_t dtarget = delay_q8();
     {   /* TONE: 64 the dub echo, below it the repeats go darker (a low-pass), above it thinner (a high-pass) */
         int32_t tn = song.g[G_DCOLOR] - 64;
@@ -758,9 +470,6 @@ static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t
         hpk = tn > 0 ? 700 + tn * 130 : 700;
     }
 #define SIMPLE_DT(dl) (fx.dly_cur)
-#else
-#define SIMPLE_DT(dl) ((int32_t)(dl) << 8)
-#endif
     int32_t dmix = song.g[G_DMIX] * 258;
     int32_t cdepth = song.g[G_CDEPTH] * 6, rt;
     uint32_t cinc = LFO_INC[song.g[G_CRATE] & 127] / CTL;
@@ -786,7 +495,6 @@ static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t
         {
             int32_t dm, pos, f, x0, x1, lp;
             uint32_t ri;
-#if FELUCCA_SIMPLE
             {   /* free running: the time glides to the knob (a one-pole, ~90 ms), so sweeping TIME bends the echoes' pitch */
                 int32_t d = dtarget - fx.dly_cur, step = d >> 12;
                 if (!fx.dly_cur)
@@ -797,7 +505,6 @@ static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t
                 fx.dly_cur += step;
                 dl = (uint32_t)fx.dly_cur >> 8;
             }
-#endif
             dm = (int32_t)(dl >> 2) < 20 ? (int32_t)(dl >> 2) : 20;
             fx.dly_ph += 77900u;
             pos = (int32_t)(SIMPLE_DT(dl)) + ((osc_sine(fx.dly_ph) * dm) >> 7);
@@ -819,21 +526,8 @@ static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t
         wet[i] = y;
     }
     hl.side = 0;
-#if FELUCCA_SIMPLE
     (void)rt;
     rev_quad(rev_in, wet, n);                           /* SIMPLE: the one reverb */
-#else
-    rt = song.g[G_RTYPE];
-    rt = rt == 1 || rt == 2 ? rt : 0;
-    if (rt != fx.rtype)
-        rev_switch(rev_in, wet, n, rt);
-    else if (rt == 2)
-        rev_hall(rev_in, wet, n);
-    else if (rt)
-        rev_spring(rev_in, wet, n);
-    else
-        rev_room(rev_in, wet, n);
-#endif
 }
 
 /* after the buses: HALL's stereo difference to the left and from the right of the dry mix (the wet bus adds the
@@ -1101,9 +795,6 @@ static __attribute__((noinline)) void mix_spread(track_t *t, int32_t *b, uint32_
 static uint16_t part_cost[NTRK];                        /* the last block's, per part */
 static const uint16_t ENG_VCOST[NENGINES] = {163, FELUCCA_FM4 ? 181 : 0, 162, 67, 70, 174, 144, 143, 189, 309, 113, 134,
                                              181,
-#if FELUCCA_SLICE
-                                             129
-#endif
 };
 #endif
 
@@ -1199,9 +890,7 @@ static __attribute__((noinline)) void perf_master(int32_t *out, uint32_t n)
         mix_r[i] = (((mix_r[i] + wet[i]) >> 2) * mg) >> 10;
     }
     perf_block(mix_l, mix_r, n);
-#if FELUCCA_SIMPLE
     mfx_block(mix_l, mix_r, n);
-#endif
     for (i = 0; i < n; i++) {
         int32_t l = mix_l[i], r = mix_r[i];
         master_out(&l, &r);
@@ -1312,7 +1001,6 @@ static void mix_block(int32_t *out, uint32_t n)
         perf_master(out, n);
         return;
     }
-#if FELUCCA_SIMPLE
     for (i = 0; i < n; i++) {
         mix_l[i] = (((mix_l[i] + wet[i]) >> 2) * mg) >> 10;
         mix_r[i] = (((mix_r[i] + wet[i]) >> 2) * mg) >> 10;
@@ -1325,7 +1013,6 @@ static void mix_block(int32_t *out, uint32_t n)
         out[2u * i + 1u] = r;
     }
     return;
-#endif
     for (i = 0; i < n; i++) {
         int32_t l = (((mix_l[i] + wet[i]) >> 2) * mg) >> 10;
         int32_t r = (((mix_r[i] + wet[i]) >> 2) * mg) >> 10;

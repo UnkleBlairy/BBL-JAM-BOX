@@ -113,7 +113,7 @@ static uint32_t leds_step(uint32_t m, int32_t s)
     return LEDS_MENU[i];
 }
 
-static void palette_apply(void);               /* (ui.c: the palette in use, CUSTOM or a built-in one) */
+static void palette_apply(void) { palette_set(settings.palette % NPALETTES); }   /* the palette in use into gfx.c */
 static void settings_init(void)
 {
     if (settings.magic == SETTINGS_MAGIC_OLD && settings.palette < 20u) {

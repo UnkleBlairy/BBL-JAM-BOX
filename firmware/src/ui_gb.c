@@ -4,7 +4,6 @@
  * name over and the value under, the page dots and the machine's name. The PERF page is 16 tiles. The screen is first
  * described (gb_view_t), drawn from that, and only when the description changed. Pages: EDIT, FILTER, ENV, LFO, FX,
  * PERF, MIXER, CLOCK; the rest keep the old look. */
-#if FELUCCA_SIMPLE
 #define GB_STRIP 60                           /* canvas rows a strip */
 #define GB_RGB(r, g, b) ((uint16_t)((((r) >> 3) << 11) | (((g) >> 2) << 5) | ((b) >> 3)))
 static uint16_t gb_col[4] = {GB_RGB(255, 90, 54), GB_RGB(255, 214, 10), GB_RGB(46, 196, 255), GB_RGB(179, 136, 255)};   /* a colour a TRACK */
@@ -58,10 +57,10 @@ static uint32_t gb_trig(const step_t *s)                 /* a step's TRIG 0..4 (
 static int gb_page(void)
 {
     const page_t *pg;
-    if (ui.home || ui.layer || ui.menu || ui.confirm || name_on())
+    if (ui.home || ui.confirm)
         return 0;
     pg = cur_page();
-    if ((gbsv || gbsv_t) && !ui.menu && !ui.confirm)
+    if ((gbsv || gbsv_t) && !ui.confirm)
         return 1;
     return pg->graph == GR_PERF || pg->graph == GR_TRK || pg->graph == GR_GBSEQ || pg->fam == FAM_TRK || (pg->fam == FAM_GLO && pg->scope == SC_GLOBAL) || dial_page();
 }
@@ -451,4 +450,3 @@ static void gb_draw(void)
         ux.gen++;
     }
 }
-#endif

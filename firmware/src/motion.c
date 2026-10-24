@@ -10,39 +10,29 @@
  * (motion_unlock). A lock lasts the whole step, its RATCH parts too; swing only moves the step's start. */
 /* SIMPLE: the master's controls a lock can hold too (the DJ filter, the COMB, the delay, the reverb): ids P_COUNT + j,
  * j their place in MOTION_G. Their value is song.g's, one for all the tracks (each keeps its own base) */
-#if FELUCCA_SIMPLE
 static const uint8_t MOTION_G[] = {G_MIDI, G_SYNC, G_CRATE, G_CDEPTH, G_INFO, G_DTIME, G_DFDBK, G_DCOLOR, G_RSIZE, G_RDAMP,
                                    G_RTYPE};
 #define MOTION_NG 11u
-#else
-#define MOTION_NG 0u
-#endif
 #define MOTION_N (P_COUNT + MOTION_NG)                   /* the ids a record can hold */
 _Static_assert(MOTION_N <= 128u, "a record's id is 7 bits (MOTION_ID)");
 static int16_t *motion_vp(track_t *t, uint32_t id)      /* the value id moves */
 {
-#if FELUCCA_SIMPLE
     if (id >= P_COUNT)
         return &song.g[MOTION_G[(id - P_COUNT) % MOTION_NG]];
-#endif
     return &t->p[id];
 }
 static const param_desc_t *motion_desc(const track_t *t, uint32_t id)
 {
-#if FELUCCA_SIMPLE
     if (id >= P_COUNT)
         return &GP[MOTION_G[(id - P_COUNT) % MOTION_NG]];
-#endif
     return param_desc_of(eng_idx(t->eng_req), id);
 }
 static uint32_t motion_gid(uint32_t g)                   /* global g's id, 0xFF none */
 {
-#if FELUCCA_SIMPLE
     uint32_t j;
     for (j = 0; j < MOTION_NG; j++)
         if (MOTION_G[j] == g)
             return P_COUNT + j;
-#endif
     (void)g;
     return 0xFFu;
 }
