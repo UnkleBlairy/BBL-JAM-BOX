@@ -192,6 +192,11 @@ typedef struct {                 /* a step as formats 1..4 (projects to FUN4) st
 #define COND_FILL 10u                    /* FILL, NOT FILL: the last two */
 #define COND_NFILL 11u
 #define CHANCE_V_MAX (100u + NCOND)
+/* SIMPLE: a step has its CHANCE (its own byte: 0 none, the track's CHANCE then, P_APROB) and a TRIG too, 1/4 2/4 3/4
+ * 4/4 (conditions 6..9: 1:4 .. 4:4): step i's TRIG is the condition in step i + GB_TRIG's byte (LEN is 16 at most
+ * there, steps 16..31 never play), so the formats stay as they are (seq.c seq_miss, ui_input.c gbseq_knob) */
+#define GB_TRIG 16u
+#define GB_TRIG_C0 5u                    /* TRIG k (1..4) = condition GB_TRIG_C0 + k */
 static uint32_t step_cond(const step_t *s)   /* its condition 1..NCOND, 0 none */
 {
     return s->probability >= COND_FIRST && s->probability < COND_FIRST + NCOND ? s->probability - COND_FIRST + 1u : 0u;

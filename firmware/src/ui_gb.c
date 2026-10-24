@@ -25,13 +25,33 @@ static gb_view_t gb_v, gb_last;
 static uint8_t gb_have;
 
 static int name_on(void);
+static uint32_t gbs_held(void);                    /* (ui_input.c) the steps held */
+/* the SEQ page (ui_input.c gbseq_knob) */
+static const uint8_t GB_SPEED[5] = {0, 1, 2, 3, 10};
+static uint32_t gb_speed(int32_t div)                    /* SPEED 0..4 of a DIV (another DIV: x1) */
+{
+    uint32_t i;
+    for (i = 0; i < 5u; i++)
+        if (GB_SPEED[i] == div)
+            return i;
+    return 2u;
+}
+static int32_t gb_own(const step_t *s)                   /* a step's own CHANCE, -1 none (the track's) */
+{
+    return s->probability && s->probability < COND_FIRST ? (int32_t)step_chance(s) : -1;
+}
+static uint32_t gb_trig(const step_t *s)                 /* a step's TRIG 0..4 (- 1/4 2/4 3/4 4/4) */
+{
+    uint32_t c = step_cond(s + GB_TRIG);
+    return c > GB_TRIG_C0 && c <= GB_TRIG_C0 + 4u ? c - GB_TRIG_C0 : 0u;
+}
 static int gb_page(void)
 {
     const page_t *pg;
     if (ui.home || ui.layer || ui.menu || ui.confirm || name_on())
         return 0;
     pg = cur_page();
-    return pg->graph == GR_PERF || pg->graph == GR_TRK || pg->fam == FAM_TRK || (pg->fam == FAM_GLO && pg->scope == SC_GLOBAL) || dial_page();
+    return pg->graph == GR_PERF || pg->graph == GR_TRK || pg->graph == GR_GBSEQ || pg->fam == FAM_TRK || (pg->fam == FAM_GLO && pg->scope == SC_GLOBAL) || dial_page();
 }
 static uint32_t gb_mach(uint32_t k) { return (uint32_t)trk[k & 3u].p[P_E7] % 6u; }
 
@@ -100,6 +120,46 @@ static void gb_fill(gb_view_t *v)
             v->mask |= (uint8_t)(1u << k);
         }
         str_cpy(v->title, "VOLUME", sizeof v->title);
+        return;
+    }
+    if (pg->graph == GR_GBSEQ) {                  /* LEN SPEED CHANCE TRIG; a step held: STEP n, its own CHANCE and TRIG */
+        static const char *const SPN[5] = {"x1/4", "x1/2", "x1", "x2", "x4"};
+        static const char *const TRN[5] = {"-", "1/4", "2/4", "3/4", "4/4"};
+        static const char *const LB[4] = {"LEN", "SPEED", "CHANCE", "TRIG"};
+        const track_t *t = TSEL;
+        uint32_t held = gbs_held(), p = 0, sp = gb_speed(t->p[P_SDIV]);
+        int32_t ch = t->p[P_APROB] > 100 ? 100 : t->p[P_APROB], tr = -1;
+        while (held && !((held >> p) & 1u))
+            p++;
+        if (held) {
+            char nb[4];
+            fmt_int(nb, (int32_t)p + 1);
+            str_cpy(v->title, "STEP ", sizeof v->title);
+            str_cpy(v->title + 5, nb, sizeof v->title - 5u);
+            ch = gb_own(&t->step[p]);
+            tr = (int32_t)gb_trig(&t->step[p]);
+        }
+        for (k = 0; k < 4u; k++) {
+            str_cpy(v->lab[k], LB[k], sizeof v->lab[k]);
+            v->mask |= (uint8_t)(1u << k);
+        }
+        fmt_int(v->val[0], t->p[P_SLEN]);
+        v->ratio[0] = (int16_t)((t->p[P_SLEN] - 1) * 1000 / 15);
+        str_cpy(v->val[1], SPN[sp], sizeof v->val[1]);
+        v->ratio[1] = (int16_t)(sp * 250u);
+        if (ch < 0) {
+            str_cpy(v->val[2], "TRK", sizeof v->val[2]);
+            v->ratio[2] = 0;
+        } else {
+            fmt_int(v->val[2], ch);
+            for (i = 0; v->val[2][i]; i++)
+                ;
+            v->val[2][i] = '%';
+            v->val[2][i + 1u] = 0;
+            v->ratio[2] = (int16_t)(ch * 10);
+        }
+        str_cpy(v->val[3], TRN[tr < 0 ? 0 : tr], sizeof v->val[3]);
+        v->ratio[3] = (int16_t)((tr < 0 ? 0 : tr) * 250);
         return;
     }
     for (k = 0; k < 4u; k++) {

@@ -226,7 +226,7 @@ static uint32_t beat_samples(void)
 static uint32_t div_samples(uint32_t div)
 {
     uint32_t quarter = beat_samples();
-    return div < 6u ? quarter / DIV_DEN[div] : div < 10u ? quarter << (div - 5u) : quarter / DIV_DEN[div % 6u];
+    return div < 6u ? quarter / DIV_DEN[div] : div < 10u ? quarter << (div - 5u) : div == 10u ? quarter / 16u : quarter / DIV_DEN[div % 6u];   /* (10: 1/64, SIMPLE's SEQ) */
 }
 
 #include "perform.c"                                 /* the FX hold layer's effects (the master) */

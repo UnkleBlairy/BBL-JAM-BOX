@@ -433,7 +433,7 @@ static int page_visible(uint32_t i)
         static const char *const OFF[] = {"SCL", "CHORD", "SLICER", "INSERT", "INSERT 2", "OP1 ENV", "OP2 ENV",
                                           "OP3 ENV", "OP4 ENV", "OP LEVEL", "VOICE", "VOICE 2", "VOICE 3", "LANES",
                                           "LANES 2", "SLICES", "OPERATOR", "OP ENV", "OPERATOR 2", "MOD", "DLY", "REVERB", "CHORUS", "LFO 2",
-                                          "ARP", "ARP 2"};
+                                          "ARP", "ARP 2", "STEP", "DETAIL", "AUTOMATION"};
         uint32_t k;
         for (k = 0; k < NELEM(OFF); k++)
             if (str_eq(PAGES[i].title, OFF[k]))

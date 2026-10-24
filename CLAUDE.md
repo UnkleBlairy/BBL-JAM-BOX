@@ -47,6 +47,16 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   3 COMB MIX, 4 COMB TUNE. Screen bottom: FADE / FILT, COMB / TUNE.
 - PERF: the last three black keys do nothing for now (were fade jumps);
   saved for a future use.
+- 16-step sequencer only (LEN 1..16). One SEQ page replaces Felucca's STEP /
+  DETAIL / AUTOMATION (hidden, not deleted). Knobs: LEN, SPEED (x1/4 x1/2 x1
+  x2 x4), CHANCE, TRIG (- 1/4 2/4 3/4 4/4, Elektron-style). All per track.
+- CHANCE: nothing held = the track's chance for every step; step held = that
+  step's own chance (TRK = follow the track). A step can have chance AND trig.
+- Step keys: empty step turns on at press; a lit step turns off on release,
+  unless a knob was turned while holding it (hold-to-edit, like Elektron).
+- Storage: track CHANCE lives in P_APROB (no ARP in this build); step i's TRIG
+  lives in step[i+16]'s chance byte (core.h GB_TRIG) so the save format is
+  unchanged.
 
 ## Workflow (after every change)
 

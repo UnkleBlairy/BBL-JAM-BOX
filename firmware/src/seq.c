@@ -993,6 +993,16 @@ static __attribute__((noinline)) int seq_cond_miss(const track_t *t, const step_
 /* the step does not play: its condition fails, or its chance's roll */
 static int seq_miss(const track_t *t, const step_t *s, uint32_t idx)
 {
+#if FELUCCA_SIMPLE                                      /* its TRIG (core.h GB_TRIG), then its CHANCE or the track's */
+    uint32_t c;
+    const step_t *tg = idx < GB_TRIG ? &seq_steps(t)[idx + GB_TRIG] : 0;
+    if (s->probability >= COND_FIRST && seq_cond_miss(t, s, idx))
+        return 1;
+    if (tg && step_cond(tg) && seq_cond_miss(t, tg, idx))
+        return 1;
+    c = s->probability && s->probability < COND_FIRST ? step_chance(s) : (uint32_t)t->p[P_APROB];
+    return c < 100u && rng() % 100u >= c;
+#endif
     if (s->probability >= COND_FIRST)
         return seq_cond_miss(t, s, idx);
     return step_chance(s) < 100u && rng() % 100u >= step_chance(s);

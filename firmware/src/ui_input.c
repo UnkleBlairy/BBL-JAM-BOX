@@ -813,7 +813,40 @@ static void grid_keys(uint32_t pressed)
 }
 
 /* SIMPLE, the step keys: a white key toggles that step of the selected track (a note of the track's machine, seq.c
- * grid_note_of), a black key 1..4 selects the track (seq.c plays it) */
+ * grid_note_of), a black key 1..4 selects the track (seq.c plays it). An empty step comes on at the press; a step that
+ * is on goes when its key is let go, unless the SEQ page's knobs turned while it was held (its CHANCE, TRIG) */
+static uint32_t gbs_off, gbs_kept;                       /* keys: its step goes when let go; .. turned while held: it stays */
+static void gbs_step_off(step_t *st)                     /* the step and its TRIG (core.h GB_TRIG) */
+{
+    uint32_t i = (uint32_t)(st - TSEL->step);
+    step_clear(st);
+    if (i < GB_TRIG)
+        TSEL->step[i + GB_TRIG].probability = 0;
+}
+/* the steps held (bit p: step p), for the SEQ page's knobs */
+static uint32_t gbs_held(void)
+{
+    uint32_t k, m = 0, len = (uint32_t)TSEL->p[P_SLEN];
+    if (!sgrid_on())
+        return 0;
+    for (k = 0; k < 27u; k++) {
+        uint32_t p = key_place(k);
+        if (((fm1_in.notes >> k) & 1u) && !key_black(k) && p < len && p < GB_TRIG)
+            m |= 1u << p;
+    }
+    return m;
+}
+static void sgrid_release(void)                          /* every input pass: the keys let go */
+{
+    uint32_t k, up = (gbs_off | gbs_kept) & ~fm1_in.notes;
+    for (k = 0; k < 27u; k++)
+        if ((up >> k) & 1u && ((gbs_off & ~gbs_kept) >> k) & 1u && key_place(k) < GB_TRIG) {
+            gbs_step_off(&TSEL->step[key_place(k)]);
+            ui.force = 1;
+        }
+    gbs_off &= ~up;
+    gbs_kept &= ~up;
+}
 static void sgrid_keys(uint32_t pressed)
 {
     uint32_t k, len = (uint32_t)TSEL->p[P_SLEN];
@@ -822,8 +855,10 @@ static void sgrid_keys(uint32_t pressed)
         if (!((pressed >> k) & 1u))
             continue;
         if (key_black(k)) {
-            if (p < NTRK)
+            if (p < NTRK) {
+                gbs_off = gbs_kept = 0;                 /* (the steps held were the other track's) */
                 track_select(p);
+            }
             continue;
         }
         if (chain_busy()) { ui_message("STOP TO EDIT"); continue; }
@@ -832,9 +867,9 @@ static void sgrid_keys(uint32_t pressed)
         {
             step_t *st = &TSEL->step[p];
             if (st->time == ST_NOTE && st->n) {
-                step_clear(st);
+                gbs_off |= 1u << k;                     /* (goes when let go: sgrid_release) */
             } else {
-                step_clear(st);
+                gbs_step_off(st);
                 st->time = ST_NOTE;
                 st->n = (uint8_t)grid_chord(TSEL, st->note);
                 st->vel = 100;
@@ -843,6 +878,55 @@ static void sgrid_keys(uint32_t pressed)
         cursor_set((int32_t)p);
     }
 }
+
+#if FELUCCA_SIMPLE
+/* SIMPLE, the SEQ page: KNOB 1 LEN (1..16), 2 SPEED (x1/4 .. x4: DIV 1/4 .. 1/64), 3 CHANCE: the track's, or with
+ * steps held their own (TRK: none, the track's), 4 TRIG: the held steps' (- 1/4 2/4 3/4 4/4: core.h GB_TRIG) */
+static void gbseq_knob(uint32_t slot, int32_t steps)
+{
+    track_t *t = TSEL;
+    uint32_t held = gbs_held(), p, k;
+    int16_t was;
+    if (slot >= 2u && held) {                            /* the held steps' own: they stay when let go */
+        for (k = 0; k < 27u; k++)
+            if (((fm1_in.notes >> k) & 1u) && !key_black(k) && key_place(k) < GB_TRIG)
+                gbs_kept |= 1u << k;
+        for (p = 0; p < GB_TRIG; p++) {
+            step_t *s = &t->step[p];
+            if (!((held >> p) & 1u))
+                continue;
+            if (slot == 2u) {
+                int32_t c = clamp(gb_own(s) + accel(EN_K1 + slot, steps, 101), -1, 100);
+                s->probability = (uint8_t)(c < 0 ? 0 : c == 0 ? 101 : c);
+            } else {
+                int32_t g = clamp((int32_t)gb_trig(s) + (steps > 0 ? 1 : -1), 0, 4);
+                s[GB_TRIG].probability = (uint8_t)(g ? COND_FIRST + GB_TRIG_C0 + (uint32_t)g - 1u : 0u);
+            }
+        }
+        ui.force = 1;
+        return;
+    }
+    if (slot == 3u) {
+        ui_message("HOLD A STEP");
+        return;
+    }
+    if (chain_busy()) { ui_message("STOP TO EDIT"); return; }
+    if (slot == 0u) {
+        was = t->p[P_SLEN];
+        t->p[P_SLEN] = (int16_t)clamp(was + (steps > 0 ? 1 : -1), 1, 16);
+        pm_record(t, &t->p[P_SLEN], was);
+    } else if (slot == 1u) {
+        was = t->p[P_SDIV];
+        t->p[P_SDIV] = GB_SPEED[clamp((int32_t)gb_speed(was) + (steps > 0 ? 1 : -1), 0, 4)];
+        pm_record(t, &t->p[P_SDIV], was);
+    } else {
+        was = t->p[P_APROB];
+        t->p[P_APROB] = (int16_t)clamp((was > 100 ? 100 : was) + accel(EN_K1 + slot, steps, 100), 0, 100);
+        pm_record(t, &t->p[P_APROB], was);
+    }
+    ui.force = 1;
+}
+#endif
 
 /* ------------------------------------------------- parameter locks --- */
 /* 1.1 (Discussions #75, #53): on SEQ > STEP, hold a step and turn KNOB 1..4: the step gets a lock of the parameter
@@ -1178,6 +1262,10 @@ static void edit_param(uint32_t slot, int32_t steps)
         return;
     }
 #if FELUCCA_SIMPLE
+    if (pg->graph == GR_GBSEQ) {
+        gbseq_knob(slot, steps);
+        return;
+    }
     if (pg->graph == GR_PERF) {                          /* KNOB 1 the release fade (none .. a bar), 2 the DJ filter, 3 the comb's MIX, 4 its TUNE */
         if (slot == 0u)
             pm_rel = (uint8_t)clamp((int32_t)pm_rel + (steps > 0 ? 1 : -1), 0, 16);
@@ -1518,14 +1606,15 @@ static void layer_lock_input(uint32_t pressed);
 static int page_tap(uint32_t b)
 {
     uint32_t f;
-    if (FELUCCA_SIMPLE && b == B_SEQ && !ui.home && cur_page()->fam == FAM_GLO) {   /* the macros: SEQ goes back to the step page, its keys on */
+    if (FELUCCA_SIMPLE && b == B_SEQ && (ui.home || cur_page()->graph != GR_GBSEQ)) {   /* SIMPLE: SEQ from anywhere: the SEQ page, its keys on */
         ui.fam_last[FAM_SEQ] = 0;
+        ui.home = 0;
         open_family(FAM_SEQ);
         ui.sgrid = 1;
         ui.force = 1;
         return 1;
     }
-    if (FELUCCA_SIMPLE && b == B_SEQ) {                  /* SIMPLE: SEQ toggles the step keys, the page stays */
+    if (FELUCCA_SIMPLE && b == B_SEQ) {                  /* .. on the SEQ page: the step keys off / on */
         ui.sgrid ^= 1u;
         ui_message(ui.sgrid ? "STEP KEYS ON" : "STEP KEYS OFF");
         return 1;
@@ -1966,6 +2055,9 @@ static void ui_input(void)
 #endif
     lock_keys();                                        /* (a grid key on a hit let go: the hit goes) */
     pm_poll();
+#if FELUCCA_SIMPLE
+    sgrid_release();
+#endif
     if (song.grid == 4u) {
         pm_keys(notes);
     } else if (song.grid == 3u) {
