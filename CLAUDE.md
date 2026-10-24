@@ -39,8 +39,14 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
 
 ## Design decisions
 
-- PERF page fade option labels read "FADE -", "FADE 1/8", "FADE 1/4",
-  "FADE BAR" (not "REL").
+- The let-go fade is called "FADE" (never "REL"): "FADE -", "FADE 1/16" ..
+  "FADE BAR".
+- PERF page has no FUNC/ARP knobs: macros always play PINGPONG, the arp is
+  always UP-DOWN.
+- PERF knobs: 1 FADE (the let-go fade, off..1 bar in 1/16s), 2 DJ filter,
+  3 COMB MIX, 4 COMB TUNE. Screen bottom: FADE / FILT, COMB / TUNE.
+- PERF: the last three black keys do nothing for now (were fade jumps);
+  saved for a future use.
 
 ## Workflow (after every change)
 

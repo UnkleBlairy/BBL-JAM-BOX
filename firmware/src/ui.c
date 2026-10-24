@@ -648,8 +648,12 @@ static struct {
     uint8_t nb, btrk[PM_B], bid[PM_B], bedit[PM_B];      /* the parameters moving, edited (turned while held: left alone) */
     int16_t bval[PM_B];                                  /* .. and what they were */
 } pm_h;
+#if FELUCCA_SIMPLE
+static uint8_t pm_fade, pm_func = 2, pm_arp = 2;         /* SIMPLE: always PINGPONG and UPDN (no knobs for them) */
+#else
 static uint8_t pm_fade, pm_func, pm_arp;
-static uint8_t pm_rel;                                   /* the release fade, 0 none, 1..3 = 1/4 note, a bar, 4 bars: a let-go macro (and a beat repeat) glides out */
+#endif
+static uint8_t pm_rel;                                   /* the release fade in 1/16s, 0 none .. 16 a bar: a let-go macro (and a beat repeat) glides out */
 static struct { uint8_t n, trk[32], id[32]; int16_t from[32], to[32]; uint32_t t0, dur; } pm_rl;   /* the parameters gliding back */
 static uint8_t pm_ui_a = 255, pm_ui_c = 255;             /* what the screen shows: the macro fading from, the one fading to / playing in the arp */
 static int16_t pm_ui_u;                                  /* .. how far (0..1024) */                 /* 0 none, 1..4 the fade time; FUNC 0..2; ARP 0..4 */
@@ -724,8 +728,7 @@ static uint32_t pm_time(void)                           /* the fade time, ms; no
 }
 static uint32_t pm_rel_ms(void)                         /* the release time, ms (0: none) */
 {
-    static const uint8_t ST[3] = {2, 4, 16};
-    return pm_rel ? pm_step_ms() * ST[(pm_rel - 1u) % 3u] : 0u;
+    return pm_step_ms() * pm_rel;
 }
 static void pm_rl_rebase(void)                           /* the glide starts again from where each value is */
 {

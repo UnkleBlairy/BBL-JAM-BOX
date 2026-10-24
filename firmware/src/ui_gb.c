@@ -11,13 +11,13 @@ static uint16_t gb_col[4] = {GB_RGB(255, 90, 54), GB_RGB(255, 214, 10), GB_RGB(4
 static const char *const GB_PILL[6] = {"SYNTH", "KICK", "SNARE", "HATS", "CYMBAL", "PERC"};
 
 typedef struct {
-    uint8_t perf, mixer, mach, sel, page, npages, mask, fade, rpt, func, arp, hn;
+    uint8_t perf, mixer, mach, sel, page, npages, mask, fade, rpt, hn;
     int16_t bpm;
     uint8_t tm[4];                            /* each track's machine */
     uint8_t mac_n[8], mac_held[8];
     int16_t ratio[4];
     uint8_t alt[4];
-    int16_t dj, cmix;                        /* PERF: the master DJ filter and comb */
+    int16_t dj, cmix, ctune;                 /* PERF: the master DJ filter and comb */
     uint8_t fill[8], rel, bpm_alt;           /* PERF: each held macro's tile filled 0..26 rows; the release fade; the tempo is held by a macro */                           /* a macro holds this value: its dial is drawn inverted */
     char title[10], lab[4][8], val[4][12];
 } gb_view_t;
@@ -68,12 +68,11 @@ static void gb_fill(gb_view_t *v)
                     v->mac_held[i] = 1;
         }
         v->fade = (uint8_t)pm_fade;
-        v->func = (uint8_t)pm_func;
-        v->arp = (uint8_t)pm_arp;
         v->hn = (uint8_t)pm_h.n;
         v->rel = pm_rel;
         v->dj = song.g[G_MIDI];
         v->cmix = song.g[G_SYNC];
+        v->ctune = song.g[G_CRATE];
         if (pm_h.n && pm_ui_c < PM_NM) {
             uint32_t f = (uint32_t)pm_ui_u * 26u / 1024u;
             if (f > 26u)
@@ -170,10 +169,8 @@ static void gb_scene(const gb_view_t *v, uint16_t bgc)
     if (v->perf) {
         static const char *const FN[4] = {"1/16", "1/8", "BAR", "4BAR"};
         static const char *const RN[4] = {"1/8", "1/16", "1/32", "REV"};
-        static const char *const FUN[3] = {"HOLD", "CYCLE", "PING"};
-        static const char *const ARPN[5] = {"UP", "DOWN", "UPDN", "RAND", "ORDER"};
         char fb[24];
-        uint32_t o = 0, j;
+        uint32_t o = 0;
         cv_text_on(8, 4, &AF_L, v->hn > 2u ? "ARP" : "PERF", c, bgc);
         for (k = 0; k < 8u; k++) {
             int32_t tx = 8 + (int32_t)(k & 3u) * 56, ty = 44 + (int32_t)(k >> 2) * 38;
@@ -207,16 +204,26 @@ static void gb_scene(const gb_view_t *v, uint16_t bgc)
             gb_pill(tx, 158, 52, 28, GB_W, rp);
             cv_text_in(tx, 164, 52, &AF_M, RN[k], rp ? bgc : GB_W, rp ? GB_W : bgc);
         }
-        for (j = 0; FUN[v->func % 3u][j]; j++) fb[o++] = FUN[v->func % 3u][j];
-        fb[o++] = ' '; fb[o++] = ' ';
-        for (j = 0; ARPN[v->arp % 5u][j]; j++) fb[o++] = ARPN[v->arp % 5u][j];
-        fb[o] = 0;
-        cv_text_on(8, 188, &AF_M, fb, c, bgc);
-        {
-            static const char *const RLN[4] = {"FADE -", "FADE 1/8", "FADE 1/4", "FADE BAR"};
+        {                                                 /* the four knobs: FADE  FILT / COMB  TUNE */
             char nn[8];
-            uint32_t q = 0;
-            cv_text_r(232, 188, &AF_M, RLN[v->rel & 3u], c, bgc);
+            uint32_t q;
+            if (!v->rel) {
+                str_cpy(fb, "FADE -", sizeof fb);
+            } else if (v->rel >= 16u) {
+                str_cpy(fb, "FADE BAR", sizeof fb);
+            } else {                                          /* the fraction of a bar, reduced: 1/16 1/8 3/16 1/4 .. */
+                uint32_t n = v->rel, d = 16u;
+                while (!(n & 1u)) { n >>= 1; d >>= 1; }
+                str_cpy(fb, "FADE ", sizeof fb);
+                o = 5u;
+                fmt_int(nn, (int32_t)n);
+                for (q = 0; nn[q]; q++) fb[o++] = nn[q];
+                fb[o++] = '/';
+                fmt_int(nn, (int32_t)d);
+                for (q = 0; nn[q]; q++) fb[o++] = nn[q];
+                fb[o] = 0;
+            }
+            cv_text_on(8, 188, &AF_M, fb, c, bgc);
             if (v->dj > 1 || v->dj < -1) {                     /* the DJ filter: LP to the left, HP to the right, how far */
                 int32_t a2 = v->dj < 0 ? -v->dj : v->dj;
                 fb[0] = v->dj < 0 ? 'L' : 'H'; fb[1] = 'P'; fb[2] = ' ';
@@ -226,9 +233,14 @@ static void gb_scene(const gb_view_t *v, uint16_t bgc)
             } else {
                 str_cpy(fb, "FILT -", sizeof fb);
             }
-            cv_text_on(8, 211, &AF_M, fb, c, bgc);
+            cv_text_r(232, 188, &AF_M, fb, c, bgc);
             str_cpy(fb, "COMB ", sizeof fb);
             fmt_int(nn, v->cmix * 100 / 127);
+            for (q = 0; nn[q]; q++) fb[5u + q] = nn[q];
+            fb[5u + q] = 0;
+            cv_text_on(8, 211, &AF_M, fb, c, bgc);
+            str_cpy(fb, "TUNE ", sizeof fb);
+            fmt_int(nn, v->ctune * 100 / 127);
             for (q = 0; nn[q]; q++) fb[5u + q] = nn[q];
             fb[5u + q] = 0;
             cv_text_r(232, 211, &AF_M, fb, c, bgc);

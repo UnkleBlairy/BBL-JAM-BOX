@@ -609,6 +609,9 @@ static void song_keys(uint32_t notes)
 /* PERF (song.grid 4): a black key picks the track; the white keys 1..8 are the macros (held: they apply, knob turns on any
  * page are kept in them, let go everything returns), 9..12 the fade time, 13..16 the beat repeat (seq.c keyboard_block). The
  * keys are silent here (seq.c keyboard_block) */
+#if !FELUCCA_SIMPLE
+static const uint8_t PM_RELK[3] = {2, 4, 16};         /* the release fade keys, in 1/16s (SIMPLE: KNOB 1, these keys free) */
+#endif
 static void pm_keys(uint32_t pressed)
 {
     uint32_t k;
@@ -619,10 +622,12 @@ static void pm_keys(uint32_t pressed)
         if (key_black(k)) {
             if (p < NTRK)
                 track_select(p);
-            else if (p >= 8u && p <= 10u) {                 /* the last three black keys: the release fade, again for none */
-                pm_rel = pm_rel == p - 7u ? 0u : (uint8_t)(p - 7u);
+#if !FELUCCA_SIMPLE
+            else if (p >= 8u && p <= 10u) {                 /* the last three black keys: the release fade 1/8 1/4 BAR, again for none */
+                pm_rel = pm_rel == PM_RELK[p - 8u] ? 0u : PM_RELK[p - 8u];
                 ui.force = 1;
             }
+#endif
         } else if (p < PM_NM) {
             pm_begin(p, k);
             ui.force = 1;
@@ -658,8 +663,10 @@ static uint32_t pm_leds(void)                       /* the macros with something
     for (k = 0; k < 27u; k++) {
         uint32_t p = key_place(k);
         if (key_black(k)) {
-            if (p >= 8u && p <= 10u && pm_rel == p - 7u)
+#if !FELUCCA_SIMPLE
+            if (p >= 8u && p <= 10u && pm_rel == PM_RELK[p - 8u])
                 m |= 1u << k;
+#endif
             continue;
         }
         if (p < PM_NM ? pm_mac[p].n : p < PM_NM + 4u ? pm_fade == p - PM_NM + 1u : p < 16u && ((fm1_in.notes >> k) & 1u))
@@ -1170,6 +1177,21 @@ static void edit_param(uint32_t slot, int32_t steps)
             ui.ppick = (uint8_t)clamp((int32_t)pat_pick() + steps, 0, (int32_t)pat_count() - 1);
         return;
     }
+#if FELUCCA_SIMPLE
+    if (pg->graph == GR_PERF) {                          /* KNOB 1 the release fade (none .. a bar), 2 the DJ filter, 3 the comb's MIX, 4 its TUNE */
+        if (slot == 0u)
+            pm_rel = (uint8_t)clamp((int32_t)pm_rel + (steps > 0 ? 1 : -1), 0, 16);
+        else {                                           /* macros keep these too */
+            static const uint8_t GK[3] = {G_MIDI, G_SYNC, G_CRATE};
+            int16_t *gp = &song.g[GK[slot - 1u]], was = *gp;
+            const param_desc_t *gd = &GP[GK[slot - 1u]];
+            *gp = (int16_t)param_turn(gd, *gp, accel(EN_K1 + slot, steps, gd->max - gd->min));
+            pm_record(TSEL, gp, was);
+        }
+        ui.force = 1;
+        return;
+    }
+#endif
     if (pg->graph == GR_PERF) {                          /* KNOB 1 FUNC (HOLD CYCLE PINGPONG), 2 ARP (UP DOWN UPDN RANDOM ORDER) */
         if (slot == 0u)
             pm_func = (uint8_t)clamp((int32_t)pm_func + (steps > 0 ? 1 : -1), 0, 2);
