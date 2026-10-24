@@ -352,8 +352,6 @@ static void ui_leds(void)
         led_put(nl, panel.btn[B_SEQ], 1);               /* SIMPLE: SEQ lit while the keys are the steps */
     if ((k = arp_led()) != 2u)
         led_put(nl, panel.btn[B_ARP], FAM_BTN[fam] == B_ARP ? !k : (int)k);   /* (on ARP's page: dark flashes) */
-    if ((perf_latched || perf_k[0] || perf_k[1] || perf_k[2] || perf_k[3]))
-        led_put(nl, panel.btn[B_EDIT], 1);              /* FX LATCH: lit while an effect or a macro is on (the effects' button) */
     led_put(nl, panel.btn[B_REC], song.rec != 0u);
     k = oct_leds();
     led_put(nl, panel.btn[B_OCTDN], (int)(k & 1u));
@@ -1121,9 +1119,6 @@ static void ui_input(void)
     if (((pressed >> panel.btn[B_REC]) & 1u) && ui.ly == LAYER_REC)
         ui.rec_t0 |= 2u;                                /* (REC is a page button: its tap is layer_tap's) */
     oct = oct_taps(pressed, ui.confirm != 0);
-    kb_mask = 0;                                        /* (seq.c: no keys are a button's: no layers) */
-    perf_mask = 0;
-    kb_lock = 0;
     lytap = layer_gesture();
     song.grid = (uint8_t)keys_mode();                 /* (a dialog: the keys play again) */
     if (rec == BT_TAP && !ui.confirm)

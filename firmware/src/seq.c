@@ -617,27 +617,12 @@ static void input_off(track_t *t, uint32_t note)
     trk_note_off(t, note);                          /* other mode (ARP switched while held) */
 }
 
-/* the effect of key k in the FX layer (PF_N none): the white keys F3 .. G5 the map's (perf_map: the settings,
- * ui_layer.c; by default 1.1.5's ten, FLANGER, PHASER, REV / ECHO THROW), black keys 1..4 the track mutes */
-static uint32_t perf_key(uint32_t k)
-{
-    uint32_t p = key_place(k);
-    return !key_black(k) ? (p < PF_KEYS ? perf_map[p] : PF_N) : p < NTRK ? PF_M1 + p : PF_N;
-}
-
-/* a key of the FX layer down (FX held) / up: the effect it holds. kb_fx: the one it took (+ 1, 0 none), so a key
- * remapped while held lets go of what it holds; an effect two keys hold ends with the last of them. noinline: out
- * of keyboard_block's loop (the audio ISR) */
+/* a repeat key let go (PERF): its repeat ends. kb_fx: the repeat a key holds (+ 1, 0 none); one two keys hold ends with
+ * the last of them. noinline: out of keyboard_block's loop (the audio ISR) */
 static uint8_t kb_fx[27];
-static __attribute__((noinline)) void perf_key_press(uint32_t k, int down)
+static __attribute__((noinline)) void perf_key_up(uint32_t k)
 {
     uint32_t e, j;
-    if (down) {
-        e = perf_key(k);
-        kb_fx[k] = (uint8_t)(e + 1u);
-        perf_press(e, 1);
-        return;
-    }
     if (!kb_fx[k])
         return;
     e = kb_fx[k] - 1u;
@@ -646,31 +631,6 @@ static __attribute__((noinline)) void perf_key_press(uint32_t k, int down)
         if (kb_fx[j] == e + 1u)
             return;
     perf_press(e, 0);
-}
-
-/* the map changed (ui_layer.c: PRESETS with a key held, EDIT, a settings load): a white key held takes its new
- * effect at once (the old one let go); FX LATCH: a latched effect of the key's becomes the new one */
-static __attribute__((noinline)) void perf_key_remap(void)
-{
-    uint32_t k, e, o;
-    perf_remap = 0;
-    for (k = 0; k < 27u; k++) {
-        if (!kb_fx[k] || key_black(k) || (o = kb_fx[k] - 1u) == (e = perf_key(k)))
-            continue;
-        if (!perf_latch_on) {
-            perf_key_press(k, 0);
-            perf_key_press(k, 1);
-            continue;
-        }
-        kb_fx[k] = (uint8_t)(e + 1u);
-        if (o < PF_N && ((perf_latched >> o) & 1u)) {
-            perf_latched &= ~PF_BIT(o);
-            if (e < PF_N) {
-                perf_latched |= PF_BIT(e);
-                perf_ord[e] = ++perf_seq;
-            }
-        }
-    }
 }
 
 /* key k plays kb_note[k] on track t: its chord (chord.c; the note alone with CHRD OFF). A note another key
@@ -759,10 +719,8 @@ static uint32_t mt_t0[4];
 static void keyboard_block(void)
 {
     uint32_t cur = fm1_in.notes, ch, k;
-    uint32_t lay, fx, mute;
+    uint32_t mute;
     ch = cur ^ kb_prev;                          /* keys also sound while entering steps */
-    if (perf_remap)
-        perf_key_remap();
     if (!ch)
         return;
     if (kb_boot_hold) {                           /* #137: under the splash; their release is silent too */
@@ -772,8 +730,6 @@ static void keyboard_block(void)
         kb_prev = cur;
         return;
     }
-    lay = (fm1_in.buttons & kb_mask) || kb_lock;  /* (#83: kb_lock, a layer locked open with no button held) */
-    fx = (fm1_in.buttons & perf_mask) || (kb_lock & 2u);
     mute = song.grid == 2u || song.grid == 4u || song.grid == 5u ? ~0u : song.grid == 3u ? SONG_KEYS : 0u;   /* the keys that never sound here */
     for (k = 0; k < 27u; k++) {
         if (!((ch >> k) & 1u))
@@ -795,13 +751,6 @@ static void keyboard_block(void)
                 mt_t0[tr] = fm1_ms;
                 trk[tr].p[P_MUTE] = (int16_t)!mt_prev[tr];
                 mt_used = 1;
-                continue;
-            }
-            if (lay) {                            /* a layer's button held (or locked): the key is the layer's */
-                kb_note[k] = KB_SILENT;           /* (ui_layer.c), with FX an effect (perform.c) */
-                kb_layer |= 1u << k;
-                if (fx)
-                    perf_key_press(k, 1);
                 continue;
             }
             if (song.grid == 4u && !key_black(k) && key_place(k) >= 12u && key_place(k) < 16u) {   /* PERF: the beat repeat keys */
@@ -834,7 +783,7 @@ static void keyboard_block(void)
                         trk[tr].p[P_MUTE] = (int16_t)mt_prev[tr];
                     continue;
                 }
-                perf_key_press(k, 0);
+                perf_key_up(k);
                 continue;
             }
             if (kb_note[k] == KB_SILENT)

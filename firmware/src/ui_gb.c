@@ -111,7 +111,7 @@ static void gb_fill(gb_view_t *v)
                 v->fill[pm_ui_a] = (uint8_t)(26u - f);
             v->fill[pm_ui_c] = (uint8_t)f;
         }
-        v->rpt = (uint8_t)((perf_held | perf_latched) & 15u);
+        v->rpt = (uint8_t)(perf_held & 15u);
         return;
     }
     if (v->mixer) {                           /* the four tracks' levels */

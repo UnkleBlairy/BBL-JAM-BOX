@@ -204,7 +204,7 @@ static uint32_t div_samples(uint32_t div)
     return div < 6u ? quarter / DIV_DEN[div] : div < 10u ? quarter << (div - 5u) : div == 10u ? quarter / 16u : quarter / DIV_DEN[div % 6u];   /* (10: 1/64, SIMPLE's SEQ) */
 }
 
-#include "perform.c"                                 /* the FX hold layer's effects (the master) */
+#include "repeat.c"                                  /* PERF's beat repeats (the master) */
 #include "mfx.c"                                     /* the groovebox's master DJ filter and comb */
 #include "click.c"                                   /* the metronome's click (after the master: audio.c) */
 
@@ -426,9 +426,6 @@ static void fx_buses(const int32_t *dly_in, const int32_t *rev_in, int32_t *wet,
 #define SIMPLE_DT(dl) (fx.dly_cur)
     int32_t dmix = song.g[G_DMIX] * 258;
     int32_t rt;
-    if (pf.ew1 && fb < THR_FB)
-        fb += mulq16(THR_FB - fb, (uint32_t)pf.ew1 << 1);   /* ECHO THROW (perform.c): more feedback while held, 0.7
-                                                             * at most (the loop's gain below 1: it never runs away) */
     for (i = 0; i < n; i++) {
         int32_t y = 0, x;
         /* delay: a dub-style BBD echo. The tap wobbles slowly (a clock that drifts: +-20 samples at 0.8 Hz), every repeat goes
@@ -515,8 +512,6 @@ static __attribute__((noinline)) void mix_spread(track_t *t, int32_t *b, uint32_
     xmax = 0x7FFFFFFF / ((xmax > r ? xmax : r) | 1);
     for (i = 0; i < n; i++)
         d[i] = (d[i] << 1) - b[i];                      /* left - right */
-    if ((pf.mute >> (t - trk)) & 1u)
-        perf_mute_sd((uint32_t)(t - trk), b, d, n);
     for (i = 0; i < n; i++) {
         int32_t x = ((b[i] >> 2) * lvl) >> 10, a = x < 0 ? -x : x, y = ((d[i] >> 2) * lvl) >> 10;
         int32_t xs = clamp(x, -xmax, xmax);
@@ -568,8 +563,6 @@ static void mix_part(track_t *t, uint32_t n SM_DECL)
     if (T_SPREAD(t))
         mix_spread(t, b, n SM_ARG(sm));
     else {
-        if ((pf.mute >> (t - trk)) & 1u)
-            perf_mute((uint32_t)(t - trk), b, n);       /* perform.c: a black key in the FX layer */
     }
     if (!T_SPREAD(t)) {                                /* (the mix's values read after the calls: none is held over
                                                          * them, no spill in the loop: the ISR's cost as before 1.5) */
@@ -592,8 +585,6 @@ static void mix_part(track_t *t, uint32_t n SM_DECL)
         }
         t->peak = pk;
     }
-    if (pf.thr)
-        perf_throw(t, b, SM(d), SM(v), n);              /* perform.c: REV / ECHO THROW (1.5.1), the sends towards full */
     if (MOD(t).on)
         mod_end(t);                                     /* the stored values back */
 }
@@ -722,8 +713,6 @@ static void mix_block(int32_t *out, uint32_t n)
     for (i = 0; i < NPART; i++)                         /* (one core: as 1.6) */
         mix_part(&trk[i], n);
 #endif
-    if (perf)
-        perf_pre(mix_l, mix_r, send_d, send_r, n);
     fx_buses(send_d, send_r, wet, n);
     if (hl.side)
         rev_side_mix(mix_l, mix_r, n);                  /* HALL: stereo */
