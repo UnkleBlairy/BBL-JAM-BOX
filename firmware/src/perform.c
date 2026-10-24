@@ -57,7 +57,10 @@ enum { PF_R8, PF_R16, PF_R32, PF_REV, PF_LPF, PF_HPF, PF_TAPE, PF_FRZ, PF_OUP, P
 #define PF_BUF (PF_REPEAT | PF_BIT(PF_REV) | PF_BIT(PF_TAPE) | PF_BIT(PF_FRZ) | PF_HARM)
 #define PF_MUTE (((1u << NTRK) - 1u) << PF_M1)
 #define PF_MOD (PF_BIT(PF_FLG) | PF_BIT(PF_PHS))   /* FLANGER, PHASER: their own stages after CRUSH */
-#define PB_FRAMES (NTRK * SL_LEN / 2u)        /* stereo frames in sl_buf: 8192, 371 ms at 22.05 kHz */
+#define SL_RAMP_LOG2 7
+#define SL_RAMP (1 << SL_RAMP_LOG2)           /* the effects' ramps: 128 samples, 2.9 ms */
+#define SL_SLOPE (32768 / SL_RAMP)
+#define PB_FRAMES 8192u                       /* stereo frames in pb_buf: 371 ms at 22.05 kHz */
 #define PB_MAX (2u * PB_FRAMES)               /* the longest loop, 44.1 kHz samples */
 #define PB_TAPE 32000u                        /* TAPE STOP takes 1 beat, at most this (it lags a quarter of it) */
 #define PB_FREC 4096u                         /* FREEZE: frames it records (186 ms) */
@@ -149,6 +152,7 @@ static struct {
     int32_t px[2][PH_ST], py[2][PH_ST], pfb[2];   /* PHASER: each stage's last input and output, L and R; the fed back */
 } pf = {.src = PF_N, .next = PF_N, .lc = PF_TOP, .mg = {32768, 32768, 32768, 32768}};
 
+static int16_t pb_buf[2u * PB_FRAMES] __attribute__((section(".pool")));   /* the buffer effects' loop (32 KB) */
 static int16_t fl_buf[FL_LEN][2];      /* FLANGER's line: L R, at half the level (headroom) */
 
 
@@ -187,13 +191,6 @@ static void perf_press(uint32_t e, int down)
 
 static void perf_start(void) { pf.ph = 0; pf.sync = 1; }      /* seq_start: a 1/16 starts with the transport */
 
-/* the SLICER's recordings dropped (when the buffer is taken and given back) */
-static void perf_drop_slicer(void)
-{
-    uint32_t k;
-    for (k = 0; k < NTRK; k++)
-        sl[k].rec = sl[k].loop = sl[k].rec_on = 0;
-}
 
 /* the buffer effect to play: the last pressed of those running */
 static uint32_t perf_pick(uint32_t a)
@@ -208,10 +205,6 @@ static uint32_t perf_pick(uint32_t a)
 
 static void perf_buf_start(uint32_t e)
 {
-    if (!sl_lent) {
-        sl_lent = 1;
-        perf_drop_slicer();
-    }
     pf.src = (uint8_t)e;
     pf.next = PF_N;
     pf.wr = pf.rp = 0;
@@ -419,7 +412,7 @@ static inline int32_t pf_mix(int32_t x, int32_t y, int32_t w)
 /* the loop: frame f of it, both channels (Q15) */
 static inline void pb_put(uint32_t f, int32_t l, int32_t r)
 {
-    int16_t *p = &sl_buf[0][0] + 2u * (f & (PB_FRAMES - 1u));
+    int16_t *p = pb_buf + 2u * (f & (PB_FRAMES - 1u));
     p[0] = (int16_t)clamp(l, -32768, 32767);
     p[1] = (int16_t)clamp(r, -32768, 32767);
 }
@@ -427,7 +420,7 @@ static inline void pb_put(uint32_t f, int32_t l, int32_t r)
 static inline void pb_at(uint32_t s, uint32_t n, int32_t *l, int32_t *r)
 {
     uint32_t f = s >> 1 < n ? s >> 1 : n - 1u;    /* (an odd loop's last sample: the frame before) */
-    const int16_t *p = &sl_buf[0][0] + 2u * (f & (PB_FRAMES - 1u));
+    const int16_t *p = pb_buf + 2u * (f & (PB_FRAMES - 1u));
     const int16_t *q;                               /* a frame is the mean of samples 2f, 2f + 1: sample s */
     if (s & 1u)                                     /* lies a quarter frame from it, towards f + 1 or f - 1 */
         q = f + 1u < n ? p + 2 : p;
@@ -487,8 +480,8 @@ static inline void hb_tap(uint32_t ph, int32_t *l, int32_t *r)
         *l = *r = 0;
         return;
     }
-    p = &sl_buf[0][0] + 2u * ((pf.wr - di) & HB_MASK);
-    q = &sl_buf[0][0] + 2u * ((pf.wr - di - 1u) & HB_MASK);
+    p = pb_buf + 2u * ((pf.wr - di) & HB_MASK);
+    q = pb_buf + 2u * ((pf.wr - di - 1u) & HB_MASK);
     *l = p[0] + (((q[0] - p[0]) * f) >> 15);
     *r = p[1] + (((q[1] - p[1]) * f) >> 15);
 }
@@ -531,10 +524,6 @@ static __attribute__((noinline)) void perf_buf_done(void)
         perf_buf_start(pf.next);
     } else {
         pf.mode = BM_NONE;
-        if (sl_lent) {
-            sl_lent = 0;
-            perf_drop_slicer();
-        }
     }
 }
 
@@ -569,8 +558,8 @@ static inline void perf_buf(int32_t *pl, int32_t *pr)
         if (pf.wr >= 2u) {                          /* read behind the writing, slower and slower */
             uint32_t f = pf.tpos >> 16;
             int32_t fr = (int32_t)((pf.tpos >> 1) & 0x7FFFu), a, b, env;
-            const int16_t *p = &sl_buf[0][0] + 2u * (f & (PB_FRAMES - 1u));
-            const int16_t *s = &sl_buf[0][0] + 2u * ((f + 1u) & (PB_FRAMES - 1u));
+            const int16_t *p = pb_buf + 2u * (f & (PB_FRAMES - 1u));
+            const int16_t *s = pb_buf + 2u * ((f + 1u) & (PB_FRAMES - 1u));
             a = p[0];
             b = s[0];
             yl = (a + (((b - a) * fr) >> 15)) << 1;

@@ -867,7 +867,6 @@ static void seq_start(void)
     beat_pos = 0; beat_n = 0;                      /* the ARP LED's beat from the top too */
     clk_pos = CLK_START;                           /* the metronome's first beat with step 0 */
     song.playing = 1;
-    slicer_start();                                /* slicer.c: its step 0 with the sequencer's */
     perf_start();                                  /* perform.c: its 1/16 grid too */
 }
 

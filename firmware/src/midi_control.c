@@ -191,7 +191,6 @@ static void midi_silence_track(uint32_t track)
     for (i = 0; i < NVOICE; i++)
         if (t->v[i].active)
             voice_kill(&t->v[i]);             /* one-block fade, regardless of RELEASE */
-    sl[track].rec = sl[track].loop = 0;       /* do not keep replaying captured sound */
     midi_forget_track(track);
 }
 
