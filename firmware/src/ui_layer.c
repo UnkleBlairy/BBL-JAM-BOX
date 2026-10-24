@@ -130,7 +130,8 @@ static int layer_set_open(void)                 /* (FX LATCH: FX is one too, OCT
 {
     return layer_open() && (LAYERS[layer_open()].kind == LK_SET || (layer_open() == LAYER_FX && perf_latch_on));
 }
-static uint32_t layer_held(void) { return ui.ly && ly_down(ui.ly) && layer_allowed(); }
+static uint32_t layer_held(void) { return !FELUCCA_SIMPLE && ui.ly && ly_down(ui.ly) && layer_allowed(); }
+/* SIMPLE: no layers. A layer button held is that button (its tap when let go); its keys and knobs are the page's */
 
 /* each pass, before the keys: what the ISR (seq.c keyboard_block) gives to a layer. Armed: its button; none
  * armed: any layer button not already down (one pressed meanwhile is armed below; one held over from before
@@ -138,7 +139,7 @@ static uint32_t layer_held(void) { return ui.ly && ly_down(ui.ly) && layer_allow
  * since): nothing, its keys stay notes and FX starts no effect with no map shown; FX's effects only with FX */
 static void layer_masks(void)
 {
-    uint32_t m = !layer_allowed() || (ui.ly && (ui.ly_t0 & LY_DEAD)) ? 0u
+    uint32_t m = FELUCCA_SIMPLE || !layer_allowed() || (ui.ly && (ui.ly_t0 & LY_DEAD)) ? 0u
                : ui.ly ? ly_bit(ui.ly) : layer_bits() & ~fm1_in.buttons;
     kb_mask = m;
     perf_mask = m & ly_bit(LAYER_FX);
@@ -271,6 +272,13 @@ static uint32_t layer_gesture(uint32_t now, uint32_t combo)
         *t0 |= LY_DEAD;
         ui.lock = 0;                                    /* (the menu, a dialog, NAME: the lock closes) */
     }
+    if (FELUCCA_SIMPLE) {                               /* (SIMPLE: let go, a tap, however long; never a layer) */
+        if (ly_down(l))
+            return 0;
+        l = *t0 & LY_DEAD ? 0u : l;
+        layer_let_go(0);
+        return l;
+    }
     if (ly_down(l)) {
         if (!(*t0 & (LY_OPEN | LY_DEAD)) &&
             (combo || now - (*t0 & ~15u) >= (uint32_t)HOLD_MS[settings_hold % 4u] * 1000u * FM1_TICKS_PER_US)) {
@@ -329,13 +337,13 @@ static void layer_tap(uint32_t l)
         acted = page_tap(LAYERS[l].btn);
     }
     lys.dt_hint = 0;
-    if (!((layer_seen >> l) & 1u) && ui.msg_t == m && !name_on() && !ui.confirm && !ui.menu) {
+    if (!FELUCCA_SIMPLE && !((layer_seen >> l) & 1u) && ui.msg_t == m && !name_on() && !ui.confirm && !ui.menu) {
         ui_say("HOLD [", KC[LY_KC[l]].label);
         str_cpy(ui.msg + str_len(ui.msg), "] QUICK", sizeof ui.msg - str_len(ui.msg));
         ui.msg_t = 90;                                  /* ~1.5 s */
         lys.dt_hint = 1;
     }
-    if (!acted && !name_on() && !ui.confirm && !ui.menu) {   /* a page opened: a second tap soon locks the layer */
+    if (!FELUCCA_SIMPLE && !acted && !name_on() && !ui.confirm && !ui.menu) {   /* a page opened: a second tap soon locks the layer */
         lys.dt_l = (uint8_t)l;
         lys.dt_ms = fm1_ms;
     }

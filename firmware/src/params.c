@@ -483,47 +483,46 @@ typedef struct {
     uint8_t id[4];               /* param ids; 0xFF = empty slot */
 } page_t;
 
+#if FELUCCA_SIMPLE
+/* SIMPLE: the groovebox's pages only (a family's go round in this order: ui.c open_family). EDIT button (FAM_EDIT)
+ * OSC 1 / OSC 2, SCL button (FAM_FLT) FILTER / FILTER ENV, ENV, LFO, FX button (FAM_FX) DELAY / VERB, GLO PERF /
+ * COMB, SEQ, HOME MIXER / CLOCK. No ARP, no SAVE pages (SAVE: ui_input.c gbsv_*) */
+static const page_t PAGES[] = {
+    {"ENV", FAM_ENV, SC_TRACK, GR_ADSR, {P_ATK, P_DEC, P_SUS, P_REL}},
+    {"ENV DEST", FAM_ENV, SC_TRACK, GR_NONE, {P_ED_FLT, P_ED_PIT, P_ED_SHP, P_ED_FX}},   /* (P_ED_FX: R2, eng_digital.c) */
+    {"LFO", FAM_LFO, SC_TRACK, GR_LFO, {P_LRATE, P_LWAVE, P_M1AMT, P_M1DST}},   /* RATE WAVE, the routing AMT DEST; OCT+: PHASE FADE SYNC TRIG */
+    {"LFO DEST", FAM_LFO, SC_TRACK, GR_NONE, {P_LD_PIT, P_LD_FLT, P_LD_SHP, P_LD_AMP}},
+    {"DELAY", FAM_FX, SC_TRACK, GR_NONE, {P_DLY, 0x80 | G_DTIME, 0x80 | G_DFDBK, 0x80 | G_DCOLOR}},   /* the track's send, then the delay's own TIME FDBK TONE (0x80: a global) */
+    {"VERB", FAM_FX, SC_TRACK, GR_NONE, {P_REV, 0x80 | G_RSIZE, 0x80 | G_RDAMP, 0x80 | G_RTYPE}},   /* the track's send, then the reverb's SIZE DAMP TYPE */
+    {"OSC 1", FAM_EDIT, SC_ENGINE, GR_NONE, {P_E7, P_E0, P_E1, P_E2}},   /* MACH TUNE + the machine's first two macros */
+    {"OSC 2", FAM_EDIT, SC_ENGINE, GR_NONE, {P_E3, P_E4, P_E5, P_E6}},   /* the rest: .. FM FOLD CRSH */
+    {"FILTER", FAM_FLT, SC_TRACK, GR_NONE, {P_FLT_CUT, P_FLT_RES, P_FTYPE, P_FE_AMT}},    /* CUT RES TYPE AMT */
+    {"FILTER ENV", FAM_FLT, SC_TRACK, GR_NONE, {P_FE_ATK, P_FE_DEC, P_FE_SUS, P_FE_REL}}, /* ATK DEC SUS REL */
+    {"PERF", FAM_GLO, SC_GLOBAL, GR_PERF, {0xFF, 0xFF, 0xFF, 0xFF}},        /* GLO: the performance macros (ui.c perf_*) */
+    {"COMB", FAM_GLO, SC_GLOBAL, GR_NONE, {G_SYNC, G_CRATE, G_CDEPTH, G_INFO}},   /* the master comb: MIX TUNE FDBK DAMP (mfx.c) */
+    {"SEQ", FAM_SEQ, SC_TRACK, GR_GBSEQ, {P_SLEN, P_SDIV, P_APROB, 0xFF}},   /* LEN SPEED CHANCE TRIG (ui_input.c gbseq_knob) */
+    {"MIXER", FAM_TRK, SC_TRK, GR_TRK, {0, 1, 2, 3}},
+    {"CLOCK", FAM_TRK, SC_GLOBAL, GR_NONE, {G_BPM, G_SWING, G_CLOCK, 0xFF}},
+};
+#else
 static const page_t PAGES[] = {
     {"ENV", FAM_ENV, SC_TRACK, GR_ADSR, {P_ATK, P_DEC, P_SUS, P_REL}},
     {"ENV DEST", FAM_ENV, SC_TRACK, GR_NONE, {P_ED_FLT, P_ED_PIT, P_ED_SHP, P_ED_FX}},   /* (P_ED_FX: nothing reads it);
                                                                              * 1.5: ESYNC, ENV's times as note values */
-#if FELUCCA_SIMPLE
-    {"LFO", FAM_LFO, SC_TRACK, GR_LFO, {P_LRATE, P_LWAVE, P_M1AMT, P_M1DST}},   /* RATE WAVE, the routing AMT DEST; OCT+: PHASE FADE SYNC TRIG */
-#else
     {"LFO", FAM_LFO, SC_TRACK, GR_LFO, {P_LRATE, P_LWAVE, P_LPHASE, P_LFADE}},
-#endif
-#if FELUCCA_SIMPLE
-    {"LFO 2", FAM_LFO, SC_TRACK, GR_LFO, {P_LSYNC, P_LTRIG, P_M1AMT, P_M1DST}},   /* SYNC TRIG, then the LFO's routing: AMT DEST */
-#else
     {"LFO 2", FAM_LFO, SC_TRACK, GR_LFO, {P_LSYNC, P_LTRIG, P_LPOL, 0xFF}},   /* 1.2: SYNC TRIG POL */
-#endif
     {"LFO DEST", FAM_LFO, SC_TRACK, GR_NONE, {P_LD_PIT, P_LD_FLT, P_LD_SHP, P_LD_AMP}},
     {"MOD", FAM_LFO, SC_TRACK, GR_MOD, {0xFF, P_M1SRC, P_M1DST, P_M1AMT}},   /* KNOB 1: the slot (mod_ui_slot) */
-#if FELUCCA_SIMPLE
-    {"DELAY", FAM_FX, SC_TRACK, GR_NONE, {P_DLY, 0x80 | G_DTIME, 0x80 | G_DFDBK, 0x80 | G_DCOLOR}},   /* the track's send, then the delay's own TIME FDBK TONE (0x80: a global) */
-    {"VERB", FAM_FX, SC_TRACK, GR_NONE, {P_REV, 0x80 | G_RSIZE, 0x80 | G_RDAMP, 0x80 | G_RTYPE}},   /* the track's send, then the reverb's SIZE DAMP TYPE */
-#else
     {"FX", FAM_FX, SC_TRACK, GR_FX, {P_DIST, P_CHOR, P_DLY, P_REV}},
-#endif
     {"SLICER", FAM_FX, SC_TRACK, GR_SLCR, {P_SLCR, P_SLPAT, P_SLRATE, P_SLDEPTH}},
     {"INSERT", FAM_FX, SC_TRACK, GR_INS, {P_ITYPE, P_IA, P_IB, P_IC}},   /* 1.5: the track's INSERT (fx.c) */
     {"INSERT 2", FAM_FX, SC_TRACK, GR_INS, {P_IMIX, 0xFF, 0xFF, 0xFF}},  /* .. its dry / wet */
     {"DLY", FAM_FX, SC_GLOBAL, GR_NONE, {G_DTIME, G_DFDBK, G_DCOLOR, G_DMIX}},
     {"REVERB", FAM_FX, SC_GLOBAL, GR_NONE, {G_RTYPE, G_RSIZE, G_RDAMP, 0xFF}},   /* TYPE: ROOM / SPRING / HALL */
     {"CHORUS", FAM_FX, SC_GLOBAL, GR_NONE, {G_CRATE, G_CDEPTH, 0xFF, 0xFF}},
-#if FELUCCA_SIMPLE
-    {"OSC 1", FAM_EDIT, SC_ENGINE, GR_NONE, {P_E7, P_E0, P_E1, P_E2}},   /* MACH TUNE + the machine's first two macros */
-    {"OSC 2", FAM_EDIT, SC_ENGINE, GR_NONE, {P_E3, P_E4, P_E5, P_E6}},   /* the rest: .. FM FOLD CRSH */
-#else
     {"EDIT 1", FAM_EDIT, SC_ENGINE, GR_NONE, {P_E0, P_E1, P_E2, P_E3}},
     {"EDIT 2", FAM_FLT, SC_ENGINE, GR_NONE, {P_E4, P_E5, P_E6, P_E7}},   /* the SCL button now (the engine's 2nd page) */
-#endif
-#if FELUCCA_SIMPLE
-    {"FILTER", FAM_FLT, SC_TRACK, GR_NONE, {P_FLT_CUT, P_FLT_RES, P_FTYPE, P_FE_AMT}},    /* CUT RES TYPE AMT */
-    {"FILTER ENV", FAM_FLT, SC_TRACK, GR_NONE, {P_FE_ATK, P_FE_DEC, P_FE_SUS, P_FE_REL}}, /* ATK DEC SUS REL */
-#else
     {"FILTER", FAM_FLT, SC_TRACK, GR_NONE, {P_FTYPE, P_E4, P_E5, P_E7}},   /* ANALOG only (1.5, #104): TYPE CUT RES KTR */
-#endif
     {"LANES", FAM_EDIT, SC_TRACK, GR_NONE, {P_LN0, P_LN1, P_LN2, P_LN3}},   /* DRUM only: the lane levels */
     {"LANES 2", FAM_EDIT, SC_TRACK, GR_NONE, {P_LN4, P_LN5, P_LN6, P_LN7}},
     {"SLICES", FAM_EDIT, SC_TRACK, GR_SLICES, {0xFF, 0xFF, 0xFF, 0xFF}},   /* SLICE only: the slices by hand (ui_slice.c) */
@@ -539,12 +538,7 @@ static const page_t PAGES[] = {
     {"VOICE 2", FAM_EDIT, SC_TRACK, GR_NONE, {P_ALLOC, P_DETUNE, P_PAN, P_MUTE}},
     {"VOICE 3", FAM_EDIT, SC_TRACK, GR_NONE, {P_SPRD, 0xFF, 0xFF, 0xFF}},   /* #148: SPREAD */
     /* 1.2 (Discussion #153): a family's pages go round in this order, a tap of its button each (ui.c open_family) */
-#if FELUCCA_SIMPLE
-    {"PERF", FAM_GLO, SC_GLOBAL, GR_PERF, {0xFF, 0xFF, 0xFF, 0xFF}},        /* GLO: the performance macros (ui.c perf_*) */
-    {"COMB", FAM_GLO, SC_GLOBAL, GR_NONE, {G_SYNC, G_CRATE, G_CDEPTH, G_INFO}},   /* the master comb: MIX TUNE FDBK DAMP (mfx.c) */
-#else
     {"SONG", FAM_GLO, SC_GLOBAL, GR_SONG, {0xFF, 0xFF, 0xFF, 0xFF}},        /* GLO's only page (1.2; up to 1.1.5 SEQ's) */
-#endif
     /* SAVE's taps (1.5, #173): USER (SAVE from another page: the quick save, SAVE OCT+ OCT+), PRESETS (the engines and
      * sounds one tap on; up to 1.4.1 the last), PHRASES, PROJECT, TOOLS */
     {"USER", FAM_SAVE, SC_GLOBAL, GR_USER, {0xFF, 0xFF, 0xFF, 0xFF}},       /* user presets: SLOT LOAD ERASE SAVE */
@@ -558,9 +552,6 @@ static const page_t PAGES[] = {
     /* SCL and CHORD moved here from the SCL button (it is the engine's FLT / TONE page now): ARP, ARP 2, SCL, CHORD go round */
     {"SCL", FAM_ARP, SC_TRACK, GR_SCALE, {P_ROOT, P_SCALE, P_QUANT, P_TRANS}},
     {"CHORD", FAM_ARP, SC_TRACK, GR_CHORD, {P_CHRD, P_VOIC, 0xFF, 0xFF}},   /* the chord keys (chord.c) */
-#if FELUCCA_SIMPLE
-    {"SEQ", FAM_SEQ, SC_TRACK, GR_GBSEQ, {P_SLEN, P_SDIV, P_APROB, 0xFF}},   /* SIMPLE: LEN SPEED CHANCE TRIG (ui_input.c gbseq_knob) */
-#endif
     {"STEP", FAM_SEQ, SC_STEP, GR_ROLL, {0, 1, 2, 3}},
     {"DETAIL", FAM_SEQ, SC_STEP, GR_ROLL, {0, 1, 2, 3}},   /* 1.5.1 (#199): the cursor step's CHANCE RATCH NUDGE VEL
                                                              * (ui.c detail_on, ui_input.c sd_turn) */
@@ -571,6 +562,7 @@ static const page_t PAGES[] = {
     {"MIXER", FAM_TRK, SC_TRK, GR_TRK, {0, 1, 2, 3}},
     {"CLOCK", FAM_TRK, SC_GLOBAL, GR_NONE, {G_BPM, G_SWING, G_CLOCK, 0xFF}},
 };
+#endif
 #define NPAGES (sizeof(PAGES) / sizeof(PAGES[0]))
 static uint8_t mod_ui_slot;      /* the MOD page: the matrix slot (0..3) KNOB 2..4 edit */
 

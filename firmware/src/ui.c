@@ -427,19 +427,9 @@ static uint32_t layer_btn(void);
  * track's (its patch's operators, ui_fm6op.c) */
 static int page_visible(uint32_t i)
 {
-#if FELUCCA_SIMPLE                                    /* Digitone style: no chords, scales, slicer, insert, mod matrix, voice
-                                                       * or operator pages; SYN 1 / SYN 2 / FILTER / AMP / LFO and the globals */
-    {
-        static const char *const OFF[] = {"SCL", "CHORD", "SLICER", "INSERT", "INSERT 2", "OP1 ENV", "OP2 ENV",
-                                          "OP3 ENV", "OP4 ENV", "OP LEVEL", "VOICE", "VOICE 2", "VOICE 3", "LANES",
-                                          "LANES 2", "SLICES", "OPERATOR", "OP ENV", "OPERATOR 2", "MOD", "DLY", "REVERB", "CHORUS", "LFO 2",
-                                          "ARP", "ARP 2", "STEP", "DETAIL", "AUTOMATION"};
-        uint32_t k;
-        for (k = 0; k < NELEM(OFF); k++)
-            if (str_eq(PAGES[i].title, OFF[k]))
-                return 0;
-        return 1;
-    }
+#if FELUCCA_SIMPLE                                    /* (the groovebox's PAGES are all its own: params.c) */
+    (void)i;
+    return 1;
 #endif
     if (PAGES[i].scope == SC_TRACK && PAGES[i].id[0] >= P_LN0 && PAGES[i].id[0] <= P_LN7)
         return TSEL->eng_req % NENGINES == ENGI_DRUM;
@@ -1135,7 +1125,8 @@ static void open_family(uint32_t fam)
         uint32_t i;
         for (i = 0; i < NPAGES; i++)
             if (PAGES[i].graph == GR_USER) break;
-        ui.page = (uint8_t)i;                         /* SAVE enters the sound save screen directly */
+        if (i < NPAGES)                               /* (SIMPLE has none) */
+            ui.page = (uint8_t)i;                     /* SAVE enters the sound save screen directly */
     } else {
         uint32_t i = ui.fam_last[fam];
         ui.page = (uint8_t)(i && i < NPAGES && PAGES[i].fam == fam && page_visible(i) ? i : page_first(fam));

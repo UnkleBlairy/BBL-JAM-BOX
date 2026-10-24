@@ -73,6 +73,9 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
 - SAVE?/LOAD? screen is plain text only (no slot boxes): "SOUND - WHITE KEY",
   "KIT - BLACK KEY". After a save/load, "SOUND 3 / LOADED" flashes ~1 s. Key
   lights show which slots are used.
+- No Felucca screens: no layers (holding a button = tapping it, holds are free
+  for groovebox features), no MENU (HOME hold does nothing). The groovebox has
+  its own PAGES table in params.c (15 pages); Felucca's table is #else.
 - Saves while playing apply at once but write to flash at stop (a flash erase
   stops the audio). Old Felucca projects / user presets are gone in this build:
   their flash sectors hold the sounds and kits.
