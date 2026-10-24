@@ -749,7 +749,10 @@ static uint32_t pm_leds(void)                       /* the macros with something
     for (k = 0; k < 27u; k++) {
         uint32_t p = key_place(k);
         if (key_black(k)) {
-#if !FELUCCA_SIMPLE
+#if FELUCCA_SIMPLE
+            if (p < NTRK && !trk[p].p[P_MUTE])          /* the track keys: lit while the track plays (not muted) */
+                m |= 1u << k;
+#else
             if (p >= 8u && p <= 10u && pm_rel == PM_RELK[p - 8u])
                 m |= 1u << k;
 #endif

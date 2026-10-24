@@ -80,6 +80,7 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
 - Mutes (seq.c keyboard_block): hold OCT+ and press black key 1-4 (the track
   keys, = track 1-4). Quick press latches the mute, holding mutes only while
   held. With OCT+ held those keys don't select the track.
+- PERF page: black keys 1-4 are lit while that track is NOT muted.
 - The DJ filter always starts open (centre) at power-on and on project load.
 - Saving (gb_store.c): 16 sound slots per machine (6 machines = 96; more
   machines later). Hold SAVE = SAVE screen: white key = save the selected
