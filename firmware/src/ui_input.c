@@ -898,6 +898,17 @@ static void grid_keys(uint32_t pressed)
     }
 }
 
+/* a global turned live (SIMPLE: one a lock can hold, motion.c MOTION_G): each track's base follows, so the next step
+ * after a lock puts back this value, not the one from before the turn */
+static void g_capture(const int16_t *vp)
+{
+    uint32_t id, k;
+    if (!vp || vp < song.g || vp >= song.g + G_COUNT || (id = motion_gid((uint32_t)(vp - song.g))) == 0xFFu)
+        return;
+    for (k = 0; k < NTRK; k++)
+        (void)motion_capture(&trk[k], id, *vp);
+}
+
 /* SIMPLE, the step keys: a white key toggles that step of the selected track (a note of the track's machine, seq.c
  * grid_note_of), a black key 1..4 selects the track (seq.c plays it). An empty step comes on at the press; a step that
  * is on goes when its key is let go, unless the SEQ page's knobs turned while it was held (its CHANCE, TRIG) */
@@ -1084,7 +1095,7 @@ static void lock_turn(uint32_t k, int32_t s, uint64_t held)
     if (id == 0xFFu)
         return;                                         /* (an empty card: nothing to lock) */
     ui.plk_rm &= ~held;                                 /* (held for a lock: its hit stays) */
-    d = track_desc(t, id);
+    d = id < P_COUNT ? track_desc(t, id) : motion_desc(t, id);   /* (SIMPLE: a global, motion.c) */
     s = accel(EN_K1 + k, s, d->fmt == F_ENUM ? 0 : d->max - d->min);
     motion_undo_take(t, 0x100u | k);                    /* (1.1.5: SAVE held takes the locks back) */
     for (i = 0; i < NSTEP; i++) {
@@ -1378,6 +1389,7 @@ static void edit_param(uint32_t slot, int32_t steps)
             const param_desc_t *gd = &GP[GK[slot - 1u]];
             *gp = (int16_t)param_turn(gd, *gp, accel(EN_K1 + slot, steps, gd->max - gd->min));
             pm_record(TSEL, gp, was);
+            g_capture(gp);
         }
         ui.force = 1;
         return;
@@ -1420,6 +1432,8 @@ static void edit_param(uint32_t slot, int32_t steps)
     if (vp >= TSEL->p && vp < TSEL->p + P_COUNT) {      /* (a track value: not a global on the FX page) */
         motion_capture(TSEL, (uint32_t)(vp - TSEL->p), *vp);
         ml_knob(TSEL, (uint32_t)(vp - TSEL->p));        /* (MIDI LEARN: picked) */
+    } else {
+        g_capture(vp);
     }
 }
 

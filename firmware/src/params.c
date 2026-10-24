@@ -573,8 +573,9 @@ static const uint8_t *alt_ids(const page_t *pg)
 {
     static const uint8_t FX[4] = {0x80 | G_DFDBK, 0x80 | G_DCOLOR, 0x80 | G_RDAMP, 0x80 | G_RTYPE};
     static const uint8_t LFO[4] = {P_LPHASE, P_LFADE, P_LSYNC, P_LTRIG};
+    static const uint8_t COMB[4] = {G_MIDI, 0xFF, 0xFF, 0xFF};   /* SIMPLE: OCT+ on COMB: the DJ filter (a step locks it) */
     (void)FX;
-    return str_eq(pg->title, "LFO") ? LFO : 0;
+    return str_eq(pg->title, "LFO") ? LFO : str_eq(pg->title, "COMB") ? COMB : 0;
 }
 static const param_desc_t *page_desc(const page_t *pg, uint32_t slot, int16_t **valp)
 {

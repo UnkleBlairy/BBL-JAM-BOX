@@ -195,8 +195,10 @@ static void gb_fill(gb_view_t *v)
             v->lab[k][i] = d->label[i];
         cur = *vp;
         v->alt[k] = (uint8_t)(pm_altered(TSEL, vp) != 0);
-        if (lk && vp >= TSEL->p && vp < TSEL->p + P_COUNT) {   /* a step held: its lock (inverted), else the sound's own */
-            uint32_t id = (uint32_t)(vp - TSEL->p), st = 0;
+        if (lk && ((vp >= TSEL->p && vp < TSEL->p + P_COUNT) ||
+                   (vp >= song.g && vp < song.g + G_COUNT && motion_gid((uint32_t)(vp - song.g)) != 0xFFu))) {
+            /* a step held: its lock (inverted), else the sound's own */
+            uint32_t id = vp >= TSEL->p && vp < TSEL->p + P_COUNT ? (uint32_t)(vp - TSEL->p) : motion_gid((uint32_t)(vp - song.g)), st = 0;
             int16_t lv;
             while (!((lk >> st) & 1u))
                 st++;

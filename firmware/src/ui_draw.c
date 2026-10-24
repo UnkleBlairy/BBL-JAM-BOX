@@ -471,7 +471,7 @@ static void draw_frame(void)
 /* MOTION on the cards (#63: values that move on their own): the selected track's motion-driven parameters
  * (motion.c motion_mask: PLAY ON and an event for the id), once per draw_columns; card_mot_next is set just
  * before a draw_column of a track parameter (card_mot_of) and taken by it; card_mot: the cards drawn with it. */
-static uint32_t card_mot_mask[(P_COUNT + 31u) / 32u];
+static uint32_t card_mot_mask[(MOTION_N + 31u) / 32u];
 static uint8_t card_mot_next, card_mot;
 static void card_mot_of(const int16_t *vp)
 {

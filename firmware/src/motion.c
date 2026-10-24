@@ -8,10 +8,54 @@
  * turn a knob) sets its value at its step only when the step plays (its chance passed) and the next step puts back
  * what would sound without it: the latest automation event of the pass up to that step, else the sound's own value
  * (motion_unlock). A lock lasts the whole step, its RATCH parts too; swing only moves the step's start. */
+/* SIMPLE: the master's controls a lock can hold too (the DJ filter, the COMB, the delay, the reverb): ids P_COUNT + j,
+ * j their place in MOTION_G. Their value is song.g's, one for all the tracks (each keeps its own base) */
+#if FELUCCA_SIMPLE
+static const uint8_t MOTION_G[] = {G_MIDI, G_SYNC, G_CRATE, G_CDEPTH, G_INFO, G_DTIME, G_DFDBK, G_DCOLOR, G_RSIZE, G_RDAMP,
+                                   G_RTYPE};
+#define MOTION_NG 11u
+#else
+#define MOTION_NG 0u
+#endif
+#define MOTION_N (P_COUNT + MOTION_NG)                   /* the ids a record can hold */
+_Static_assert(MOTION_N <= 128u, "a record's id is 7 bits (MOTION_ID)");
+static int16_t *motion_vp(track_t *t, uint32_t id)      /* the value id moves */
+{
+#if FELUCCA_SIMPLE
+    if (id >= P_COUNT)
+        return &song.g[MOTION_G[(id - P_COUNT) % MOTION_NG]];
+#endif
+    return &t->p[id];
+}
+static const param_desc_t *motion_desc(const track_t *t, uint32_t id)
+{
+#if FELUCCA_SIMPLE
+    if (id >= P_COUNT)
+        return &GP[MOTION_G[(id - P_COUNT) % MOTION_NG]];
+#endif
+    return param_desc_of(eng_idx(t->eng_req), id);
+}
+static uint32_t motion_gid(uint32_t g)                   /* global g's id, 0xFF none */
+{
+#if FELUCCA_SIMPLE
+    uint32_t j;
+    for (j = 0; j < MOTION_NG; j++)
+        if (MOTION_G[j] == g)
+            return P_COUNT + j;
+#endif
+    (void)g;
+    return 0xFFu;
+}
 static motion_store_t motion;
-static int16_t motion_base[NTRK][P_COUNT];
-static uint32_t motion_active[NTRK][(P_COUNT + 31u) / 32u];
-static uint32_t motion_locked[NTRK][(P_COUNT + 31u) / 32u];   /* the ids a lock holds now (put back at the next step) */
+static int16_t motion_base[NTRK][MOTION_N];
+static uint32_t motion_active[NTRK][(MOTION_N + 31u) / 32u];
+static uint32_t motion_locked[NTRK][(MOTION_N + 31u) / 32u];   /* the ids a lock holds now (put back at the next step) */
+static void motion_snap(uint32_t k, track_t *t)         /* t's values now are its base */
+{
+    uint32_t id;
+    for (id = 0; id < MOTION_N; id++)
+        motion_base[k][id] = *motion_vp(t, id);
+}
 static uint8_t motion_base_valid, motion_full;
 static uint32_t motion_guard(void)
 {
@@ -35,7 +79,11 @@ static int motion_param(uint32_t id)
 {
     /* Sound only: transport, routing, voice allocation and discrete engine
      * changes never become automation. FX sends and continuous mix are safe. */
-    return id < P_COUNT && (id <= P_REL || (id >= P_ED_FLT && id <= P_LD_AMP) ||
+    if (id >= P_COUNT)
+        return id < MOTION_N;                            /* (SIMPLE: the master's) */
+    if (FELUCCA_SIMPLE && (id == P_LSYNC || id == P_LTRIG || id == P_LPOL))
+        return 1;                                        /* (SIMPLE: every LFO setting) */
+    return (id <= P_REL || (id >= P_ED_FLT && id <= P_LD_AMP) ||
         (id >= P_DIST && id <= P_REV) || id == P_GLIDE || id == P_PAN ||
         id == P_DETUNE || (id >= P_FM1_ATK && id <= P_FM4_LEVEL) || (id >= P_LN0 && id <= P_LN7) ||
         id == P_SPRD || (id >= P_ITYPE && id <= P_IMIX) || id >= P_E0 ||
@@ -94,14 +142,14 @@ static int motion_lock_get(const track_t *t, uint32_t step, uint32_t id, int16_t
 }
 /* the parameters track k's MOTION will change (PLAY ON, at least one event): a bit per P_* id in m[].
  * Main loop only (the ISR never writes the events); at most MOTION_MAX records, once per card redraw. */
-static uint32_t motion_mask(uint32_t k, uint32_t m[(P_COUNT + 31u) / 32u])
+static uint32_t motion_mask(uint32_t k, uint32_t m[(MOTION_N + 31u) / 32u])
 {
     uint32_t i, any = 0;
-    memset(m, 0, ((P_COUNT + 31u) / 32u) * sizeof m[0]);
+    memset(m, 0, ((MOTION_N + 31u) / 32u) * sizeof m[0]);
     if (k >= NTRK || !((motion.on >> k) & 1u)) return 0;
     for (i = 0; i < motion.count; i++) {
         const motion_event_t *e = &motion.event[i];
-        if ((e->place >> 6) != k || MOTION_ID(e) >= P_COUNT) continue;
+        if ((e->place >> 6) != k || MOTION_ID(e) >= MOTION_N) continue;
         m[MOTION_ID(e) / 32u] |= 1u << (MOTION_ID(e) % 32u);
         any = 1;
     }
@@ -110,13 +158,13 @@ static uint32_t motion_mask(uint32_t k, uint32_t m[(P_COUNT + 31u) / 32u])
 static int16_t motion_base_value(const track_t *t, uint32_t id)
 {
     uint32_t k = trk_index(t);
-    return (motion_active[k][id / 32u] >> (id % 32u)) & 1u ? motion_base[k][id] : t->p[id];
+    return (motion_active[k][id / 32u] >> (id % 32u)) & 1u ? motion_base[k][id] : *motion_vp((track_t *)t, id);
 }
 static void motion_restore(track_t *t)
 {
     uint32_t k = trk_index(t), id, f = motion_guard();
-    for (id = 0; id < P_COUNT; id++)
-        if ((motion_active[k][id / 32u] >> (id % 32u)) & 1u) t->p[id] = motion_base[k][id];
+    for (id = 0; id < MOTION_N; id++)
+        if ((motion_active[k][id / 32u] >> (id % 32u)) & 1u) *motion_vp(t, id) = motion_base[k][id];
     memset(motion_active[k], 0, sizeof motion_active[k]);
     memset(motion_locked[k], 0, sizeof motion_locked[k]);
     motion_unguard(f);
@@ -125,7 +173,7 @@ static void motion_rebase(track_t *t)
 {
     uint32_t k = trk_index(t), f = motion_guard();
     motion_restore(t);
-    memcpy(motion_base[k], t->p, sizeof t->p);
+    motion_snap(k, t);
     motion_base_valid = (uint8_t)((motion_base_valid & ~(1u << k)) | (song.playing ? 1u << k : 0u));
     motion_unguard(f);
 }
@@ -134,7 +182,7 @@ static void motion_begin(void)
     uint32_t k;
     for (k = 0; k < NTRK; k++) {
         motion_restore(&trk[k]);
-        memcpy(motion_base[k], trk[k].p, sizeof trk[k].p);
+        motion_snap(k, &trk[k]);
     }
     motion_base_valid = (1u << NTRK) - 1u;
 }
@@ -171,7 +219,7 @@ static int motion_put(track_t *t, uint32_t step, uint32_t id, int16_t value, uin
     uint32_t k = trk_index(t), i, f;
     const param_desc_t *d;
     if (k >= NTRK || step >= NSTEP || !motion_param(id)) return 1;
-    d = param_desc_of(eng_idx(t->eng_req), id);
+    d = motion_desc(t, id);
     if (value < d->min || value > d->max || value < -64 || value > 127) return 1;
     value = (int16_t)param_fit(d, value);                    /* (a retired KIT: the kit it plays) */
     f = motion_guard();
@@ -247,7 +295,7 @@ static int motion_capture(track_t *t, uint32_t id, int16_t value)
 static __attribute__((noinline)) void motion_unlock(track_t *t, uint32_t step, const motion_store_t *m)
 {
     uint32_t k = trk_index(t), id, i;
-    for (id = 0; id < P_COUNT; id++) {
+    for (id = 0; id < MOTION_N; id++) {
         int32_t best = -1;
         int16_t v;
         if (!((motion_locked[k][id / 32u] >> (id % 32u)) & 1u))
@@ -259,9 +307,9 @@ static __attribute__((noinline)) void motion_unlock(track_t *t, uint32_t step, c
             if ((e->place >> 6) != k || e->param != id || s > (int32_t)step || s <= best)
                 continue;                               /* (e->param == id: automation only, no MOTION_LOCK) */
             best = s;
-            v = (int16_t)param_fit(param_desc_of(eng_idx(t->eng_req), id), e->value);
+            v = (int16_t)param_fit(motion_desc(t, id), e->value);
         }
-        t->p[id] = v;
+        *motion_vp(t, id) = v;
     }
     memset(motion_locked[k], 0, sizeof motion_locked[k]);
 }
@@ -271,10 +319,10 @@ static __attribute__((noinline)) void motion_step(track_t *t, uint32_t step, con
     uint32_t k = trk_index(t), i, w, any = 0;
     if (!((m->on >> k) & 1u)) return;
     if (!((motion_base_valid >> k) & 1u)) {
-        memcpy(motion_base[k], t->p, sizeof t->p);
+        motion_snap(k, t);
         motion_base_valid |= (uint8_t)(1u << k);
     }
-    for (w = 0; w < (P_COUNT + 31u) / 32u; w++)
+    for (w = 0; w < (MOTION_N + 31u) / 32u; w++)
         any |= motion_locked[k][w];
     if (!step) motion_restore(t);
     else if (any) motion_unlock(t, step, m);
@@ -282,8 +330,8 @@ static __attribute__((noinline)) void motion_step(track_t *t, uint32_t step, con
         const motion_event_t *e = &m->event[i];
         uint32_t id = MOTION_ID(e);
         if (e->place != (k << 6 | step) || ((e->param & MOTION_LOCK) && !play)) continue;
-        const param_desc_t *d = param_desc_of(eng_idx(t->eng_req), id);
-        t->p[id] = (int16_t)param_fit(d, e->value);
+        const param_desc_t *d = motion_desc(t, id);
+        *motion_vp(t, id) = (int16_t)param_fit(d, e->value);
         motion_active[k][id / 32u] |= 1u << (id % 32u);
         if (e->param & MOTION_LOCK)
             motion_locked[k][id / 32u] |= 1u << (id % 32u);
@@ -357,7 +405,7 @@ static int motion_move(track_t *t, uint32_t i, uint32_t step, uint32_t id, int16
     at = motion_find(t, step, id);
     if (at >= 0 && (uint32_t)at != i)
         return 1;
-    d = param_desc_of(eng_idx(t->eng_req), id);
+    d = motion_desc(t, id);
     if (v < d->min || v > d->max || v < -64 || v > 127)
         return 1;
     f = motion_guard();

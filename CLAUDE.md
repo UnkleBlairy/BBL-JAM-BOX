@@ -61,8 +61,12 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   page it toggles the step keys off/on.
 - Parameter locks: with step keys on, hold step(s) on any sound page and turn
   a knob = lock. Locked dials show inverted (like macros). Hold step + OCT-
-  clears that step's locks. Every sound-page knob locks (LFO AMT/DEST, filter
-  TYPE too). Removing a step removes its locks.
+  clears that step's locks. Every knob locks: all sound pages incl. machine,
+  every LFO setting, the OCT+-held second sets, and the master controls (DJ,
+  COMB, delay TIME/FDBK/TONE, reverb SIZE/DAMP/TYPE: motion.c MOTION_G, ids
+  P_COUNT+j). Not the CLOCK page. Removing a step removes its locks.
+- COMB page with OCT+ held = DJ filter (so it can be locked; PERF's keys are the
+  macros, no step keys there).
 - The DJ filter always starts open (centre) at power-on and on project load.
 - Saving (gb_store.c): 16 sound slots per machine (6 machines = 96; more
   machines later). Hold SAVE = SAVE screen: white key = save the selected

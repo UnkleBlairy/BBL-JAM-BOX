@@ -503,21 +503,34 @@ static void chain_play_ui(void)
 
 /* parameter locks: a page whose KNOB 1..4 can lock (a track's sound: one of its parameters can be motion; not MOD's
  * slots), the parameter KNOB k locks (ui.plk_src's page, HOME's four), 0xFF = none */
+/* page pg's KNOB k as a lock's id (OCT+'s other four on LFO, COMB; SIMPLE: a global as motion.c's), 0xFF none */
+static uint32_t lock_pid(const page_t *pg, uint32_t k)
+{
+    uint32_t id = pg->id[k & 3u];
+    if (FELUCCA_SIMPLE && alt_mode && alt_ids(pg))
+        id = alt_ids(pg)[k & 3u];
+    if (id == 0xFFu)
+        return 0xFFu;
+    if ((id & 0x80u) || pg->scope == SC_GLOBAL)
+        id = motion_gid(id & 0x7Fu);
+    return id < MOTION_N && motion_param(id) ? id : 0xFFu;
+}
 static int lock_page_ok(uint32_t i)
 {
     uint32_t k;
-    if (i >= NPAGES || (PAGES[i].scope != SC_TRACK && PAGES[i].scope != SC_ENGINE) || PAGES[i].graph == GR_MOD)
+    if (i >= NPAGES || PAGES[i].graph == GR_MOD || PAGES[i].graph == GR_PERF ||
+        (PAGES[i].scope != SC_TRACK && PAGES[i].scope != SC_ENGINE && !(FELUCCA_SIMPLE && PAGES[i].scope == SC_GLOBAL)))
         return 0;
     for (k = 0; k < 4u; k++)
-        if (PAGES[i].id[k] != 0xFFu && motion_param(PAGES[i].id[k]))
+        if (lock_pid(&PAGES[i], k) != 0xFFu)
             return 1;
     return 0;
 }
 static uint32_t lock_id(uint32_t k)
 {
-    uint32_t id = ui.plk_src && lock_page_ok(ui.plk_src - 1u) ? PAGES[ui.plk_src - 1u].id[k & 3u]
+    uint32_t id = ui.plk_src && lock_page_ok(ui.plk_src - 1u) ? lock_pid(&PAGES[ui.plk_src - 1u], k)
                                                                : ENGINES[TSEL->eng_req % NENGINES]->knob[k & 3u];
-    return id < P_COUNT && motion_param(id) ? id : 0xFFu;
+    return id < MOTION_N && motion_param(id) ? id : 0xFFu;
 }
 
 static void ev_enter(void);
