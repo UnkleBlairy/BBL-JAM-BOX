@@ -67,6 +67,10 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   P_COUNT+j). Not the CLOCK page. Removing a step removes its locks.
 - COMB page with OCT+ held = DJ filter (so it can be locked; PERF's keys are the
   macros, no step keys there).
+- Master FX must never click: DJ and COMB fade in/out over ~23 ms
+  (MFX_CSLOPE), the comb loop soft-limits (mfx_soft), the DJ filter updates
+  every 32 samples with smooth resonance. Test with a sine + 2nd-difference
+  check (jump ~20 = clean) before changing mfx.c.
 - The DJ filter always starts open (centre) at power-on and on project load.
 - Saving (gb_store.c): 16 sound slots per machine (6 machines = 96; more
   machines later). Hold SAVE = SAVE screen: white key = save the selected
