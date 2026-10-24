@@ -10,9 +10,9 @@ import math
 import sys
 from pathlib import Path
 
-# the engines' own tables (SINE, PITCH_OCT / pitch_inc, SVF_G, TANH_Q15; FS, CTL) come from Felucca-Engines
-# (firmware/engines/, a git submodule, MIT): one generator for both, so they cannot drift apart
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "firmware" / "engines" / "tools"))
+# the engines' own tables (SINE, PITCH_OCT / pitch_inc, SVF_G, TANH_Q15; FS, CTL): gen_engine_tables.py (MIT, from
+# Felucca-Engines), next to this file
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 import gen_engine_tables as fe  # noqa: E402
 
 FS = fe.FS

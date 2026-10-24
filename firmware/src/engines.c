@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* The engine table and the tracks' sounds at power-on. The groovebox has one engine, DIGITAL (eng_digital.c). */
-#include "../engines/src/dsp.c"   /* Felucca-Engines (MIT): the shared DSP blocks */
+#include "dsp.c"                /* the shared DSP blocks (MIT, from Felucca-Engines) */
 #include "eng_digital.c"        /* DIGITAL: four-operator FM */
 
 /* the stores hold engine numbers: DIGITAL is 1 (ENGI_DIGITAL); any other number plays DIGITAL too */

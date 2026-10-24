@@ -95,7 +95,7 @@ def tc_all(*cmds):
 
 
 def generate():
-    """generated headers (UI fonts, icons, keycaps, palettes, tables, samples)"""
+    """generated headers (UI fonts, icons, keycaps, palettes, tables)"""
     GEN.mkdir(parents=True, exist_ok=True)
     for old in ("felucca_font.h", "felucca_icons.h"):     # headers of the bitmap font and icon atlas
         (GEN / old).unlink(missing_ok=True)
@@ -104,9 +104,7 @@ def generate():
             [tools / "gen_aa_icons.py", GEN / "ui_icons.h"],
             [tools / "gen_aa_keycaps.py", GEN / "ui_keycaps.h"],
             [tools / "gen_ui_palettes.py", GEN / "ui_palettes.h"],
-            [tools / "gen_tables.py", GEN / "felucca_tables.h"],
-            [tools / "gen_fm6_patches.py", GEN / "felucca_fm6.h"],
-            [tools / "gen_samples.py", GEN / "felucca_samples.h"]]
+            [tools / "gen_tables.py", GEN / "felucca_tables.h"]]
     procs = [subprocess.Popen([sys.executable, *map(str, c)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                               text=True) for c in cmds]
     failed = []
@@ -356,7 +354,7 @@ def mmio_check():
             break
         regs |= more
     errors = []
-    for f in sorted([*(FW / "src").glob("*.[ch]"), *(FW / "engines" / "src").glob("*.[ch]"),
+    for f in sorted([*(FW / "src").glob("*.[ch]"),
                      *(FW / "loader").glob("*.c")]):
         for no, ln in enumerate(strip(f.read_text()).splitlines(), 1):
             where = f"{f.relative_to(FW)}:{no}"
@@ -385,9 +383,6 @@ def main():
         PRODUCT = "FM-1_9" + m[1] + m[2]
         VERSION = "v" + a.release.lower()      # e.g. v1.0, v1.1-rc1
         name = f"felucca-{a.release}.fwsc"
-    if not (FW / "engines" / "src" / "felucca_engine.h").exists():
-        raise SystemExit("firmware/engines is empty: the Felucca-Engines submodule "
-                         "(git submodule update --init, or clone with --recurse-submodules)")
     fm1pkg_make.SDK = a.sdk
     for rel, sha in SDK_SHA256.items():          # fail early without the SDK
         if hashlib.sha256(fm1pkg_make.sdk_file(rel)).hexdigest() != sha:
@@ -402,7 +397,7 @@ def main():
     hal_err = mmio_check()
     errors += hal_err
     if not hal_err:
-        notes.append("register access: hal/ only (src/, engines/src/, loader/ clean)")
+        notes.append("register access: hal/ only (src/, loader/ clean)")
     for n in notes:
         print("  ok   ", n)
     for e in errors:
@@ -411,9 +406,6 @@ def main():
         raise SystemExit("build: checks failed")
     pkg = fm1pkg_make.ufw(fm1pkg_make.flash_image(img, fm1pkg_make.KEY), ota, PRODUCT)
     (OUT / name).write_bytes(pkg)
-    att = SRC / "assets" / "samples-cc0" / "ATTRIBUTION.txt"
-    if att.exists():
-        shutil.copy(att, OUT / "ATTRIBUTION.txt")
     print(f"app      {OUT / 'felucca.bin'}  {len(img)} B")
     print(f"loader   {LDR / 'ota.bin'}  {len(ota)} B")
     print(f"package  {OUT / name}  {len(pkg)} B, identity {PRODUCT}")
@@ -428,12 +420,10 @@ def main():
                                                 for n, b in ((name, pkg), (app, bytes(img)))))
         for f in sorted((SRC / "LICENSES").glob("*.txt")):
             shutil.copy(f, rel / "LICENSES" / f.name)
-        if not (rel / "LICENSES" / "MIT-Felucca-Engines.txt").exists():     # ANALOG LOFI TRIO WHEEL NOISE (engines/)
+        if not (rel / "LICENSES" / "MIT-Felucca-Engines.txt").exists():     # dsp.c, engine.h (MIT)
             raise SystemExit("release: LICENSES/MIT-Felucca-Engines.txt is missing")
         for doc in ("LICENSE", "LICENSING.md"):
             shutil.copy(SRC / doc, rel / doc)
-        if att.exists():
-            shutil.copy(att, rel / "ATTRIBUTION.txt")
         print(f"release  {rel}/")
     return 0
 

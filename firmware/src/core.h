@@ -40,7 +40,7 @@
 /* ------------------------------------------------------- parameters --- */
 /* the engine interface (Felucca-Engines, MIT: engines/, a git submodule): param_desc_t and F_*, voice_t,
  * vmod_t, preset_t with FX() / PAT(), engine_t, NELEM */
-#include "../engines/src/felucca_engine.h"
+#include "engine.h"
 
 enum {                          /* per-track parameters */
     P_LEVEL,
@@ -157,7 +157,7 @@ static int drum_from_perc(uint32_t engine, int16_t *e)
 
 /* ------------------------------------------------- voices, engines --- */
 enum { V_POLY, V_MONO, V_LEGATO, V_UNISON };   /* P_VOICE */
-/* voice_t, vmod_t, preset_t, engine_t: felucca_engine.h (above) */
+/* voice_t, vmod_t, preset_t, engine_t: engine.h (above) */
 
 /* ------------------------------------------------- tracks, the song --- */
 enum { ST_NOTE, ST_TIE, ST_REST };
