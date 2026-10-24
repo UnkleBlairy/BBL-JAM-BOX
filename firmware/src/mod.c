@@ -52,7 +52,15 @@
  * Nothing active (every slot with SRC, DST or AMT at 0): no work, and the sound is bit-identical. */
 enum { MS_OFF, MS_LFO, MS_ENV, MS_VEL, MS_KEY, MS_RAND, MS_MODW, MS_AT, MS_EXPR, MS_SH, MS_SLEW, MS_N };
 enum { MD_OFF, MD_PITCH, MD_CUT, MD_SHP, MD_AMP, MD_PAN, MD_DIST, MD_CHO, MD_DLY, MD_REV, MD_RATE, MD_VIB, MD_E1,
-       MD_DEPTH = MD_E1 + 8, MD_VEL, MD_TIME, MD_N };   /* (append-only: the stored values keep their meaning) */
+       MD_DEPTH = MD_E1 + 8, MD_VEL, MD_TIME, MD_X0, MD_N = MD_X0 + 28 };   /* (append-only: the stored values keep their meaning) */
+/* SIMPLE: MD_X0 and up, every other knob that moves smoothly, per block (AMT 64 = the whole range, as E1..E8): a track
+ * parameter, or 0x80 | a global (the delay, the reverb, the comb, the DJ filter: one for every track, the tracks'
+ * offsets add up, fx.c mod_g_begin). Not the knobs that switch (TYPE WAVE DEST MACH SYNC TRIG) */
+static const uint8_t MDX[MD_N - MD_X0] = {P_ATK, P_DEC, P_SUS, P_REL, P_ED_FLT, P_ED_PIT, P_ED_SHP, P_ED_FX, P_LD_FLT,
+    P_LD_SHP, P_LD_AMP, 0x80 | G_DTIME, 0x80 | G_DFDBK, 0x80 | G_DCOLOR, 0x80 | G_RSIZE, 0x80 | G_RDAMP, 0x80 | G_RTYPE,
+    P_FLT_RES, P_FE_AMT, P_FE_ATK, P_FE_DEC, P_FE_SUS, P_FE_REL, 0x80 | G_SYNC, 0x80 | G_CRATE, 0x80 | G_CDEPTH,
+    0x80 | G_INFO, 0x80 | G_MIDI};
+#define MD_GLOBAL(d) ((d) >= MD_X0 && (d) < MD_N && (MDX[(d) - MD_X0] & 0x80u))
 _Static_assert(NELEM(N_MSRC) == MS_N && NELEM(N_MDST) == MD_N, "N_MSRC / N_MDST == MS_* / MD_*");
 _Static_assert(P_M2SRC == P_M1SRC + 3 && P_M4AMT == P_M1SRC + 11 && P_M4AMT + 1 == P_FM1_ATK, "matrix slots: 3 ids each");
 #define NMSLOT 4u
@@ -65,7 +73,7 @@ static uint32_t mod_param(uint32_t d)
 {
     static const uint8_t ID[MD_E1] = {[MD_PAN] = P_PAN, [MD_DIST] = P_DIST, [MD_CHO] = P_CHOR, [MD_DLY] = P_DLY,
                                       [MD_REV] = P_REV, [MD_RATE] = P_LRATE, [MD_VIB] = P_LD_PIT};
-    return MD_ENGINE(d) ? P_E0 + d - MD_E1 : ID[d];
+    return d >= MD_X0 ? MDX[(d - MD_X0) % (MD_N - MD_X0)] : MD_ENGINE(d) ? P_E0 + d - MD_E1 : ID[d];
 }
 
 typedef struct {                 /* a part's, while mix_part renders it (one per part: two cores render at once, fx.c mix_block) */
@@ -176,7 +184,8 @@ static __attribute__((noinline)) int mod_begin(track_t *t)
     modw_t *mw = &MOD(t);
     mw->on = 0;
     for (k = 0; k < NMSLOT; k++)                        /* (VEL and TIME: at the notes, not here) */
-        if (p[P_M1SRC + 3u * k] && p[P_M1DST + 3u * k] && p[P_M1AMT + 3u * k] && p[P_M1DST + 3u * k] < MD_VEL)
+        if (p[P_M1SRC + 3u * k] && p[P_M1DST + 3u * k] && p[P_M1AMT + 3u * k] &&
+            (p[P_M1DST + 3u * k] < MD_VEL || (p[P_M1DST + 3u * k] >= MD_X0 && !MD_GLOBAL(p[P_M1DST + 3u * k]))))
             break;
     if (k == NMSLOT)
         return 0;
@@ -192,7 +201,7 @@ static __attribute__((noinline)) int mod_begin(track_t *t)
     for (; k < NMSLOT; k++) {
         uint32_t s = (uint32_t)p[P_M1SRC + 3u * k], d = (uint32_t)p[P_M1DST + 3u * k];
         int32_t a = p[P_M1AMT + 3u * k], x;
-        if (!s || !d || !a || s >= MS_N || d >= MD_DEPTH)
+        if (!s || !d || !a || s >= MS_N || (d >= MD_DEPTH && d < MD_X0) || d >= MD_N || MD_GLOBAL(d))
             continue;
         if (d <= MD_AMP) {                              /* per voice */
             mw->amp |= d == MD_AMP;
@@ -227,6 +236,62 @@ static __attribute__((noinline)) int mod_begin(track_t *t)
         t->p[id] = (int16_t)clamp(mw->keep[j] + off[j], pd->min, pd->max);
     }
     return 1;
+}
+
+/* SIMPLE: the globals the tracks' slots move (MD_GLOBAL), around the master's block (fx.c mix_block): each track's
+ * offset of its own sources (as mod_begin), added up; the values as they were go back after (mod_g_end), so nothing
+ * outside the audio ISR sees them. TIME (reverb) stays short of FREEZE unless it is there */
+#define MG_N 8u
+static uint8_t mg_n, mg_id[MG_N];
+static int16_t mg_keep[MG_N];
+static __attribute__((noinline)) void mod_g_begin(void)
+{
+    int32_t off[MG_N];
+    uint32_t i, k, j;
+    mg_n = 0;
+    for (i = 0; i < NTRK; i++) {
+        const track_t *t = &trk[i];
+        const int16_t *p = t->p;
+        int32_t lfo = 0, have = 0;
+        for (k = 0; k < NMSLOT; k++) {
+            uint32_t s = (uint32_t)p[P_M1SRC + 3u * k], d = (uint32_t)p[P_M1DST + 3u * k], g;
+            int32_t a = p[P_M1AMT + 3u * k];
+            if (!s || !a || s >= MS_N || !MD_GLOBAL(d))
+                continue;
+            if (!have) {
+                int32_t dg;
+                lfo = mulq15(t->lfo_val, t->lfo_fade);
+                dg = mod_depth(t, lfo);
+                if (dg < 32767)
+                    lfo = mulq15(lfo, dg);
+                have = 1;
+            }
+            g = MDX[d - MD_X0] & 0x7Fu;
+            for (j = 0; j < mg_n && mg_id[j] != g; j++)
+                ;
+            if (j == mg_n) {
+                if (mg_n == MG_N)
+                    continue;
+                mg_id[j] = (uint8_t)g;
+                mg_keep[j] = song.g[g];
+                off[j] = 0;
+                mg_n++;
+            }
+            off[j] += (((mod_tsrc(t, s, lfo) * a) >> 6) * (GP[g].max - GP[g].min)) >> 15;
+        }
+    }
+    for (j = 0; j < mg_n; j++) {
+        uint32_t g = mg_id[j];
+        int32_t mx = g == G_RSIZE && mg_keep[j] < GP[g].max ? GP[g].max - 1 : GP[g].max;
+        song.g[g] = (int16_t)clamp(mg_keep[j] + off[j], GP[g].min, mx);
+    }
+}
+static void mod_g_end(void)
+{
+    uint32_t j;
+    for (j = 0; j < mg_n; j++)
+        song.g[mg_id[j]] = mg_keep[j];
+    mg_n = 0;
 }
 
 /* after the part's block (when mw->on): the stored values back */

@@ -713,6 +713,7 @@ static void mix_block(int32_t *out, uint32_t n)
     for (i = 0; i < NPART; i++)                         /* (one core: as 1.6) */
         mix_part(&trk[i], n);
 #endif
+    mod_g_begin();                                      /* (SIMPLE: the LFOs on the master's: mod.c) */
     fx_buses(send_d, send_r, wet, n);
     if (hl.side)
         rev_side_mix(mix_l, mix_r, n);                  /* HALL: stereo */
@@ -720,6 +721,7 @@ static void mix_block(int32_t *out, uint32_t n)
         scope_take_mix(n);
     if (perf) {
         perf_master(out, n);
+        mod_g_end();
         return;
     }
     for (i = 0; i < n; i++) {
@@ -727,6 +729,7 @@ static void mix_block(int32_t *out, uint32_t n)
         mix_r[i] = (((mix_r[i] + wet[i]) >> 2) * mg) >> 10;
     }
     mfx_block(mix_l, mix_r, n);
+    mod_g_end();
     for (i = 0; i < n; i++) {
         int32_t l = mix_l[i], r = mix_r[i];
         master_out(&l, &r);

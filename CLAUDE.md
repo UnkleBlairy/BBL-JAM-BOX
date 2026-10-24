@@ -130,6 +130,13 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
 - The FM-1 starts fresh at power-on (no Felucca autosave / "RESTORED").
 - The PRESETS knob does nothing for now (it browsed Felucca's sounds).
 - LFO DEST skips DIST and CHO (their effects are gone; ids kept for old saves).
+- LFO DEST reaches every knob that moves smoothly (mod.c MDX, appended after
+  TIME): ATK DEC SUS REL, the ENV DEST and LFO DEST amounts (E.x, L.x), the
+  delay (DTIME DFDBK DTONE), the reverb (RTIME RDAMP GRIT), RES, the filter
+  envelope (F.x), the comb (C.MIX CTUNE CFDBK CDAMP) and DJ. Not the knobs that
+  switch (TYPE WAVE DEST MACH SYNC TRIG). The delay, reverb, comb and DJ are
+  shared: every track's LFO on one adds up (fx.c mod_g_begin). The reverb never
+  wobbles into FREEZE. Names are 5 letters at most (that's what fits).
 - Parameter ids (core.h P_*) never move: saved sounds map by count. New
   parameters go just before P_E0.
 - Machines (engines.c MACHINES): each is an engine + that engine's machine
