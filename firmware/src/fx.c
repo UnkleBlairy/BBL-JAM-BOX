@@ -240,7 +240,7 @@ static uint32_t div_samples(uint32_t div)
 static const uint8_t DIV_DOT[3] = {2, 3, 1};           /* 3 quarters >> this */
 #if FELUCCA_SIMPLE
 /* SIMPLE: the delay runs free of the tempo: TIME 0..127 is 20 ms .. 1.45 s, exponential (6.2 octaves). -> samples, Q8 */
-static const uint16_t EXP2_Q15[17] = {32768, 34219, 35734, 37316, 38968, 40693, 42495, 44376, 46341, 48393, 50535, 52773, 55109, 57549, 60097, 62757, 65536};
+static const uint32_t EXP2_Q15[17] = {32768, 34219, 35734, 37316, 38968, 40693, 42495, 44376, 46341, 48393, 50535, 52773, 55109, 57549, 60097, 62757, 65536};
 static int32_t delay_q8(void)
 {
     uint32_t e = (uint32_t)song.g[G_DTIME] * 3189u, oct = e >> 16, fr = (e >> 12) & 15u, sub = e & 4095u;
