@@ -87,6 +87,11 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   keys, = track 1-6). Quick press latches the mute, holding mutes only while
   held. With OCT+ held those keys don't select the track.
 - PERF page: black keys 1-6 are lit while that track is NOT muted.
+- OCT+ held (any page): black keys 1-6 are lit while that track is NOT muted.
+- Going to PERF turns the step keys off, so leaving PERF the keys are the keyboard.
+  A held macro key is never a step key (knob turns go into the macro, not locks).
+- A new step plays the last note or chord played on that track's keys (drums too);
+  before any, the machine's own note.
 - The DJ filter always starts open (centre) at power-on and on project load.
 - Saving (gb_store.c): 16 sound slots per machine (6 machines = 96; more
   machines later). Hold SAVE = SAVE screen: white key = save the selected
@@ -105,7 +110,8 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   their flash sectors hold the sounds and kits.
 - 6 tracks (core.h NPART). Power-on sounds: BD SD CH OH PERC SYN (engines.c
   TRK_DEF). Track colours 1-6: orange, yellow, blue, purple, green, pink.
-- HOME taps: VOLUME 1-4 -> VOLUME 5-6 -> CLOCK (each knob = one track's level).
+- HOME taps: VOLUME 1-4 -> VOLUME 5-6 -> CLOCK -> VOLUME 1-4 again (each knob = one
+  track's level).
 - Kits hold 6 sounds: 3 kits per storage object, 4 objects (the 4th in the old
   FM6 bank's flash pair). Kits saved by the 4-track build convert once at
   power-on; loading one leaves tracks 5-6 as they are.

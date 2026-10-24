@@ -276,6 +276,7 @@ static uint32_t scale_leds(uint32_t *root)
 }
 
 static uint32_t pm_leds(void);
+static uint32_t trk_keys(int playing);
 /* MENU > ANIM IDLE (1.2, Discussion #135): after IDLE_LEDS_MS without panel input (ui.c scrn.idle: a button or key
  * pressed or held, a knob turned; what SCREEN OFF counts) the LEDs play the idle animation (hal/fm1_led_anim.h
  * fm1_idle_level: a soft light drifting over the keys and back, the buttons breathing with it; the scan draws it,
@@ -310,6 +311,8 @@ static uint32_t key_leds(uint32_t *br)                 /* (*br: a layer's keys t
         *br = 0;
     c = gbsv_keys_on() ? gbsv_leds() : sgrid_on() ? sgrid_leds() :
                  (fm1_in.notes & ~kb_layer) | play_leds() | step_leds() | (pm_page() ? pm_leds() : 0u);
+    if (FELUCCA_SIMPLE && kb_octup && !gbsv_keys_on())  /* OCT+ held (the mutes): the tracks not muted lit */
+        c = (c & ~trk_keys(0)) | trk_keys(1);
     return c;
 }
 
@@ -606,16 +609,21 @@ static void pm_poll(void)
     if (was != pm_h.n)
         ui.force = 1;
 }
-static uint32_t pm_leds(void)                       /* the macros with something in them, the fade time chosen, the repeats held */
+static uint32_t trk_keys(int playing)               /* the track keys (black 1..6): all, or those whose track is not muted */
 {
     uint32_t k, m = 0;
+    for (k = 0; k < 27u; k++)
+        if (key_black(k) && key_place(k) < NTRK && (!playing || !trk[key_place(k)].p[P_MUTE]))
+            m |= 1u << k;
+    return m;
+}
+static uint32_t pm_leds(void)                       /* the macros with something in them, the fade time chosen, the repeats held */
+{
+    uint32_t k, m = trk_keys(1);                        /* (the track keys: lit while the track plays, not muted) */
     for (k = 0; k < 27u; k++) {
         uint32_t p = key_place(k);
-        if (key_black(k)) {
-            if (p < NTRK && !trk[p].p[P_MUTE])          /* the track keys: lit while the track plays (not muted) */
-                m |= 1u << k;
+        if (key_black(k))
             continue;
-        }
         if (p < PM_NM ? pm_mac[p].n : p < PM_NM + 4u ? pm_fade == p - PM_NM + 1u : p < 16u && ((fm1_in.notes >> k) & 1u))
             m |= 1u << k;
     }
@@ -966,7 +974,7 @@ static void enc_drop(void)                             /* knob turns nobody take
 }
 
 /* what the keys are (seq.c song.grid): 5 the SAVE screen's, 1 the steps, 4 PERF's macros, 0 notes */
-static uint32_t keys_mode(void) { return gbsv_keys_on() ? 5u : sgrid_on() ? 1u : pm_page() ? 4u : 0u; }
+static uint32_t keys_mode(void) { return gbsv_keys_on() ? 5u : sgrid_on() ? 1u : pm_page() || pm_down() ? 4u : 0u; }
 
 /* the page buttons: ui_buttons.c (included after this file) */
 static void layer_arm(uint32_t pressed, uint32_t now);
@@ -1163,6 +1171,7 @@ static void ui_input(void)
         case B_GLO:
         case B_SCL:
         case B_EDIT:
+        case B_ENV:
         case B_HOME:
             break;
         case B_OCTDN:

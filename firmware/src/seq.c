@@ -39,7 +39,7 @@ static volatile uint8_t kb_boot_hold;    /* #137: set from power-on to the end o
 static uint8_t kb_note[27], kb_trk[27];  /* per key: the note it started and on which track */
 /* SIMPLE: each track's last chord (the notes played together on its keys): the step keys play it and write it into steps, so
  * the root is found by ear, then steps are punched in */
-static uint8_t lastn[NTRK][4], lastc[NTRK], lheld[NTRK];
+static uint8_t lastn[NTRK][4], lastc[NTRK], lheld[NTRK], kb_lh[27];   /* (kb_lh: key k counts in lheld) */
 static uint8_t in_key;                   /* the key (+ 1) whose notes go into input_on now (key_on), 0: none (MIDI IN) */
 static uint8_t kb_vel = 100;             /* 1.5.6 (#84): the keys' velocity (MENU > SELECT VEL, ui_input.c sel_play) */
 /* #191: where each track's held[i] came from, so the arp maps it again as it plays (arp_list: TRN, ROOT, SCALE, QNT as
@@ -630,12 +630,12 @@ static __attribute__((noinline)) void perf_key_up(uint32_t k)
 
 /* key k plays kb_note[k] on track t: its chord (chord.c; the note alone with CHRD OFF). A note another key
  * holds already sounds: it is not started again (nor sent to MIDI OUT); the key keeps its notes */
-/* SIMPLE: the notes the step keys use for track t: a melodic track (SYN) its last chord (C3 before any), a drum machine its own note */
+/* SIMPLE: the notes the step keys use for track t: the last note or chord played on it on the keys (the machine's own note before any) */
 static uint32_t grid_chord(const track_t *t, uint8_t *out)
 {
     uint32_t i = trk_index(t), n = 0;
     const machine_t *m = trk_machine(t);
-    if (!m->drum && lastc[i % NTRK]) {
+    if (lastc[i % NTRK]) {
         for (; n < lastc[i % NTRK]; n++)
             out[n] = lastn[i % NTRK][n];
         return n;
@@ -670,14 +670,16 @@ static void key_on(uint32_t k, track_t *t)
                 lastn[ti][lastc[ti]++] = kb_chord[k][i];
         }
         lheld[ti]++;
+        kb_lh[k] = 1;
     }
 }
 
 /* key k is up: the notes it started end, but those another key still holds */
 static void key_off(uint32_t k, track_t *t)
 {
-    if (lheld[trk_index(t) % NTRK] && song.grid != 1u)
+    if (kb_lh[k] && lheld[trk_index(t) % NTRK])     /* (counted at its press, whatever the keys are now) */
         lheld[trk_index(t) % NTRK]--;
+    kb_lh[k] = 0;
     uint32_t n = kb_chn[k], i, mc = trk_midi_ch(trk_index(t));
     kb_chn[k] = 0;
     for (i = 0; i < n; i++) {

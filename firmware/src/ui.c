@@ -459,6 +459,8 @@ static void page_entered(void)
     if (!ui.home && lock_page_ok(ui.page))
         ui.plk_src = (uint8_t)(ui.page + 1u);
     song.seq_mode = !ui.home && pg->fam == FAM_SEQ;
+    if (FELUCCA_SIMPLE && !ui.home && pg->graph == GR_PERF)
+        ui.sgrid = 0;                            /* SIMPLE: out of PERF the keys are the keyboard */
     ui.entry_open = 0;
     ui.hot_t = 0;                                /* clear the previous page's emphasis */
     ui.act = pg->graph == GR_USER ? 4u : 0u;     /* the save screen is ready for OCT+ */
@@ -498,11 +500,12 @@ static int detail_on(void)
 /* SIMPLE: the step keys (SEQ tapped): the page stays where it is; the keys are the 16 steps of the selected track (white)
  * and the 4 tracks (black: they select and play it) */
 static int pm_page(void);
+static int pm_down(void);
 static uint8_t gbsv;                                  /* SIMPLE, the SAVE screen: 0 off, 1 SAVE (SAVE held), 2 LOAD (ui_input.c) */
 static char gbsv_msg[2][16];                          /* .. what was saved / loaded, flashing from gbsv_t (fm1_ms | 1, 0 none) */
 static uint32_t gbsv_t;
 static int gbsv_keys_on(void) { return gbsv == 1u || gbsv == 2u; }   /* the keys are the slots' */
-static int sgrid_on(void) { return FELUCCA_SIMPLE && ui.sgrid && !ui.confirm && !pm_page() && !gbsv_keys_on(); }   /* (PERF: its own keys) */
+static int sgrid_on(void) { return FELUCCA_SIMPLE && ui.sgrid && !ui.confirm && !pm_page() && !pm_down() && !gbsv_keys_on(); }   /* (PERF and a macro held: their own keys) */
 
 /* ------------------------------------------------- performance macros --- */
 /* GLO is the performance page. Its black keys pick the track; its 16 white keys are three groups:
@@ -535,6 +538,7 @@ static struct { uint8_t n, trk[32], id[32]; int16_t from[32], to[32]; uint32_t t
 static uint8_t pm_ui_a = 255, pm_ui_c = 255;             /* what the screen shows: the macro fading from, the one fading to / playing in the arp */
 static int16_t pm_ui_u;                                  /* .. how far (0..1024) */                 /* 0 none, 1..4 the fade time; FUNC 0..2; ARP 0..4 */
 static int pm_page(void) { return !ui.home && !ui.confirm && cur_page()->graph == GR_PERF; }
+static int pm_down(void) { return pm_h.n != 0u; }   /* a macro key held (on any page) */
 /* the macro's parameter: track tr < NTRK, or tr == PM_G: a global (BPM, SWING, the master's) */
 #define PM_G 0xFFu
 static int16_t *pm_ptr(uint32_t tr, uint32_t id)
@@ -953,11 +957,9 @@ static void go_home(void)
 static void home_tap(void)
 {
     uint32_t i = ui.page + 1u;
+    (void)i;
     if (!ui.home && cur_page()->fam == FAM_TRK) {
-        if (i < NPAGES && PAGES[i].fam == FAM_TRK)
-            open_family(FAM_TRK);
-        else
-            open_family(FAM_EDIT);
+        open_family(FAM_TRK);                         /* (the next, CLOCK wraps to VOLUME 1-4) */
     } else {
         ui.home = 0;
         ui.fam_last[FAM_TRK] = 0;
