@@ -57,7 +57,6 @@ static struct { volatile uint32_t notes, buttons; } fm1_in;
 static void fm1_delay_ms(uint32_t ms) { (void)ms; }
 #include "../../firmware/src/usb.c"
 #include "../../firmware/src/midi_uart.c"
-#include "../../firmware/src/song_chain.c"
 #include "../../firmware/src/seq.c"
 
 /* ------------------------------------------------------------ the clock --- */
