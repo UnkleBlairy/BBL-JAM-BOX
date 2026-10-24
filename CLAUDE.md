@@ -116,6 +116,13 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
 - LFO DEST skips DIST and CHO (their effects are gone; ids kept for old saves).
 - Parameter ids (core.h P_*) never move: saved sounds map by count. New
   parameters go just before P_E0.
+- Machines (engines.c MACHINES): each is an engine + that engine's machine
+  number, its screen oval, drum or synth, its step-key note and starting
+  preset. Adding an engine: a new eng_*.c (engine.h's engine_t), include it
+  and add it to ENGINES in engines.c, then add its rows to MACHINES. The MACH
+  knob can only switch between machines of one engine until a second engine
+  exists (then it needs to switch engines too). 6 machines have save slots
+  (gb_store.c GB_MACH); more need more sound storage objects.
 
 ## Workflow (after every change)
 

@@ -1218,8 +1218,9 @@ static void set_engine_of(track_t *t, uint32_t ei);
 /* MACH turned: the machine's own starting sound (its factory preset's values and envelope), the rest of the track kept */
 static void machine_defaults(track_t *t)
 {
-    static const uint8_t PI[6] = {0, 8, 9, 10, 12, 13};
-    const preset_t *pr = &DIGITAL_PRESETS[PI[t->p[P_E7] % 6]];
+    const machine_t *m = trk_machine(t);
+    const engine_t *e = ENGINES[m->engine];
+    const preset_t *pr = &e->presets[m->preset % e->npresets];
     uint32_t i;
     for (i = 0; i < 7u; i++)
         t->p[P_E0 + i] = (int16_t)pr->e[i];

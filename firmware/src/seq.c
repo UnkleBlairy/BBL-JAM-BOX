@@ -634,13 +634,13 @@ static __attribute__((noinline)) void perf_key_up(uint32_t k)
 static uint32_t grid_chord(const track_t *t, uint8_t *out)
 {
     uint32_t i = trk_index(t), n = 0;
-    static const uint8_t N[6] = {48, 36, 50, 84, 72, 48};
-    if (t->p[P_E7] % 6 == 0 && lastc[i % NTRK]) {
+    const machine_t *m = trk_machine(t);
+    if (!m->drum && lastc[i % NTRK]) {
         for (; n < lastc[i % NTRK]; n++)
             out[n] = lastn[i % NTRK][n];
         return n;
     }
-    out[0] = N[(uint32_t)t->p[P_E7] % 6u];
+    out[0] = m->note;
     return 1;
 }
 static void key_on(uint32_t k, track_t *t)

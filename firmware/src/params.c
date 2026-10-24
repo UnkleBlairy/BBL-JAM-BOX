@@ -230,7 +230,7 @@ static const param_desc_t GP[G_COUNT] = {
 static const param_desc_t AD_SUS = {"-", F_INT, 0, 127, 90, 0, 0}, AD_REL = {"-", F_INT, 0, 127, 60, 0, 0};
 static const param_desc_t *track_desc(const track_t *t, uint32_t id)
 {
-    if ((id == P_SUS || id == P_REL) && t->p[P_E7] % 6 != 0)   /* a drum machine: attack and decay only */
+    if ((id == P_SUS || id == P_REL) && trk_machine(t)->drum)   /* a drum machine: attack and decay only */
         return id == P_SUS ? &AD_SUS : &AD_REL;
     if (id >= P_E0 && id <= P_E7) {                   /* the engine asked for (t->engine follows after a fade) */
         const engine_t *e = ENGINES[eng_idx(t->eng_req)];

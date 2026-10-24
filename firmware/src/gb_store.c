@@ -9,7 +9,8 @@
  * (.pool) is what loads read; a save changes the mirror at once and goes to flash when nothing plays (an erase
  * stops the audio: project.c autosave_quiet), one object a pass. A slot keeps P_COUNT with it, so a later build
  * with other parameters maps the values by count (core.h params_by_count). */
-#define GB_MACH 6u
+#define GB_MACH 6u                                       /* machines with sound slots (two to a storage object) */
+_Static_assert(NMACH <= GB_MACH, "more machines: more sound objects (GB_SOBJ, storage.c)");
 #define GB_SLOTS 16u
 #define GB_KITS 11u
 #define GB_SOBJ 3u                                       /* sound objects (two machines each) */
@@ -163,7 +164,7 @@ static void gb_snd_put(const gb_snd_t *s, track_t *t)
     motion_rebase(t);
 }
 
-static uint32_t gb_mach_of(const track_t *t) { return (uint32_t)t->p[P_E7] % GB_MACH; }
+static uint32_t gb_mach_of(const track_t *t) { return trk_mach(t) % GB_MACH; }
 static gb_snd_t *gb_slot(uint32_t mach, uint32_t slot)
 {
     mach %= GB_MACH;

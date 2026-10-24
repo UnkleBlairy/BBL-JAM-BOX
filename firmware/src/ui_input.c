@@ -555,7 +555,7 @@ static void gbsv_keys(uint32_t pressed)
 }
 static uint32_t gbsv_leds(void)                          /* the slots in use: the machine's sounds, the kits */
 {
-    uint32_t k, m = 0, mach = (uint32_t)TSEL->p[P_E7] % 6u;
+    uint32_t k, m = 0, mach = trk_mach(TSEL);
     for (k = 0; k < 27u; k++) {
         uint32_t p = key_place(k);
         if (key_black(k) ? gbk_used(p) : p < 16u && gbs_used(mach, p))

@@ -8,7 +8,6 @@
 #define GB_RGB(r, g, b) ((uint16_t)((((r) >> 3) << 11) | (((g) >> 2) << 5) | ((b) >> 3)))
 static uint16_t gb_col[NTRK] = {GB_RGB(255, 90, 54), GB_RGB(255, 214, 10), GB_RGB(46, 196, 255), GB_RGB(179, 136, 255),
                                 GB_RGB(64, 214, 120), GB_RGB(255, 112, 196)};   /* a colour a TRACK */
-static const char *const GB_PILL[6] = {"SYNTH", "KICK", "SNARE", "HATS", "CYMBAL", "PERC"};
 
 typedef struct {
     uint8_t perf, mixer, mach, sel, ring, page, npages, mask, fade, rpt, hn, sv, flash;   /* ring: the VOLUME dial of the selected track (4 none) */   /* SAVE / LOAD: 1 2; flash: 1 lit, 2 dark */
@@ -55,7 +54,7 @@ static uint32_t gb_trig(const step_t *s)                 /* a step's TRIG 0..4 (
     uint32_t c = step_cond(s + GB_TRIG);
     return c > GB_TRIG_C0 && c <= GB_TRIG_C0 + 4u ? c - GB_TRIG_C0 : 0u;
 }
-static uint32_t gb_mach(uint32_t k) { return (uint32_t)trk[k % NTRK].p[P_E7] % 6u; }
+static uint32_t gb_mach(uint32_t k) { return trk_mach(&trk[k % NTRK]); }
 
 static void gb_fill(gb_view_t *v)
 {
@@ -123,7 +122,7 @@ static void gb_fill(gb_view_t *v)
             const track_t *t;
             if (tk >= NTRK)
                 continue;
-            nm = GB_PILL[v->tm[tk] % 6u];
+            nm = MACHINES[v->tm[tk] % NMACH].pill;
             t = &trk[tk];
             if (tk == song.sel)
                 v->ring = (uint8_t)k;
@@ -272,7 +271,7 @@ static void gb_scene(const gb_view_t *v, uint16_t bgc)
             return;
         }
         cv_text_on(8, 4, &AF_L, v->sv == 1u ? "SAVE?" : "LOAD?", c, bgc);
-        cv_text_r(232, 14, &AF_M, GB_PILL[v->mach % 6u], c, bgc);
+        cv_text_r(232, 14, &AF_M, MACHINES[v->mach % NMACH].pill, c, bgc);
         cv_text_on(8, 84, &AF_L, "SOUND", c, bgc);
         cv_text_on(8, 116, &AF_M, "WHITE KEY", c, bgc);
         cv_text_on(8, 156, &AF_L, "KIT", c, bgc);
@@ -406,7 +405,7 @@ static void gb_scene(const gb_view_t *v, uint16_t bgc)
             cv_rrect(10 + (int32_t)k * 20, 208, 4, 4, 2, bgc, c);
         }
     {                                                             /* the machine's name, bottom right: an oval */
-        const char *nm = GB_PILL[v->mach % 6u];
+        const char *nm = MACHINES[v->mach % NMACH].pill;
         int32_t w = (text_w(&AF_M, nm) + 17) & ~1;
         gb_pill(232 - w, 198, w, 24, c, 0);
         cv_text_on(232 - w + 8, 201, &AF_M, nm, c, bgc);
