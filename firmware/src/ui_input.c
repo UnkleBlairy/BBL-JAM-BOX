@@ -820,8 +820,16 @@ static void gbs_step_off(step_t *st)                     /* the step and its TRI
 {
     uint32_t i = (uint32_t)(st - TSEL->step);
     step_clear(st);
+    (void)motion_clear_locks(TSEL, i);
     if (i < GB_TRIG)
         TSEL->step[i + GB_TRIG].probability = 0;
+}
+static void gbs_keep(void)                               /* the step keys held stay on when let go (they were edited) */
+{
+    uint32_t k;
+    for (k = 0; k < 27u; k++)
+        if (((fm1_in.notes >> k) & 1u) && !key_black(k) && key_place(k) < GB_TRIG)
+            gbs_kept |= 1u << k;
 }
 /* the steps held (bit p: step p), for the SEQ page's knobs */
 static uint32_t gbs_held(void)
@@ -888,9 +896,7 @@ static void gbseq_knob(uint32_t slot, int32_t steps)
     uint32_t held = gbs_held(), p, k;
     int16_t was;
     if (slot >= 2u && held) {                            /* the held steps' own: they stay when let go */
-        for (k = 0; k < 27u; k++)
-            if (((fm1_in.notes >> k) & 1u) && !key_black(k) && key_place(k) < GB_TRIG)
-                gbs_kept |= 1u << k;
+        gbs_keep();
         for (p = 0; p < GB_TRIG; p++) {
             step_t *s = &t->step[p];
             if (!((held >> p) & 1u))
@@ -941,6 +947,17 @@ static uint64_t lock_held(void)
     const track_t *t = TSEL;
     uint32_t k, len = (uint32_t)t->p[P_SLEN], keys = fm1_in.notes & ~kb_layer;
     uint64_t m = 0;
+#if FELUCCA_SIMPLE                                      /* SIMPLE: the step keys held on a sound page (its knobs lock) */
+    if (sgrid_on()) {
+        if (ui.home || ui.layer || name_on() || !keys || !lock_page_ok(ui.page))
+            return 0;
+        ui.plk_src = (uint8_t)(ui.page + 1u);           /* (the page shown: lock_id) */
+        for (k = 0; k < 27u; k++)
+            if (((keys >> k) & 1u) && !key_black(k) && key_place(k) < len && key_place(k) < GB_TRIG)
+                m |= (uint64_t)1 << key_place(k);
+        return m;
+    }
+#endif
     if (ui.home || ui.menu || ui.confirm || ui.layer || name_on() || !song.seq_mode || cur_page()->graph != GR_ROLL ||
         !keys || detail_on())                           /* (DETAIL: its knobs are the step's own fields, sd_turn) */
         return 0;
@@ -1987,6 +2004,11 @@ static void ui_input(void)
             if (FELUCCA_SIMPLE && sgrid_on()) {          /* the step keys: OCT- clears the track's steps, OCT- + OCT+ every track's */
                 uint32_t other = b == B_OCTDN ? B_OCTUP : B_OCTDN, a, i2, all = (fm1_in.buttons >> panel.btn[other]) & 1u;
                 if (chain_busy()) { ui_message("STOP TO EDIT"); break; }
+                if (b == B_OCTDN && gbs_held()) {       /* steps held: OCT- clears their locks (the steps stay) */
+                    gbs_keep();
+                    lock_clear(gbs_held());
+                    break;
+                }
                 if (b == B_OCTDN || all) {
                     for (a = all ? 0u : song.sel; a < (all ? NTRK : song.sel + 1u); a++)
                         for (i2 = 0; i2 < NSTEP; i2++)
@@ -2118,6 +2140,9 @@ static void ui_input(void)
         if (mom_down())                                 /* (LFO + a knob, MOMENTARY or not: LFO's release opens no page) */
             ui.pg_down &= (uint16_t)~(1u << panel.btn[B_LFO]);
         if ((held = lock_held()) != 0u) {               /* a step held on STEP: KNOB k locks (parameter locks) */
+#if FELUCCA_SIMPLE
+            gbs_keep();                                 /* (SIMPLE: the step stays when let go) */
+#endif
             lock_turn(k, s, held);
             ui.hot_col = (uint8_t)k;
             ui.hot_t = 40;

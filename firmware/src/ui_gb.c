@@ -26,6 +26,7 @@ static uint8_t gb_have;
 
 static int name_on(void);
 static uint32_t gbs_held(void);                    /* (ui_input.c) the steps held */
+static uint64_t lock_held(void);                   /* (ui_input.c) .. on a sound page: its knobs lock */
 /* the SEQ page (ui_input.c gbseq_knob) */
 static const uint8_t GB_SPEED[5] = {0, 1, 2, 3, 10};
 static uint32_t gb_speed(int32_t div)                    /* SPEED 0..4 of a DIV (another DIV: x1) */
@@ -59,6 +60,7 @@ static void gb_fill(gb_view_t *v)
 {
     const page_t *pg = cur_page();
     uint32_t k, i, n = 0, at = 0;
+    uint64_t lk;
     char *p = (char *)v;
     for (i = 0; i < sizeof *v; i++)
         p[i] = 0;
@@ -162,8 +164,9 @@ static void gb_fill(gb_view_t *v)
         v->ratio[3] = (int16_t)((tr < 0 ? 0 : tr) * 250);
         return;
     }
+    lk = lock_held();
     for (k = 0; k < 4u; k++) {
-        int16_t *vp;
+        int16_t *vp, cur;
         const param_desc_t *d = page_desc(pg, k, &vp);
         const char *u;
         int32_t r;
@@ -171,11 +174,25 @@ static void gb_fill(gb_view_t *v)
             continue;
         for (i = 0; i < 7u && d->label[i]; i++)
             v->lab[k][i] = d->label[i];
-        param_format(d, *vp, v->val[k], &u);
+        cur = *vp;
+        v->alt[k] = (uint8_t)(pm_altered(TSEL, vp) != 0);
+        if (lk && vp >= TSEL->p && vp < TSEL->p + P_COUNT) {   /* a step held: its lock (inverted), else the sound's own */
+            uint32_t id = (uint32_t)(vp - TSEL->p), st = 0;
+            int16_t lv;
+            while (!((lk >> st) & 1u))
+                st++;
+            v->alt[k] = 0;
+            if (motion_lock_get(TSEL, st, id, &lv)) {
+                cur = lv;
+                v->alt[k] = 1;
+            } else if (motion_param(id)) {
+                cur = motion_base_value(TSEL, id);
+            }
+        }
+        param_format(d, cur, v->val[k], &u);
         if (str_eq(v->val[k], "CYM"))                 /* (too wide beside a negative value) */
             str_cpy(v->val[k], "CY", sizeof v->val[k]);
-        v->alt[k] = (uint8_t)(pm_altered(TSEL, vp) != 0);
-        r = RATIO(d, enum_rank(d, *vp));
+        r = RATIO(d, enum_rank(d, cur));
         v->ratio[k] = (int16_t)(r < 0 ? 0 : r);
         v->mask |= (uint8_t)(1u << k);
     }

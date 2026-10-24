@@ -57,6 +57,17 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
 - Storage: track CHANCE lives in P_APROB (no ARP in this build); step i's TRIG
   lives in step[i+16]'s chance byte (core.h GB_TRIG) so the save format is
   unchanged.
+- SEQ button: from any page opens the SEQ page with step keys on; on the SEQ
+  page it toggles the step keys off/on.
+- Parameter locks: with step keys on, hold step(s) on any sound page and turn
+  a knob = lock. Locked dials show inverted (like macros). Hold step + OCT-
+  clears that step's locks. Every sound-page knob locks (LFO AMT/DEST, filter
+  TYPE too). Removing a step removes its locks.
+- The DJ filter always starts open (centre) at power-on and on project load.
+- Saving (planned): 16 sound slots per machine (6 machines = 96; more machines
+  later). Hold SAVE = save screen; white key = save sound, black key (11) =
+  save kit (4 sounds + macros + PERF). Patterns are NEVER saved: it's for
+  jamming from scratch.
 
 ## Workflow (after every change)
 
