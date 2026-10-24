@@ -69,7 +69,7 @@ static const char *const N_IRATE[] = {"689", "919", "1.1k", "1.4k", "1.8k", "2.2
  * Append-only (stored values keep their meaning): S&H SLEW and DEPTH (#132) came after EXPR and E8; VEL and TIME
  * (1.5.6, #213: at the note) after DEPTH */
 static const char *const N_MSRC[] = {"OFF", "LFO", "ENV", "VEL", "KEY", "RAND", "MODW", "AT", "EXPR", "S&H", "SLEW"};
-static const char *const N_MDST[] = {"OFF", "PITCH", "CUT", "SHP", "AMP", "PAN", "DIST", "CHO", "DLY", "REV", "RATE",
+static const char *const N_MDST[] = {"OFF", "PITCH", "CUT", "SHP", "AMP", "PAN", "-", "-", "DLY", "REV", "RATE",
                                      "VIB", "E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "DEPTH", "VEL", "TIME"};
 static const char *const N_ENGNAME[] = {"ANALOG", FELUCCA_FM4 ? "DIGITAL" : "-", "PHASE", "LOFI", "SAMPLE", "VOICE", "TRIO", "WHEEL", "GRAIN", "PHYS",
                                              "DRUM", "NOISE", "FM6",
@@ -253,7 +253,17 @@ static const param_desc_t *param_desc_of(uint32_t e, uint32_t id)
 
 /* a stored value as the parameter takes it (the sounds, the kits, the locks): inside d's range */
 static int32_t param_fit(const param_desc_t *d, int32_t v) { return clamp(v, d->min, d->max); }
-static int32_t enum_step(const param_desc_t *d, int32_t from, int32_t v) { (void)d; (void)from; return v; }
+/* a value no knob stops on: the LFO DEST's DIST and CHO (their effects are gone; the numbers stay, stored sounds keep
+ * theirs) */
+static int enum_skip(const param_desc_t *d, int32_t v) { return d->names == N_MDST && (v == 6 || v == 7); }
+/* a knob moved an F_ENUM from `from` to v: past the values it skips in that direction (none left: back to from) */
+static int32_t enum_step(const param_desc_t *d, int32_t from, int32_t v)
+{
+    int32_t dir = v > from ? 1 : -1;
+    while (v != from && enum_skip(d, v))
+        v = v + dir > d->max || v + dir < d->min ? from : v + dir;
+    return v;
+}
 
 /* #48: the note divisions in the order of their length, longest first (triplets between their neighbours), on the
  * knobs and the gauges; the stored values (N_DIV, N_SLDIV indices: projects, presets, the editor protocol) stay.

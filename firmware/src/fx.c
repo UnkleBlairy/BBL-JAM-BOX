@@ -3,9 +3,7 @@
 /* Effects: per-track DIST and INSERT (1.5), then sends into three
  * shared buses (chorus, tempo delay, reverb). Mono buses, stereo dry mix. */
 #define DLY_LEN 65536u           /* 1.49 s: 1/4 fits from 41 BPM, 1/4D from 61, 1/2 from 81 */
-#define CHO_LEN 2048u
 static int16_t dly_buf[DLY_LEN] __attribute__((section(".pool")));
-static int16_t cho_buf[CHO_LEN] __attribute__((section(".pool")));
 static const uint16_t REV_COMB[4] = {1116, 1188, 1277, 1356};
 static const uint16_t REV_AP[2] = {556, 441};
 static int16_t rev_comb[1116 + 1188 + 1277 + 1356] __attribute__((section(".pool")));
@@ -15,7 +13,7 @@ static union {                          /* ROOM's allpasses; SPRING's allpass ch
 } rev_u __attribute__((section(".pool")));
 #define rev_ap (rev_u.ap)
 static struct {
-    uint32_t dly_w, cho_w, cho_ph;
+    uint32_t dly_w;
     int32_t dly_cur;                     /* SIMPLE: the delay time now (Q8 samples), gliding to the knob: the tape / BBD repitch */
     int32_t dly_lp, dly_lp2, dly_hp;     /* the delay's loop: two low-passes, a high-pass */
     uint32_t dly_ph;                     /* .. the tap's slow wobble (a BBD's clock drift) */
@@ -389,11 +387,10 @@ static __attribute__((noinline)) void rev_quad(const int32_t *rev_in, int32_t *o
 #if FELUCCA_CPU2
 /* the dry mix and the sends, as each core adds its parts into them (after Jangada: mx[1] is the second core's,
  * mix_block), and a part's own block (b; mx[0].b also the fade of a reverb model change, after the parts) */
-typedef struct { int32_t l[CTL], r[CTL], c[CTL], d[CTL], v[CTL], b[CTL]; } mixsum_t;
+typedef struct { int32_t l[CTL], r[CTL], d[CTL], v[CTL], b[CTL]; } mixsum_t;
 static mixsum_t mx[2];
 #define mix_l (mx[0].l)
 #define mix_r (mx[0].r)
-#define send_c (mx[0].c)
 #define send_d (mx[0].d)
 #define send_r (mx[0].v)
 #define part_buf (mx[0].b)
@@ -401,22 +398,21 @@ static mixsum_t mx[2];
 #define SM_ARG(x) , (x)
 #define SM(f) (sm->f)
 #else
-/* one core: the arrays of 1.6, the same code (SM(l) = mix_l, ...; send_c .. mix_r are declared below) */
+/* one core: the arrays of 1.6, the same code (SM(l) = mix_l, ...; send_d .. mix_r are declared below) */
 static int32_t part_buf[CTL];                            /* a part's block (mix_part); the fade of a model change */
 #define SM_DECL
 #define SM_ARG(x)
 #define SM(f) SM1_##f
 #define SM1_l mix_l
 #define SM1_r mix_r
-#define SM1_c send_c
 #define SM1_d send_d
 #define SM1_v send_r
 #define SM1_b part_buf
 #endif
 
 
-/* process the three buses for one block; sends in, wet stereo-equal out */
-static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t *rev_in, int32_t *wet,
+/* process the two buses (the delay, the reverb) for one block; sends in, wet stereo-equal out */
+static void fx_buses(const int32_t *dly_in, const int32_t *rev_in, int32_t *wet,
                      uint32_t n)
 {
     uint32_t i, dl = delay_samples();
@@ -429,24 +425,12 @@ static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t
     }
 #define SIMPLE_DT(dl) (fx.dly_cur)
     int32_t dmix = song.g[G_DMIX] * 258;
-    int32_t cdepth = song.g[G_CDEPTH] * 6, rt;
-    uint32_t cinc = LFO_INC[song.g[G_CRATE] & 127] / CTL;
+    int32_t rt;
     if (pf.ew1 && fb < THR_FB)
         fb += mulq16(THR_FB - fb, (uint32_t)pf.ew1 << 1);   /* ECHO THROW (perform.c): more feedback while held, 0.7
                                                              * at most (the loop's gain below 1: it never runs away) */
     for (i = 0; i < n; i++) {
-        int32_t y = 0, x, r;
-        /* chorus: modulated short delay, 5..15 ms */
-        cho_buf[fx.cho_w & (CHO_LEN - 1u)] = (int16_t)clamp(cho_in[i] >> 1, -32768, 32767);
-        fx.cho_ph += cinc;
-        r = (400 << 8) + ((osc_sine(fx.cho_ph) + 32768) * cdepth >> 8);   /* Q8 delay: read between samples */
-        {
-            uint32_t ri = (uint32_t)r >> 8;
-            int32_t f = r & 255, c0 = cho_buf[(fx.cho_w - ri) & (CHO_LEN - 1u)];
-            int32_t c1 = cho_buf[(fx.cho_w - ri - 1u) & (CHO_LEN - 1u)];
-            y += (c0 + (((c1 - c0) * f) >> 8)) << 1;
-        }
-        fx.cho_w++;
+        int32_t y = 0, x;
         /* delay: a dub-style BBD echo. The tap wobbles slowly (a clock that drifts: +-20 samples at 0.8 Hz), every repeat goes
          * through two low-passes (COLR) and a low cut, and the loop saturates (tanh), so the echoes darken, thin out and
          * thicken as they pile up, and a high FDBK swells into self-oscillation instead of running away */
@@ -505,7 +489,7 @@ static void events_block(uint32_t n);                    /* seq.c */
 #if FELUCCA_CPU2
 static int32_t wet[CTL];                                 /* (the dry mix and the sends: mx[0], above) */
 #else
-static int32_t send_c[CTL], send_d[CTL], send_r[CTL], wet[CTL], mix_l[CTL], mix_r[CTL];
+static int32_t send_d[CTL], send_r[CTL], wet[CTL], mix_l[CTL], mix_r[CTL];
 #endif
 
 /* SPREAD (#148): a POLY or UNISON part whose SPRD is above 0. Its voices start left and right of PAN in turn (voice.c
@@ -526,8 +510,8 @@ static __attribute__((noinline)) void mix_spread(track_t *t, int32_t *b, uint32_
     int32_t gla = 4096 - (pa > 0 ? pa * 64 : 0), gra = 4096 + (pa < 0 ? pa * 64 : 0);
     int32_t glb = 4096 - (pb > 0 ? pb * 64 : 0), grb = 4096 + (pb < 0 ? pb * 64 : 0);
     int32_t glm = (gla + glb) >> 1, grm = (gra + grb) >> 1, gld = (gla - glb) >> 1, grd = (gra - grb) >> 1;
-    int32_t c = t->p[P_CHOR] * 258, dl = t->p[P_DLY] * 258, r = t->p[P_REV] * 258, pk = t->peak;
-    int32_t xmax = c > dl ? c : dl;
+    int32_t dl = t->p[P_DLY] * 258, r = t->p[P_REV] * 258, pk = t->peak;
+    int32_t xmax = dl;
     xmax = 0x7FFFFFFF / ((xmax > r ? xmax : r) | 1);
     for (i = 0; i < n; i++)
         d[i] = (d[i] << 1) - b[i];                      /* left - right */
@@ -538,8 +522,6 @@ static __attribute__((noinline)) void mix_spread(track_t *t, int32_t *b, uint32_
         int32_t xs = clamp(x, -xmax, xmax);
         if (a > pk)
             pk = a;
-        if (c)
-            SM(c)[i] += mulq15(xs, c);
         if (dl)
             SM(d)[i] += mulq15(xs, dl);
         if (r)
@@ -593,16 +575,14 @@ static void mix_part(track_t *t, uint32_t n SM_DECL)
                                                          * them, no spill in the loop: the ISR's cost as before 1.5) */
         int32_t lvl = LEVEL_Q12[t->p[P_LEVEL] & 127], pan = t->p[P_PAN];
         int32_t gl = 4096 - (pan > 0 ? pan * 64 : 0), gr = 4096 + (pan < 0 ? pan * 64 : 0);
-        int32_t c = t->p[P_CHOR] * 258, d = t->p[P_DLY] * 258, r = t->p[P_REV] * 258, pk = t->peak;
-        int32_t xmax = c > d ? c : d;
+        int32_t d = t->p[P_DLY] * 258, r = t->p[P_REV] * 258, pk = t->peak;
+        int32_t xmax = d;
         xmax = 0x7FFFFFFF / ((xmax > r ? xmax : r) | 1);   /* sends: loud chords at a high LEVEL */
         for (i = 0; i < n; i++) {
             int32_t x = ((b[i] >> 2) * lvl) >> 10, a = x < 0 ? -x : x;   /* pre-shift: 8 loud voices */
             int32_t xs = clamp(x, -xmax, xmax);         /* sends: mulq15 would overflow */
             if (a > pk)
                 pk = a;
-            if (c)
-                SM(c)[i] += mulq15(xs, c);
             if (d)
                 SM(d)[i] += mulq15(xs, d);
             if (r)
@@ -678,7 +658,7 @@ static void c1_parts(uint32_t arg)                      /* arg: the parts (bit k
     uint32_t i, n = arg >> 8;
     mixsum_t *sm = &mx[1];
     for (i = 0; i < n; i++)
-        sm->l[i] = sm->r[i] = sm->c[i] = sm->d[i] = sm->v[i] = 0;
+        sm->l[i] = sm->r[i] = sm->d[i] = sm->v[i] = 0;
     for (i = 0; i < NPART; i++)
         if (arg >> i & 1u)
             mix_part(&trk[i], n, sm);
@@ -714,7 +694,7 @@ static void mix_block(int32_t *out, uint32_t n)
     int perf;
     int32_t mg = fx_usb_fixed ? MASTER_FULL : (int32_t)song.master_q12;   /* (USB LEVEL FIXED: MASTER after) */
     for (i = 0; i < n; i++)
-        send_c[i] = send_d[i] = send_r[i] = mix_l[i] = mix_r[i] = 0;
+        send_d[i] = send_r[i] = mix_l[i] = mix_r[i] = 0;
     events_block(n);
     perf = perf_begin(n);                               /* the FX hold layer at work (perform.c) */
 #if FELUCCA_CPU2
@@ -732,7 +712,6 @@ static void mix_block(int32_t *out, uint32_t n)
         for (i = 0; i < n; i++) {
             mix_l[i] += sm->l[i];
             mix_r[i] += sm->r[i];
-            send_c[i] += sm->c[i];
             send_d[i] += sm->d[i];
             send_r[i] += sm->v[i];
         }
@@ -745,7 +724,7 @@ static void mix_block(int32_t *out, uint32_t n)
 #endif
     if (perf)
         perf_pre(mix_l, mix_r, send_d, send_r, n);
-    fx_buses(send_c, send_d, send_r, wet, n);
+    fx_buses(send_d, send_r, wet, n);
     if (hl.side)
         rev_side_mix(mix_l, mix_r, n);                  /* HALL: stereo */
     if (scope_mix)
