@@ -11,7 +11,8 @@ static uint16_t gb_col[4] = {GB_RGB(255, 90, 54), GB_RGB(255, 214, 10), GB_RGB(4
 static const char *const GB_PILL[6] = {"SYNTH", "KICK", "SNARE", "HATS", "CYMBAL", "PERC"};
 
 typedef struct {
-    uint8_t perf, mixer, mach, sel, page, npages, mask, fade, rpt, hn;
+    uint8_t perf, mixer, mach, sel, page, npages, mask, fade, rpt, hn, sv, flash;   /* SAVE / LOAD: 1 2; flash: 1 lit, 2 dark */
+    char msg[2][16];
     int16_t bpm;
     uint8_t tm[4];                            /* each track's machine */
     uint8_t mac_n[8], mac_held[8];
@@ -26,6 +27,14 @@ static uint8_t gb_have;
 
 static int name_on(void);
 static uint32_t gbs_held(void);                    /* (ui_input.c) the steps held */
+static uint32_t gbsv_leds(void);                   /* (ui_input.c) the SAVE screen's keys */
+static int gbs_used(uint32_t mach, uint32_t slot); /* (gb_store.c) the sounds and kits */
+static int gbk_used(uint32_t k);
+static int gbs_save_sound(uint32_t slot);
+static int gbs_load_sound(uint32_t slot);
+static int gbk_save(uint32_t k);
+static int gbk_load(uint32_t k);
+static void gb_store_poll(void);
 static uint64_t lock_held(void);                   /* (ui_input.c) .. on a sound page: its knobs lock */
 /* the SEQ page (ui_input.c gbseq_knob) */
 static const uint8_t GB_SPEED[5] = {0, 1, 2, 3, 10};
@@ -52,6 +61,8 @@ static int gb_page(void)
     if (ui.home || ui.layer || ui.menu || ui.confirm || name_on())
         return 0;
     pg = cur_page();
+    if ((gbsv || gbsv_t) && !ui.menu && !ui.confirm)
+        return 1;
     return pg->graph == GR_PERF || pg->graph == GR_TRK || pg->graph == GR_GBSEQ || pg->fam == FAM_TRK || (pg->fam == FAM_GLO && pg->scope == SC_GLOBAL) || dial_page();
 }
 static uint32_t gb_mach(uint32_t k) { return (uint32_t)trk[k & 3u].p[P_E7] % 6u; }
@@ -81,6 +92,14 @@ static void gb_fill(gb_view_t *v)
         }
     v->page = (uint8_t)at;
     v->npages = (uint8_t)n;
+    if (gbsv || gbsv_t) {                         /* SAVE? / LOAD?, or what was saved / loaded, flashing */
+        v->sv = gbsv ? gbsv : 1u;
+        if (gbsv_t) {
+            v->flash = (uint8_t)(((fm1_ms - gbsv_t) / 150u) & 1u ? 2u : 1u);
+            memcpy(v->msg, gbsv_msg, sizeof v->msg);
+        }
+        return;
+    }
     if (v->perf) {
         for (i = 0; i < PM_NM; i++) {
             uint32_t j;
@@ -243,6 +262,22 @@ static void gb_scene(const gb_view_t *v, uint16_t bgc)
     char bb[8];
     cv_bg = bgc;
     gb_bg = bgc;
+    if (v->sv) {                                              /* SAVE? / LOAD?: what the keys do; done: it flashes */
+        if (v->flash) {
+            if (v->flash == 1u) {
+                cv_text_in(0, 80, 240, &AF_L, v->msg[0], c, bgc);
+                cv_text_in(0, 124, 240, &AF_L, v->msg[1], c, bgc);
+            }
+            return;
+        }
+        cv_text_on(8, 4, &AF_L, v->sv == 1u ? "SAVE?" : "LOAD?", c, bgc);
+        cv_text_r(232, 14, &AF_M, GB_PILL[v->mach % 6u], c, bgc);
+        cv_text_on(8, 84, &AF_L, "SOUND", c, bgc);
+        cv_text_on(8, 116, &AF_M, "WHITE KEY", c, bgc);
+        cv_text_on(8, 156, &AF_L, "KIT", c, bgc);
+        cv_text_on(8, 188, &AF_M, "BLACK KEY", c, bgc);
+        return;
+    }
     if (v->perf) {
         static const char *const FN[4] = {"1/16", "1/8", "BAR", "4BAR"};
         static const char *const RN[4] = {"1/8", "1/16", "1/32", "REV"};

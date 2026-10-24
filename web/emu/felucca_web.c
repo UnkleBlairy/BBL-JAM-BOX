@@ -206,6 +206,9 @@ static void fl_plain_window_init(void) {}
 #include "../../firmware/src/storage.c"
 #include "../../firmware/src/upreset.c"
 #include "../../firmware/src/project.c"
+#if FELUCCA_SIMPLE
+#include "../../firmware/src/gb_store.c"         /* the groovebox's sounds and kits */
+#endif
 
 /* ------------------------------------------------- main.c and its HAL --- */
 #if FELUCCA_CPU2

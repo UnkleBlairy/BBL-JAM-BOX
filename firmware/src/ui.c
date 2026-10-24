@@ -621,7 +621,11 @@ static int song_keys_on(void) { return !ui.home && !ui.menu && !ui.confirm && !u
 /* SIMPLE: the step keys (SEQ tapped): the page stays where it is; the keys are the 16 steps of the selected track (white)
  * and the 4 tracks (black: they select and play it) */
 static int pm_page(void);
-static int sgrid_on(void) { return FELUCCA_SIMPLE && ui.sgrid && !ui.menu && !ui.confirm && !pm_page(); }   /* (PERF: its own keys) */
+static uint8_t gbsv;                                  /* SIMPLE, the SAVE screen: 0 off, 1 SAVE (SAVE held), 2 LOAD (ui_input.c) */
+static char gbsv_msg[2][16];                          /* .. what was saved / loaded, flashing from gbsv_t (fm1_ms | 1, 0 none) */
+static uint32_t gbsv_t;
+static int gbsv_keys_on(void) { return gbsv == 1u || gbsv == 2u; }   /* the keys are the slots' */
+static int sgrid_on(void) { return FELUCCA_SIMPLE && ui.sgrid && !ui.menu && !ui.confirm && !pm_page() && !gbsv_keys_on(); }   /* (PERF: its own keys) */
 
 /* ------------------------------------------------- performance macros --- */
 /* GLO is the performance page. Its black keys pick the track; its 16 white keys are three groups:

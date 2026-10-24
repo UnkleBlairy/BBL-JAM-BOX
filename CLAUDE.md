@@ -64,10 +64,18 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   clears that step's locks. Every sound-page knob locks (LFO AMT/DEST, filter
   TYPE too). Removing a step removes its locks.
 - The DJ filter always starts open (centre) at power-on and on project load.
-- Saving (planned): 16 sound slots per machine (6 machines = 96; more machines
-  later). Hold SAVE = save screen; white key = save sound, black key (11) =
-  save kit (4 sounds + macros + PERF). Patterns are NEVER saved: it's for
-  jamming from scratch.
+- Saving (gb_store.c): 16 sound slots per machine (6 machines = 96; more
+  machines later). Hold SAVE = SAVE screen: white key = save the selected
+  track's sound, black key (11) = save kit (4 sounds + macros + FADE + FX/COMB
+  globals; not tempo/DJ). Tap SAVE = LOAD screen: key loads and the screen
+  closes so the keys play it at once; SAVE or a page button closes it. Patterns
+  are NEVER saved: it's for jamming from scratch.
+- SAVE?/LOAD? screen is plain text only (no slot boxes): "SOUND - WHITE KEY",
+  "KIT - BLACK KEY". After a save/load, "SOUND 3 / LOADED" flashes ~1 s. Key
+  lights show which slots are used.
+- Saves while playing apply at once but write to flash at stop (a flash erase
+  stops the audio). Old Felucca projects / user presets are gone in this build:
+  their flash sectors hold the sounds and kits.
 
 ## Workflow (after every change)
 

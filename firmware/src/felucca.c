@@ -108,6 +108,9 @@
 #endif
 #include "upreset.c"             /* user presets (RAM mirror; flash with FELUCCA_FLASH) */
 #include "project.c"
+#if FELUCCA_SIMPLE
+#include "gb_store.c"            /* the groovebox's sounds and kits (SAVE) */
+#endif
 #if FELUCCA_OTA
 #include "ota.c"
 #include "ota_hw.c"

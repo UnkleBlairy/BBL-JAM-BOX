@@ -387,7 +387,7 @@ static uint32_t key_leds(uint32_t *br)                 /* (*br: a layer's keys t
     uint32_t c;
     if (br)
         *br = 0;
-    c = name_on() && !ui.menu ? name_leds() : ui.layer ? layer_leds(br) : sgrid_on() ? sgrid_leds() : grid_on() ? grid_leds() :
+    c = name_on() && !ui.menu ? name_leds() : ui.layer ? layer_leds(br) : gbsv_keys_on() ? gbsv_leds() : sgrid_on() ? sgrid_leds() : grid_on() ? grid_leds() :
                  (fm1_in.notes & ~kb_layer) | play_leds() | step_leds() | (song_keys_on() ? song_leds() : 0u) | (pm_page() ? pm_leds() : 0u);
 #if FELUCCA_SLICE
     if (!ui.layer && !ui.menu && !name_on() && slice_page_on())
@@ -606,6 +606,92 @@ static void song_keys(uint32_t notes)
         ui.force = 1;
     }
 }
+/* SIMPLE, SAVE: pressed, the SAVE screen: a white key saves the selected track's sound in that slot of its machine
+ * (16 a machine), a black key the kit (11). Tapped (let go soon, nothing saved), the LOAD screen stays: a white key
+ * loads that sound into the selected track, a black key that kit, and the screen goes so the keys play it; SAVE again
+ * or a page button closes it. The keys are silent there (song.grid 5). What was saved / loaded flashes ~1 s (gbsv 3,
+ * the keys play) */
+static void gbsv_done(const char *what, uint32_t n, const char *how)   /* "SOUND 3" "LOADED", flashing */
+{
+    char nb[4];
+    str_cpy(gbsv_msg[0], what, sizeof gbsv_msg[0]);
+    fmt_int(nb, (int32_t)n + 1);
+    str_cpy(gbsv_msg[0] + str_len(gbsv_msg[0]), nb, sizeof gbsv_msg[0] - str_len(gbsv_msg[0]));
+    str_cpy(gbsv_msg[1], how, sizeof gbsv_msg[1]);
+    gbsv_t = fm1_ms | 1u;
+    if (gbsv == 2u)                                      /* (loaded: the keys play it) */
+        gbsv = 0;
+}
+static uint32_t gbsv_t0;
+static uint8_t gbsv_did;
+static void gbsv_buttons(uint32_t pressed, int ok)
+{
+    static const uint8_t PAGE_B[] = {B_FX, B_SCL, B_ENV, B_LFO, B_EDIT, B_GLO, B_HOME, B_SEQ, B_ARP};
+    uint32_t k, down = (fm1_in.buttons >> panel.btn[B_SAVE]) & 1u;
+    if (!ok) {
+        if (gbsv || gbsv_t) { gbsv = 0; gbsv_t = 0; ui.force = 1; }
+        return;
+    }
+    if (gbsv_t && fm1_ms - gbsv_t > 1200u) {            /* the flash is over */
+        gbsv_t = 0;
+        ui.force = 1;
+    }
+    for (k = 0; k < NELEM(PAGE_B); k++)
+        if ((gbsv || gbsv_t) && ((pressed >> panel.btn[PAGE_B[k]]) & 1u)) {
+            gbsv = 0;
+            gbsv_t = 0;
+            ui.force = 1;
+        }
+    if ((pressed >> panel.btn[B_SAVE]) & 1u) {
+        if (gbsv == 2u) {                                /* LOAD: SAVE closes it */
+            gbsv = 0;
+            gbsv_t0 = 0;
+        } else {
+            gbsv = 1;
+            gbsv_t0 = fm1_ms | 1u;
+            gbsv_did = 0;
+            gbsv_t = 0;
+        }
+        ui.force = 1;
+    }
+    if (gbsv == 1u && !down) {                           /* SAVE let go: a tap opens LOAD */
+        gbsv = !gbsv_did && fm1_ms - gbsv_t0 < 700u ? 2u : 0u;
+        ui.force = 1;
+    }
+}
+static void gbsv_keys(uint32_t pressed)
+{
+    uint32_t k;
+    for (k = 0; k < 27u; k++) {
+        uint32_t p = key_place(k);
+        if (!((pressed >> k) & 1u))
+            continue;
+        if (!key_black(k) && p < 16u) {
+            if (gbsv == 1u ? gbs_save_sound(p) : gbs_load_sound(p))
+                gbsv_done("SOUND ", p, gbsv == 1u ? (transport_busy() ? "SAVED AT STOP" : "SAVED") : "LOADED");
+        } else if (key_black(k) && p < 11u) {
+            if (gbsv == 1u ? gbk_save(p) : gbk_load(p))
+                gbsv_done("KIT ", p, gbsv == 1u ? (transport_busy() ? "SAVED AT STOP" : "SAVED") : "LOADED");
+        } else {
+            continue;
+        }
+        gbsv_did = 1;
+        ui.force = 1;
+        if (!gbsv)
+            break;                                       /* (loaded: the other keys play) */
+    }
+}
+static uint32_t gbsv_leds(void)                          /* the slots in use: the machine's sounds, the kits */
+{
+    uint32_t k, m = 0, mach = (uint32_t)TSEL->p[P_E7] % 6u;
+    for (k = 0; k < 27u; k++) {
+        uint32_t p = key_place(k);
+        if (key_black(k) ? gbk_used(p) : p < 16u && gbs_used(mach, p))
+            m |= 1u << k;
+    }
+    return m;
+}
+
 /* PERF (song.grid 4): a black key picks the track; the white keys 1..8 are the macros (held: they apply, knob turns on any
  * page are kept in them, let go everything returns), 9..12 the fade time, 13..16 the beat repeat (seq.c keyboard_block). The
  * keys are silent here (seq.c keyboard_block) */
@@ -1901,12 +1987,17 @@ static void ui_input(void)
         name_input(notes, oct);
         return;
     }
+#if FELUCCA_SIMPLE
+    (void)save;
+    gbsv_buttons(pressed, !lay && !ui.menu && !ui.confirm);   /* SIMPLE: SAVE is the sounds' and kits' screen */
+#else
     if (save == BT_HOLD && chain_busy())
         ui_message("STOP TO UNDO");
     else if (save == BT_HOLD)                                /* SAVE held: undo the last sound load */
         undo_swap();
     else if (save == BT_TAP && !ui.confirm)             /* SAVE acts on release (a hold is the undo) */
         open_family(FAM_SAVE);
+#endif
     if (ui.confirm) {                                   /* OCT- cancels, OCT+ does it; nothing else reacts */
         if (oct & 2u) {
             uint32_t kind = ui.confirm;
@@ -2079,8 +2170,11 @@ static void ui_input(void)
     pm_poll();
 #if FELUCCA_SIMPLE
     sgrid_release();
+    gb_store_poll();
 #endif
-    if (song.grid == 4u) {
+    if (song.grid == 5u) {
+        gbsv_keys(notes);
+    } else if (song.grid == 4u) {
         pm_keys(notes);
     } else if (song.grid == 3u) {
         song_keys(notes);
