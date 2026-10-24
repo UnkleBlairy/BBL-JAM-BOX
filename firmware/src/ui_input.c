@@ -966,6 +966,8 @@ static void sgrid_keys(uint32_t pressed)
             }
             continue;
         }
+        if (kb_octup && p < NTRK)                       /* (OCT+ held: the first four white keys are the mutes, seq.c) */
+            continue;
         if (chain_busy()) { ui_message("STOP TO EDIT"); continue; }
         if (p >= len)
             continue;

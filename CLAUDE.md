@@ -75,6 +75,9 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   feel), Dattorro tank at 11 kHz, 12-bit out, stereo. TIME 0..126 = RT60
   0.3 s..~9 s (~3.5 s at 90, like HALL); TIME 127 = FREEZE (input fades out,
   tail holds). ROOM/SPRING/HALL still selectable on TYPE.
+- Mutes (seq.c keyboard_block): hold OCT+ and press white key 1-4 (= track
+  1-4). Quick press latches the mute, holding mutes only while held. Works
+  with step keys on (those presses don't touch steps).
 - The DJ filter always starts open (centre) at power-on and on project load.
 - Saving (gb_store.c): 16 sound slots per machine (6 machines = 96; more
   machines later). Hold SAVE = SAVE screen: white key = save the selected
