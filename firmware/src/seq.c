@@ -94,12 +94,6 @@ enum { GK_ACC = NLANE, GK_PGDN, GK_PGUP };       /* black keys 9..11 on the grid
 /* the DRUM grid: key k's lane note (black keys 1..8), KB_SILENT for the rest. Out of line (1.5): called from the audio
  * ISR's key loop only on a key change; inlined there, its % 12 and key_place's loop sat in the ISR's static cost
  * (tests/target_budget.py) for a path that runs once per key press */
-/* SIMPLE: the note a track's step key plays and writes: its machine's (SYN BD SD HH CYM PERC; the track's TUNE moves it) */
-static uint8_t grid_note_of(const track_t *t)
-{
-    static const uint8_t N[6] = {48, 36, 50, 84, 72, 48};
-    return N[(uint32_t)t->p[P_E7] % 6u];
-}
 static uint32_t grid_chord(const track_t *t, uint8_t *out);
 static __attribute__((noinline)) uint8_t grid_key_note(uint32_t k)
 {
@@ -459,7 +453,6 @@ static void arp_step(track_t *t, uint32_t n, uint32_t gate_n)
     arp_fire(t, period);
 }
 
-static void arp_tick(track_t *t, uint32_t n) { arp_step(t, n, n); }
 
 /* -------------------------------------------------------- note input --- */
 /* the length of step idx in samples: SWING (the track's + the global, at most 100) makes the even steps longer
@@ -1312,17 +1305,6 @@ static void click_tick(uint32_t adv)
     }
     if (beat && click_wanted())
         click_req = (uint8_t)beat;
-}
-/* the beat of the bar the click is on (0..3: 0 the accented first), -1 stopped: the count-in's, else the playing
- * transport's (clk_step, internal or external clock). It moves in the block a beat clicks in (the header's metronome,
- * ui_draw.c, swings on it; CLICK OFF it moves all the same) */
-static int32_t click_beat_now(void)
-{
-    if (cin_left)
-        return (int32_t)((uint32_t)(cin_total - cin_left) % 4u);
-    if (!song.playing)
-        return -1;
-    return clk_pos == CLK_START ? 0 : (int32_t)(clk_step >> 2);
 }
 
 /* everything that happens between two rendered blocks */

@@ -54,16 +54,6 @@ static uint32_t gb_trig(const step_t *s)                 /* a step's TRIG 0..4 (
     uint32_t c = step_cond(s + GB_TRIG);
     return c > GB_TRIG_C0 && c <= GB_TRIG_C0 + 4u ? c - GB_TRIG_C0 : 0u;
 }
-static int gb_page(void)
-{
-    const page_t *pg;
-    if (ui.home || ui.confirm)
-        return 0;
-    pg = cur_page();
-    if ((gbsv || gbsv_t) && !ui.confirm)
-        return 1;
-    return pg->graph == GR_PERF || pg->graph == GR_TRK || pg->graph == GR_GBSEQ || pg->fam == FAM_TRK || (pg->fam == FAM_GLO && pg->scope == SC_GLOBAL) || dial_page();
-}
 static uint32_t gb_mach(uint32_t k) { return (uint32_t)trk[k & 3u].p[P_E7] % 6u; }
 
 static void gb_fill(gb_view_t *v)

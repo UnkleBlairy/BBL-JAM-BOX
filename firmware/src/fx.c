@@ -408,25 +408,6 @@ static __attribute__((noinline)) void rev_quad(const int32_t *rev_in, int32_t *o
     hl.side = 1;
 }
 
-/* the reverb's buffers and states to silence (the model changed) */
-static void rev_clear(void)
-{
-    uint32_t i;
-    for (i = 0; i < sizeof rev_comb / 2u; i++)
-        rev_comb[i] = 0;
-    for (i = 0; i < sizeof rev_u.ap / 2u; i++)          /* (int16: 997 of them, an odd count the int32 view misses one of) */
-        rev_u.ap[i] = 0;
-    for (i = 0; i < 4u; i++)
-        fx.comb_lp[i] = 0;
-    for (i = 0; i < HL_NL; i++)
-        hl.lp[i] = hl.le[i] = 0;
-    fx.sp_lp = fx.sp_hp = fx.sp_he = 0;
-    hl.x = hl.m = hl.s = hl.hp = hl.he = 0;
-    for (i = 0; i < QV_NL; i++)
-        qv.w[i] = 0;
-    qv.bw = qv.dl = qv.dr = qv.le = qv.re = qv.pl = qv.pr = qv.frz = 0;
-    qv.fi[0] = qv.fi[1] = qv.fo[0] = qv.fo[1] = qv.fo[2] = qv.fo[3] = 0;
-}
 
 #if FELUCCA_CPU2
 /* the dry mix and the sends, as each core adds its parts into them (after Jangada: mx[1] is the second core's,

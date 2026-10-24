@@ -151,25 +151,6 @@ static struct {
 
 static int16_t fl_buf[FL_LEN][2];      /* FLANGER's line: L R, at half the level (headroom) */
 
-/* the key map in the settings (ui_layer.c: favorites.factory[15][14..23]): white key p's code in 5 bits from bit 5p
- * of b: 0 its default (PF_DEF), 1 none, 2 + e effect e (an unknown code, a later firmware's effect: the default) */
-static uint32_t perf_map_of(const uint8_t *b, uint32_t p)
-{
-    uint32_t i = 5u * p, c = (uint32_t)b[i >> 3] >> (i & 7u);
-    if ((i & 7u) > 3u)
-        c |= (uint32_t)b[(i >> 3) + 1u] << (8u - (i & 7u));
-    c &= 31u;
-    return c == 1u ? PF_N : c >= 2u && c - 2u < PF_NFX ? c - 2u : PF_DEF[p];
-}
-static void perf_map_put(uint8_t *b, uint32_t p, uint32_t e)
-{
-    uint32_t i = 5u * p, sh = i & 7u, c = e == PF_DEF[p] ? 0u : e >= PF_NFX ? 1u : e + 2u, two = sh > 3u, v;
-    v = b[i >> 3] | (two ? (uint32_t)b[(i >> 3) + 1u] << 8 : 0u);
-    v = (v & ~(31u << sh)) | c << sh;
-    b[i >> 3] = (uint8_t)v;
-    if (two)
-        b[(i >> 3) + 1u] = (uint8_t)(v >> 8);
-}
 
 /* the loop length of a REPEAT / REVERSE (1/8) at the tempo, 44.1 kHz samples; 0 = not one */
 static const uint8_t PF_DEN[PF_REV + 1] = {2, 4, 8, 2};
@@ -641,8 +622,6 @@ static inline int32_t pf_svf(int32_t x, int32_t *z, const int16_t *c, int hp)
 
 static __attribute__((noinline)) void perf_switch(uint32_t a) { perf_buf_select(perf_pick(a)); }
 
-/* the UI: OCT UP / DN is the buffer effect playing (KNOB 4 is its shimmer, the card says so) */
-static int perf_harm_on(void) { return (PF_HARM >> perf_pick(perf_act)) & 1u; }
 
 /* FLANGER / PHASER: the sweep's place at this block's first sample, a cycle every `s` 1/16s of the transport's clock
  * (pf.ph: in time with the bars while playing), and its step a sample (*inc) */

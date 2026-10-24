@@ -491,23 +491,3 @@ static const engine_t ENG_DIGITAL = {
                                   * hit that finds its voice still sounding (the same drum twice in a row) */
 };
 
-/* DIGITAL preset k's values into p as a preset load sets them (ui.c apply_preset_to: the EDIT values, ENV, ENV ->
- * FLT, VOICE, the sends; the OP ENV values their defaults); the track's own values (param_kept) are the caller's */
-static void fm4_preset_values(int16_t *p, uint32_t k)
-{
-    static const uint8_t FX_DEF[4] = {0, 24, 28, 36};
-    const preset_t *pr = &DIGITAL_PRESETS[k % FM4_NPRESETS];
-    uint32_t i;
-    for (i = 0; i < 8u; i++)
-        p[P_E0 + i] = pr->e[i];
-    p[P_ATK] = pr->env[0];
-    p[P_DEC] = pr->env[1];
-    p[P_SUS] = pr->env[2];
-    p[P_REL] = pr->env[3];
-    p[P_ED_FLT] = pr->fenv;
-    p[P_VOICE] = pr->mono ? V_LEGATO : V_POLY;
-    for (i = 0; i < 4u; i++)
-        p[P_DIST + i] = (int16_t)(pr->fx[i] ? pr->fx[i] - 1 : FX_DEF[i]);
-    for (i = P_FM1_ATK; i <= P_FM4_LEVEL; i++)
-        p[i] = (i - P_FM1_ATK) % 5u == 2u || (i - P_FM1_ATK) % 5u == 4u ? 127 : 0;
-}

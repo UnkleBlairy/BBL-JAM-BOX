@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
-"""Rasterise the Fukiai icon font (web/fukiai.ttf, MIT, (c) Hügelton Instruments) into
+"""Rasterise the Fukiai icon font (assets/fonts/fukiai.ttf, MIT, (c) Hügelton Instruments) into
 4-bit alpha icon cells for the UI (run by tools/build.py generate()).
 
-  gen_aa_icons.py OUT.h [--font web/fukiai.ttf] [--sizes 12,16] [--big NAME,NAME,...]
+  gen_aa_icons.py OUT.h [--font assets/fonts/fukiai.ttf] [--sizes 12,16] [--big NAME,NAME,...]
                         [--gamma G] [--prefix ICON_] [--list] [--report]
 
 Every icon the firmware already names (assets/icons.json, ICON_<NAME>; icons.c keeps
@@ -214,7 +214,7 @@ def ink_box(b, s):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("out", nargs="?")
-    ap.add_argument("--font", default=str(ROOT / "web" / "fukiai.ttf"))
+    ap.add_argument("--font", default=str(ROOT / "assets" / "fonts" / "fukiai.ttf"))
     ap.add_argument("--json", default=str(ROOT / "assets" / "icons.json"), help="legacy icon names (order = enum)")
     ap.add_argument("--sizes", default="12,16,24")
     ap.add_argument("--big", default=",".join(BIG_DEFAULT))

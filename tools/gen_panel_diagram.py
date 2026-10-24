@@ -13,7 +13,7 @@ PHOTO is the 1750 x 1050 photo of the panel (docs/manual/fm1_photo.jpg); every c
 measured in its pixels, and each band is its controls' boxes and a small margin. Everything else is in
 one table (GROUPS), English and Japanese side by side. The text is written as outlines (Inter Tight,
 assets/fonts, OFL-1.1; for --lang ja the function texts in Noto Sans JP, OFL-1.1, given with --ja-font;
-icons from web/fukiai.ttf, MIT), so the SVG needs no font. --png / --jpg render it with rsvg-convert.
+icons from assets/fonts/fukiai.ttf, MIT), so the SVG needs no font. --png / --jpg render it with rsvg-convert.
 Checked: every text, keycap and icon inside its card (every keycap's label inside its pill), nothing
 overlapping, the cards apart, the bands and their numbers on the photo and apart, each band around the
 centres of all its group's controls and of no other group's.
@@ -35,7 +35,7 @@ from fontTools.varLib import instancer
 logging.getLogger("fontTools").setLevel(logging.ERROR)   # fukiai.ttf: a harmless post-table note
 ROOT = Path(__file__).resolve().parents[1]
 FONT = ROOT / "assets/fonts/InterTight[wght].ttf"
-ICONS = ROOT / "web/fukiai.ttf"
+ICONS = ROOT / "assets/fonts/fukiai.ttf"
 
 W = 1200
 BG, CARD = "#1e1e1e", "#484848"                         # sampled from the feature sheet

@@ -43,49 +43,12 @@ static void seq_stop(void);
 static uint32_t div_samples(uint32_t div);
 static uint32_t step_samples(const track_t *t, uint32_t period, uint32_t idx);
 
-static chain_row_t chain_row_of(uint32_t slot, uint32_t repeat)   /* a section with all four tracks on one slot */
-{
-    chain_row_t r;
-    memset(r.slot, (int)slot, sizeof r.slot);
-    r.repeat = (uint8_t)repeat;
-    return r;
-}
 static void chain_defaults(chain_config_t *c)
 {
     uint32_t i;
     memset(c, 0, sizeof *c);
     for (i = 0; i < CHAIN_ROWS; i++)
         c->row[i].repeat = 1;
-}
-static int chain_valid(const chain_config_t *c)
-{
-    uint32_t i, k;
-    if (c->count > CHAIN_ROWS)
-        return 0;
-    for (i = 0; i < c->count; i++) {
-        for (k = 0; k < NTRK; k++)
-            if (c->row[i].slot[k] > CHAIN_SILENT)
-                return 0;
-        if (!c->row[i].repeat || c->row[i].repeat > 16u)
-            return 0;
-    }
-    return 1;
-}
-/* the chain of FUN6..FUN9 (rows {slot, repeat}) -> today's: each row a section with the four tracks on its slot. 0: not
- * a valid one (as chain_valid then) */
-static int chain_from_v9(chain_config_t *c, const chain_v9_t *o)
-{
-    uint32_t i;
-    chain_defaults(c);
-    if (o->count > CHAIN_ROWS)
-        return 0;
-    for (i = 0; i < o->count; i++) {
-        if (o->row[i].slot >= 4u || !o->row[i].repeat || o->row[i].repeat > 16u)
-            return 0;
-        c->row[i] = chain_row_of(o->row[i].slot, o->row[i].repeat);
-    }
-    c->count = o->count;
-    return 1;
 }
 /* the track whose loops count section r's length: the first one not silent; every track silent: track 1 (a bar) */
 static uint32_t chain_clock(const chain_row_t *r)
@@ -96,8 +59,6 @@ static uint32_t chain_clock(const chain_row_t *r)
             return k;
     return 0;
 }
-/* a track parameter a playing song sets from its slots (the editor and the pages leave it alone meanwhile) */
-static int chain_owns(uint32_t id) { return (id >= P_SLEN && id <= P_SGATE) || id == P_SQNT; }
 static const step_t *seq_steps(const track_t *t)
 {
     uint32_t k = (uint32_t)(t - trk), s;

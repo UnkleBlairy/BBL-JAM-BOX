@@ -84,11 +84,6 @@ static void track_lfo_end(track_t *t)
         t->lfo_fade = t->p[P_LFADE] ? clamp(t->lfo_fade + (step ? step : 1), 0, 32767) : 32767;
     }
 }
-static void track_lfo_tick(track_t *t)                  /* (both at once: the tests) */
-{
-    track_lfo_adv(t);
-    track_lfo_end(t);
-}
 #else
 static void track_lfo_tick(track_t *t)                  /* (one core: the whole block in track_render, as up to 1.6) */
 {

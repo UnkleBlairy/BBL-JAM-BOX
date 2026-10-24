@@ -9,7 +9,6 @@ static const engine_t *const ENGINES[NENGINES] = {&ENG_DIGITAL, &ENG_DIGITAL};
 
 /* a track's engine number as an index (a bad number: 0) */
 static inline uint32_t eng_idx(uint32_t e) { return e < NENGINES ? e : 0u; }
-static int eng_ok(uint32_t e) { return e == ENGI_DIGITAL; }
 
 /* the tracks at power-on: DIGITAL's presets (eng_digital.c DIGITAL_PRESETS) BD SD CH OH */
 static const uint8_t TRK_DEF[NPART] = {8, 9, 10, 11};

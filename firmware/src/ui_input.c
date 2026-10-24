@@ -110,28 +110,6 @@ static int mom_turn(uint32_t k, int32_t s)
     return 1;
 }
 
-/* 1.5.6 (#84): MENU > SELECT MODW / VEL: SELECT plays. MODW: the selected track's mod wheel 0..127, as MIDI CC1 sets it (the
- * matrix's MODW source; sent as CC1 on the track's channel, where the keys' notes go); VEL: the panel keys'
- * velocity 1..127 (100 from power-on, as before; MIDI OUT and live recording take it). Performance state, not saved, as
- * a keyboard's wheel. The value shows in the header. GLO + SELECT is the tempo, as with PAGE */
-static void sel_play(uint32_t m, int32_t s)
-{
-    char b[8];
-    if (m == SEL_MODW) {
-        track_t *t = TSEL;
-        t->mw = (uint8_t)clamp((int32_t)t->mw + accel(EN_SELECT, s, 127), 0, 127);   /* (a byte: the ISR sees one or the
-                                                                                  * other) */
-        fm1_irq_off();                                 /* (the out ring is the audio ISR's: it must not run now) */
-        midi_out_event(0x0Bu | (0xB0u | trk_midi_ch(song.sel)) << 8 | 1u << 16 | (uint32_t)t->mw << 24);
-        fm1_irq_on();
-        fmt_int(b, t->mw);
-        ui_say("MODW ", b);
-    } else {
-        kb_vel = (uint8_t)clamp((int32_t)kb_vel + accel(EN_SELECT, s, 126), 1, 127);
-        fmt_int(b, kb_vel);
-        ui_say("VEL ", b);
-    }
-}
 
 static uint32_t oct_leds(void)
 {
@@ -500,38 +478,6 @@ static int roll_on(void)
     return !ui.home && !ui.confirm && song.seq_mode && cur_page()->graph == GR_ROLL && !drum_track(TSEL);
 }
 
-/* SONG: + ADD selected (song_row == count < CHAIN_ROWS): a section there, copying the one before it (the first: every
- * track on A, x1) */
-static void song_add(void)
-{
-    uint32_t n = chain_config.count;
-    if (n >= CHAIN_ROWS)
-        return;
-    chain_config.row[n] = n ? chain_config.row[n - 1u] : chain_row_of(0, 1);
-    chain_config.count = (uint8_t)(n + 1u);
-    ui.song_row = (uint8_t)n;
-}
-/* SONG's keys (song.grid 3): a press of A3 B3 C4 D4 (seq.c song_key) sets the selected cell's slot A..D (on + ADD it
- * adds the section first: a copy of the one before, the first with every track on that slot) */
-static void song_keys(uint32_t notes)
-{
-    uint32_t k;
-    for (k = 0; k < 27u; k++) {
-        int32_t s = (notes >> k) & 1u ? song_key(k) : -1;
-        if (s < 0)
-            continue;
-        if (chain_busy()) { ui_message("STOP TO EDIT"); return; }
-        if (ui.song_row >= chain_config.count) {
-            if (ui.song_row >= CHAIN_ROWS)
-                return;
-            song_add();
-            if (chain_config.count == 1u)
-                chain_config.row[0] = chain_row_of((uint32_t)s, 1);
-        }
-        chain_config.row[ui.song_row].slot[ui.song_trk % NTRK] = (uint8_t)s;
-        ui.force = 1;
-    }
-}
 /* SIMPLE, SAVE: pressed, the SAVE screen: a white key saves the selected track's sound in that slot of its machine
  * (16 a machine), a black key the kit (11). Tapped (let go soon, nothing saved), the LOAD screen stays: a white key
  * loads that sound into the selected track, a black key that kit, and the screen goes so the keys play it; SAVE again
@@ -725,38 +671,8 @@ static int live_rec_sel(void)
     return ((song.rec >> song.sel) & 1u) && (song.playing || transport_req == 1u || seq_counting());
 }
 
-/* the OCT- / OCT+ dialog (ui_draw.c draws it); trk: the track or the slot it is about */
-static void confirm_open(uint32_t kind, uint32_t trk)
-{
-    ui.confirm = (uint8_t)kind;
-    ui.confirm_trk = (uint8_t)trk;
-    ui.act = 0;
-    ui.force = 1;
-}
 
-/* MENU > CONTROL > STEP PREVIEW ON (1.2, Discussion #169): on SEQ > STEP (the roll and the DRUM grid) with the transport
- * stopped, a move of the cursor by a knob (KNOB 1, PRESETS) or the grid's page keys sounds the step it lands on once,
- * on the selected track (seq.c seq_audition). Not while playing, counting in or in a song; step recording moving on
- * after its keys (seq_entry) does not; a grid key on a step neither (it edits the step, a lane key plays the lane).
- * OFF (the default): the cursor moves silently, as before */
-static void cursor_move(int32_t c)
-{
-    cursor_set(c);
-    follow_hold();                                      /* (1.6, #242: the roll stays where the cursor is) */
-    if ((ui_prefs2 & (PREF_PREVIEW >> 16)) && !song.playing && !seq_counting() && transport_req != 1u && !chain_busy() &&
-        !ui.home && song.seq_mode && cur_page()->graph == GR_ROLL)
-        aud_req = (uint16_t)((uint32_t)ui.cursor << 8 | (song.sel + 1u));
-}
 
-/* the grid's page down (-1) / up (+1): the cursor to the same place on it (at most the last step) */
-static void page_go(int32_t d)
-{
-    uint32_t len = (uint32_t)TSEL->p[P_SLEN], pages = (len + 15u) / 16u, b;
-    if (pages < 2u)
-        return;
-    b = (ui.bank + pages + (uint32_t)d) % pages;
-    cursor_move((int32_t)(b * 16u + ui.cursor % 16u < len ? b * 16u + ui.cursor % 16u : len - 1u));
-}
 
 
 
@@ -972,28 +888,6 @@ static void lock_clear(uint64_t held)
 }
 
 
-/* SEQ > DETAIL (1.5.1, Discussion #199; ui.c detail_on): KNOB 1 CHANCE (0..100 %, 1.5.5: then the conditions 1:2 ..
- * 4:4, FILL, !FILL, ui_events.c ev_chance_turn), 2 RATCH (x1..x4), 3 NUDGE (-8..+7
- * sixteenths), 4 VEL (1..127) of the cursor step, the fields SEQ > AUTOMATION lists as rows (ui_events.c ev_sval,
- * ev_sput: one storage, nothing new stored; back at its default a field is no row there). On the DRUM grid the white
- * keys held pick several steps: each moves by the turn. A step that plays nothing takes none (sd_takes: NO NOTE).
- * One undo per knob gesture on a step (SAVE held): walking to the next step starts another */
-static uint64_t sd_held(void)                           /* the grid's step keys held on DETAIL (bit = step), 0 none */
-{
-    uint32_t k, len = (uint32_t)TSEL->p[P_SLEN], keys = fm1_in.notes & ~kb_layer;
-    uint64_t m = 0;
-    if (!keys || !detail_on() || !grid_on())
-        return 0;
-    for (k = 0; k < 27u; k++)
-        if (((keys >> k) & 1u) && !key_black(k) && ui.bank * 16u + key_place(k) < len)
-            m |= (uint64_t)1 << (ui.bank * 16u + key_place(k));
-    return m;
-}
-static uint64_t sd_steps(void)
-{
-    uint64_t m = sd_held();
-    return m ? m : (uint64_t)1 << ui.cursor;
-}
 
 
 static void edit_param(uint32_t slot, int32_t steps)
@@ -1062,97 +956,7 @@ static uint32_t oct_taps(uint32_t pressed, int here)
     return tap;
 }
 
-/* MENU > CONTROL > CHORD ENTRY ADD (1.2, #155: chords with one hand): a key's notes go into the cursor step beside what
- * is there (up to 4), or out of it when its note is there already (a key that adds a chord takes all of it out); MONO
- * keeps one note (another key replaces it). A TIE or REST step becomes a note step; one with no note left a REST, as
- * EDIT leaves it */
-static void step_toggle(const track_t *t, step_t *st, const uint8_t *ch, uint32_t n)
-{
-    uint32_t i, j, k;
-    if (st->time != ST_NOTE) {
-        st->n = 0;
-        st->time = ST_NOTE;
-    }
-    for (j = 0; j < st->n && st->note[j] != ch[0]; j++)
-        ;
-    if (j < st->n) {                                   /* there: its notes out */
-        for (i = 0; i < n; i++)
-            for (j = 0; j < st->n; j++)
-                if (st->note[j] == ch[i]) {
-                    for (k = j; k + 1u < st->n; k++)
-                        st->note[k] = st->note[k + 1u];
-                    st->n--;
-                    break;
-                }
-        if (!st->n)
-            st->time = ST_REST;
-        return;
-    }
-    if (t->p[P_VOICE] && !ENGINES[t->engine]->oneshot) {   /* MONO / LEG / UNI: one note */
-        st->note[0] = ch[0];
-        st->n = 1;
-        return;
-    }
-    for (i = 0; i < n && st->n < 4u; i++) {
-        for (j = 0; j < st->n && st->note[j] != ch[i]; j++)
-            ;
-        if (j == st->n)
-            st->note[st->n++] = ch[i];
-    }
-}
 
-/* SEQ step entry = step recording (1.2, Discussion #133: only with the track armed and the transport stopped), acid
- * style: the keys pressed together (POLY: up to 4 notes, MONO: the last one) become the cursor step; releasing all
- * keys moves on one step (wrapping inside LEN). With CHRD on a key writes what it sounds, as live recording does:
- * POLY its chord, MONO the chord's root. MENU > CONTROL > CHORD ENTRY ADD (1.2, #155): each key adds its notes to
- * the cursor step or takes them out (step_toggle), one after another with one hand, and letting go moves nothing: the
- * cursor moves by KNOB 1 (STEP) or PRESETS only, as it always could (EDIT still clears the step and moves on) */
-static void seq_entry(uint32_t pressed)
-{
-    track_t *t = TSEL;
-    step_t *st = &t->step[ui.cursor];
-    uint32_t k, add = (ui_prefs2 & (PREF_CHORD_ADD >> 16)) != 0u;
-    for (k = 0; k < 27u; k++) {
-        uint8_t ch[CHORD_MAX];
-        int32_t r;
-        uint16_t mask;
-        uint32_t note, n, i, j;
-        if (!((pressed >> k) & 1u))
-            continue;
-        note = kb_map(t, k);
-        if (note == KB_SILENT)
-            continue;
-        if (!ui.entry_open) {
-            ui.entry_open = 1;
-            follow_hold();                                /* (1.6, #242) */
-            if (!add) {
-                st->n = 0;
-                st->time = ST_NOTE;
-            }
-        }
-        n = chord_make(t, note, ch, &r, &mask);        /* (CHRD OFF, a kit: the note alone; MONO: the root) */
-        if (add)
-            step_toggle(t, st, ch, n);
-        else if (t->p[P_VOICE] && !ENGINES[t->engine]->oneshot) {   /* (drums: hits stack as a chord) */
-            st->note[0] = ch[0];
-            st->n = 1;
-        } else {
-            for (i = 0; i < n && st->n < 4u; i++) {
-                for (j = 0; j < st->n && st->note[j] != ch[i]; j++)
-                    ;
-                if (j == st->n)
-                    st->note[st->n++] = ch[i];
-            }
-        }
-        last_note = (uint8_t)note;
-    }
-    if (ui.entry_open && !(fm1_in.notes & ~kb_layer)) {
-        if (add)
-            ui.entry_open = 0;                          /* (ADD: the cursor stays) */
-        else
-            cursor_set(ui.cursor + 1);
-    }
-}
 
 
 /* HOME / REC / SAVE: tap on release, hold 0.7 s fires once. t0 = press time | 1,

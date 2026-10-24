@@ -253,7 +253,6 @@ static const param_desc_t *param_desc_of(uint32_t e, uint32_t id)
 
 /* a stored value as the parameter takes it (the sounds, the kits, the locks): inside d's range */
 static int32_t param_fit(const param_desc_t *d, int32_t v) { return clamp(v, d->min, d->max); }
-static int32_t enum_orig(const param_desc_t *d, int32_t v) { (void)d; return v; }
 static int32_t enum_step(const param_desc_t *d, int32_t from, int32_t v) { (void)d; (void)from; return v; }
 
 /* #48: the note divisions in the order of their length, longest first (triplets between their neighbours), on the

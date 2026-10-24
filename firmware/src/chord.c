@@ -153,33 +153,6 @@ static uint32_t chord_build(track_t *t, uint32_t root, uint8_t *out)
     return m;
 }
 
-/* a chord's name from its root and tones (bit i: i semitones above the root): "C", "Cm7", "F#m7b5", "Gsus4",
- * "A5" -> b (12 bytes) */
-static void chord_name(char *b, uint32_t root, uint32_t mask)
-{
-    uint32_t mi = (mask >> 3) & 1u, ma = (mask >> 4) & 1u, b5 = (mask >> 6) & 1u, p5 = (mask >> 7) & 1u;
-    uint32_t s5 = (mask >> 8) & 1u, d7 = (mask >> 9) & 1u, m7 = (mask >> 10) & 1u, M7 = (mask >> 11) & 1u;
-    const char *q, *x = "";
-    str_cpy(b, N_NOTE[root % 12u], 12);
-    if (mi && !ma && b5 && !p5)
-        q = d7 ? "dim7" : m7 ? "m7b5" : "dim";
-    else if (ma && !mi && s5 && !p5)
-        q = m7 ? "+7" : M7 ? "+M7" : "aug";
-    else if (ma && !mi)
-        q = m7 ? "7" : M7 ? "maj7" : d7 ? "6" : "";
-    else if (mi)
-        q = m7 ? "m7" : M7 ? "mM7" : d7 ? "m6" : "m";
-    else if ((mask >> 5) & 1u) {                        /* no third: suspended */
-        q = m7 ? "7" : "";
-        x = "sus4";
-    } else if ((mask >> 2) & 1u) {
-        q = m7 ? "7" : "";
-        x = "sus2";
-    } else
-        q = "5";
-    str_cpy(b + str_len(b), q, 12 - str_len(b));
-    str_cpy(b + str_len(b), x, 12 - str_len(b));
-}
 
 /* the MIDI note (ch, src) of track id - 1 that plays a chord, 0 = none */
 static mchord_t *mchord_of(uint32_t ch, uint32_t src, uint32_t id)

@@ -161,16 +161,6 @@ static const icon_map_t ICON_MAP[] = {
     {"SLCR", ICON_SLICE}, {"PAT", ICON_STEPS}, {"DEPTH", ICON_MIX},   /* SLICER page (RATE: param_icon) */
 };
 
-static uint32_t icon_for_label(const char *l)
-{
-    uint32_t i;
-    if (!l || !l[0] || l[0] == '-')
-        return ICON_NONE;
-    for (i = 0; i < sizeof(ICON_MAP) / sizeof(ICON_MAP[0]); i++)
-        if (str_eq(l, ICON_MAP[i].label))
-            return ICON_MAP[i].icon;
-    return ICON_GENERIC;
-}
 
 /* WAVE / WAVE2 set to a shape: that shape's icon (value names of the engines and the LFO) */
 static const icon_map_t WAVE_ICON[] = {
@@ -180,87 +170,10 @@ static const icon_map_t WAVE_ICON[] = {
     {"RTRP", ICON_W_RTRP},
 };
 
-static uint32_t param_icon(const param_desc_t *d, int32_t v)
-{
-    uint32_t i;
-    if (!d)
-        return ICON_NONE;
-    if (d->fmt == F_ENUM && d->names && v >= d->min && v <= d->max &&
-        (str_eq(d->label, "WAVE") || str_eq(d->label, "WAVE2")))
-        for (i = 0; i < sizeof(WAVE_ICON) / sizeof(WAVE_ICON[0]); i++)
-            if (str_eq(d->names[v], WAVE_ICON[i].label))
-                return WAVE_ICON[i].icon;
-    if (d == &TP[P_LWAVE])
-        return ICON_LFO_WAVE;                 /* "WAVE" is also the oscillator wave */
-    if (d == &TP[P_ARATE] || d == &TP[P_SLRATE])
-        return ICON_DIVISION;                 /* arp / SLICER RATE is a note division, not Hz */
-    if (d == &TP[P_FTYPE])
-        return ICON_CUTOFF;                   /* ANALOG's filter TYPE (1.5): "TYPE" is also the reverb's */
-    if (d == &TP[P_ESYNC])
-        return ICON_TEMPO;                    /* ENV SYNC (1.5): as LFO 2's SYNC */
-    return icon_for_label(d->label);
-}
 
-/* the MOD page: the icon of a source, of a destination (an engine parameter: its own) */
-static uint32_t mod_src_icon(int32_t s)
-{
-    static const uint8_t I[MS_N] = {ICON_MOD, ICON_LFO_WAVE, ICON_ENV, ICON_ACCENT, ICON_KEYTRACK, ICON_PROB,
-                                    ICON_MOD, ICON_MIDI, ICON_LEVEL, ICON_W_SH, ICON_GLIDE};
-    return I[clamp(s, 0, MS_N - 1)];
-}
-static uint32_t mod_dst_icon(const track_t *t, int32_t d)
-{
-    static const uint8_t I[MD_E1] = {ICON_MOD, ICON_PITCH, ICON_CUTOFF, ICON_SHAPE, ICON_LEVEL, ICON_PAN, ICON_DIST,
-                                     ICON_CHORUS, ICON_DELAY, ICON_REVERB, ICON_RATE, ICON_VIBRATO};
-    uint32_t id;
-    d = clamp(d, 0, MD_N - 1);
-    if (d == MD_DEPTH)
-        return ICON_LFO_WAVE;
-    if (d >= MD_VEL)                                   /* (1.5.6: VEL, TIME) */
-        return d == MD_VEL ? ICON_ACCENT : ICON_TIME;
-    if (d < MD_E1)
-        return I[d];
-    id = P_E0 + (uint32_t)(d - MD_E1);
-    return param_icon(track_desc(t, id), t->p[id]);
-}
 
-/* engine name (ENGINES[]->name) -> icon */
-static uint32_t engine_icon(const char *name)
-{
-    static const icon_map_t M[] = {
-        {"ANALOG", ICON_WAVE},
-        {"DIGITAL", ICON_ALGORITHM},
-        {"PHASE", ICON_PHASE}, {"LOFI", ICON_BITS},
-        {"SAMPLE", ICON_SAMPLE}, {"VOICE", ICON_MOUTH}, {"TRIO", ICON_TRIO}, {"WHEEL", ICON_DRAWBAR},
-        {"SLICE", ICON_SLICE},
-        {"GRAIN", ICON_GRAIN},
-        {"PHYS", ICON_PHYS},
-        {"DRUM", ICON_DRUM},
-        {"NOISE", ICON_NOISE},
-        {"FM6", ICON_MOD},                    /* (symbol_modular: six operators patched; a glyph of its own wanted) */
-    };
-    uint32_t i;
-    for (i = 0; i < sizeof M / sizeof M[0]; i++)
-        if (str_eq(name, M[i].label))
-            return M[i].icon;
-    return ICON_GENERIC;
-}
 
-/* MOTION: the knob and its trace; recording into it (REC armed on the selected track, playing): its REC form */
-static uint32_t motion_icon(void) { return rec_on(TSEL) ? ICON_X_MOTION_REC : ICON_X_MOTION; }
 
-/* the icon beside a page's title in the footer (the pages that have one of their own; else ICON_NONE) */
-static uint32_t page_icon(const page_t *pg)
-{
-    switch (pg->graph) {
-    case GR_TRK: return ICON_X_MIXER;         /* MIXER (HOME): vertical faders */
-    case GR_PATS: return ICON_X_PATTERN;      /* SAVE > PHRASES: the pattern loader */
-    case GR_PERF:
-    case GR_SONG: return ICON_X_SONG;         /* SONG: the disc */
-    case GR_EVENTS: return motion_icon();     /* AUTOMATION */
-    default: return ICON_NONE;
-    }
-}
 
 #else
 static uint32_t icon_for_label(const char *l) { (void)l; return ICON_NONE; }
