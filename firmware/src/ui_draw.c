@@ -456,6 +456,10 @@ static void draw_frame(void)
 {
     uint32_t ch = card_h(), gy = graph_y(), gh = graph_h();   /* (MENU > LARGE: tall cards, a strip) */
     gap_rows(H_HEAD, Y_LABEL);
+    if (dial_page()) {                                  /* the dials' panel covers the cards' rows too */
+        gap_rows(gy + gh, Y_FOOT);
+        return;
+    }
     gap_rows(Y_LABEL + ch, gy);
     gap_rows(gy + gh, Y_FOOT);
     draw_gaps(Y_LABEL, ch);
@@ -959,6 +963,8 @@ static void draw_columns(void)
     char val[12];
     const char *unit;
     (void)motion_mask(song.sel, card_mot_mask);       /* (PLAY OFF: no scan) */
+    if (dial_page())
+        return;                                        /* (the dials show the labels and values) */
     if (ui.home) {
         for (c = 0; c < 4u; c++) {
             int16_t *vp;
@@ -1612,12 +1618,29 @@ static void ui_draw_page(uint32_t counting)
         ui.force = 0;
         return;
     }
+#if FELUCCA_SIMPLE
+    if (ui.home) {                                       /* no HOME page: the first EDIT page instead */
+        open_family(FAM_EDIT);
+        ui.force = 1;
+    }
+#endif
     if (!ui.home && !page_visible(ui.page)) {          /* an OP page of a track that is not DIGITAL (without
                                                          * FELUCCA_FM4: any track): EDIT 1 */
-        ui.page = (uint8_t)page_first(FAM_EDIT);
+        ui.page = (uint8_t)page_first(PAGES[ui.page].fam == FAM_FLT ? FAM_FLT : FAM_EDIT);   /* (FILTER: the SCL button's) */
         page_entered();
     }
     cursor_fix();
+#if FELUCCA_SIMPLE
+    if (gb_page()) {                                     /* ui_gb.c: the whole screen, in one colour */
+        gb_draw();
+        if (ui.hot_t)
+            ui.hot_t--;
+        if (ui.bpm_t)
+            ui.bpm_t--;
+        ui.force = 0;
+        return;
+    }
+#endif
     if (ui.force)
         draw_frame();
     felucca_dbg.stage = 3;

@@ -37,6 +37,9 @@ static uint32_t kb_prev;
 static volatile uint8_t kb_boot_hold;    /* #137: set from power-on to the end of the splash (main.c): the keys sound nothing,
                                           * and one held across its end stays silent until it is let go and pressed again */
 static uint8_t kb_note[27], kb_trk[27];  /* per key: the note it started and on which track */
+/* SIMPLE: each track's last chord (the notes played together on its keys): the step keys play it and write it into steps, so
+ * the root is found by ear, then steps are punched in */
+static uint8_t lastn[NTRK][4], lastc[NTRK], lheld[NTRK];
 static uint8_t in_key;                   /* the key (+ 1) whose notes go into input_on now (key_on), 0: none (MIDI IN) */
 static uint8_t kb_vel = 100;             /* 1.5.6 (#84): the keys' velocity (MENU > SELECT VEL, ui_input.c sel_play) */
 /* #191: where each track's held[i] came from, so the arp maps it again as it plays (arp_list: TRN, ROOT, SCALE, QNT as
@@ -91,8 +94,19 @@ enum { GK_ACC = NLANE, GK_PGDN, GK_PGUP };       /* black keys 9..11 on the grid
 /* the DRUM grid: key k's lane note (black keys 1..8), KB_SILENT for the rest. Out of line (1.5): called from the audio
  * ISR's key loop only on a key change; inlined there, its % 12 and key_place's loop sat in the ISR's static cost
  * (tests/target_budget.py) for a path that runs once per key press */
+/* SIMPLE: the note a track's step key plays and writes: its machine's (SYN BD SD HH CYM PERC; the track's TUNE moves it) */
+static uint8_t grid_note_of(const track_t *t)
+{
+    static const uint8_t N[6] = {48, 36, 50, 84, 72, 48};
+    return N[(uint32_t)t->p[P_E7] % 6u];
+}
+static uint32_t grid_chord(const track_t *t, uint8_t *out);
 static __attribute__((noinline)) uint8_t grid_key_note(uint32_t k)
 {
+#if FELUCCA_SIMPLE
+    uint8_t c[4];
+    return key_black(k) && key_place(k) < NTRK ? (grid_chord(&trk[key_place(k)], c), c[0]) : KB_SILENT;
+#endif
     return key_black(k) && key_place(k) < NLANE ? DRUM_LANE_NOTE[key_place(k)] : KB_SILENT;
 }
 /* GLO > SONG (song.grid 3): key k's slot, the white keys A3 B3 C4 D4 (white places 2..5: keys 4 6 7 9 from F) A..D; -1 = a
@@ -707,9 +721,23 @@ static __attribute__((noinline)) void perf_key_remap(void)
 
 /* key k plays kb_note[k] on track t: its chord (chord.c; the note alone with CHRD OFF). A note another key
  * holds already sounds: it is not started again (nor sent to MIDI OUT); the key keeps its notes */
+/* SIMPLE: the notes the step keys use for track t: a melodic track (SYN) its last chord (C3 before any), a drum machine its own note */
+static uint32_t grid_chord(const track_t *t, uint8_t *out)
+{
+    uint32_t i = trk_index(t), n = 0;
+    static const uint8_t N[6] = {48, 36, 50, 84, 72, 48};
+    if (t->p[P_E7] % 6 == 0 && lastc[i % NTRK]) {
+        for (; n < lastc[i % NTRK]; n++)
+            out[n] = lastn[i % NTRK][n];
+        return n;
+    }
+    out[0] = N[(uint32_t)t->p[P_E7] % 6u];
+    return 1;
+}
 static void key_on(uint32_t k, track_t *t)
 {
-    uint32_t n = chord_build(t, kb_note[k], kb_chord[k]), i, mc = trk_midi_ch(trk_index(t)), vel = kb_vel;
+    uint32_t n = FELUCCA_SIMPLE && song.grid == 1u ? grid_chord(t, kb_chord[k]) : chord_build(t, kb_note[k], kb_chord[k]);
+    uint32_t i, mc = trk_midi_ch(trk_index(t)), vel = kb_vel;
     kb_chn[k] = 0;
     in_key = (uint8_t)(k + 1u);                     /* (the arp keeps the key: arp_add) */
     for (i = 0; i < n; i++) {
@@ -722,11 +750,29 @@ static void key_on(uint32_t k, track_t *t)
     in_key = 0;
     kb_chn[k] = (uint8_t)n;
     last_note = kb_note[k];                         /* (step entry, the SAMPLE zone: the key's note) */
+#if FELUCCA_SIMPLE
+    if (song.grid != 1u) {                          /* played on the keys: the track's last chord (a new one when none is held) */
+        uint32_t ti = trk_index(t) % NTRK, j;
+        if (!lheld[ti])
+            lastc[ti] = 0;
+        for (i = 0; i < n; i++) {
+            for (j = 0; j < lastc[ti] && lastn[ti][j] != kb_chord[k][i]; j++)
+                ;
+            if (j == lastc[ti] && lastc[ti] < 4u)
+                lastn[ti][lastc[ti]++] = kb_chord[k][i];
+        }
+        lheld[ti]++;
+    }
+#endif
 }
 
 /* key k is up: the notes it started end, but those another key still holds */
 static void key_off(uint32_t k, track_t *t)
 {
+#if FELUCCA_SIMPLE
+    if (lheld[trk_index(t) % NTRK] && song.grid != 1u)
+        lheld[trk_index(t) % NTRK]--;
+#endif
     uint32_t n = kb_chn[k], i, mc = trk_midi_ch(trk_index(t));
     kb_chn[k] = 0;
     for (i = 0; i < n; i++) {
@@ -756,6 +802,12 @@ static __attribute__((noinline)) void kb_lat(uint32_t k)
 }
 #endif
 
+#if FELUCCA_SIMPLE
+/* OCT+ held and one of the first four white keys: that track's mute. A tap toggles it; held (350 ms) it is only for as
+ * long as the key is down */
+static uint8_t kb_octup, mt_used, kb_mt[27], mt_prev[4];
+static uint32_t mt_t0[4];
+#endif
 static void keyboard_block(void)
 {
     uint32_t cur = fm1_in.notes, ch, k;
@@ -774,21 +826,46 @@ static void keyboard_block(void)
     }
     lay = (fm1_in.buttons & kb_mask) || kb_lock;  /* (#83: kb_lock, a layer locked open with no button held) */
     fx = (fm1_in.buttons & perf_mask) || (kb_lock & 2u);
-    mute = song.grid == 2u ? ~0u : song.grid == 3u ? SONG_KEYS : 0u;   /* the keys that never sound here */
+    mute = song.grid == 2u || song.grid == 4u ? ~0u : song.grid == 3u ? SONG_KEYS : 0u;   /* the keys that never sound here */
     for (k = 0; k < 27u; k++) {
         if (!((ch >> k) & 1u))
             continue;
         if ((cur >> k) & 1u) {                    /* the selected track; the key-up goes to the same one */
             kb_trk[k] = song.sel;
+#if FELUCCA_SIMPLE
+            if (song.grid == 1u && key_black(k) && key_place(k) < NTRK)
+                kb_trk[k] = (uint8_t)key_place(k);          /* the step keys: black key n plays track n */
+#endif
             if (kb_asleep) {                      /* (SCREEN OFF: the wake press is swallowed) */
                 kb_note[k] = KB_SILENT;
                 continue;
             }
+#if FELUCCA_SIMPLE
+            if (kb_octup && !key_black(k) && key_place(k) < NTRK) {
+                uint32_t tr = key_place(k);
+                kb_note[k] = KB_SILENT;
+                kb_layer |= 1u << k;
+                kb_mt[k] = (uint8_t)(tr + 1u);
+                mt_prev[tr] = (uint8_t)trk[tr].p[P_MUTE];
+                mt_t0[tr] = fm1_ms;
+                trk[tr].p[P_MUTE] = (int16_t)!mt_prev[tr];
+                mt_used = 1;
+                continue;
+            }
+#endif
             if (lay) {                            /* a layer's button held (or locked): the key is the layer's */
                 kb_note[k] = KB_SILENT;           /* (ui_layer.c), with FX an effect (perform.c) */
                 kb_layer |= 1u << k;
                 if (fx)
                     perf_key_press(k, 1);
+                continue;
+            }
+            if (song.grid == 4u && !key_black(k) && key_place(k) >= 12u && key_place(k) < 16u) {   /* PERF: the beat repeat keys */
+                uint32_t e = key_place(k) - 12u;                    /* PF_R8, PF_R16, PF_R32, PF_REV */
+                kb_note[k] = KB_SILENT;
+                kb_layer |= 1u << k;
+                kb_fx[k] = (uint8_t)(e + 1u);
+                perf_press(e, 1);
                 continue;
             }
             if ((mute >> k) & 1u)                 /* NAME (ui_name.c): every key types, none sounds; SONG: A..D */
@@ -806,6 +883,15 @@ static void keyboard_block(void)
         } else {
             if ((kb_layer >> k) & 1u) {
                 kb_layer &= ~(1u << k);
+#if FELUCCA_SIMPLE
+                if (kb_mt[k]) {
+                    uint32_t tr = kb_mt[k] - 1u;
+                    kb_mt[k] = 0;
+                    if (fm1_ms - mt_t0[tr] > 350u)         /* held: a temporary mute, back as it was */
+                        trk[tr].p[P_MUTE] = (int16_t)mt_prev[tr];
+                    continue;
+                }
+#endif
                 perf_key_press(k, 0);
                 continue;
             }

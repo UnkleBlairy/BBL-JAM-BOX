@@ -130,6 +130,7 @@ static void rp_put(uint32_t f, uint32_t v)
  * (ui_draw.c style_apply) */
 #define ui_style (favorites.factory[15][29])
 static void draw_gaps(uint32_t y, uint32_t h);        /* (ui_draw.c) */
+static int dial_page(void);                           /* (ui_graph.c) EDIT / FILTER pages drawn as four big dials */
 
 static uint8_t sync_reload;                  /* engine / preset / project / user preset loaded: editor RELOAD push */
 
@@ -162,6 +163,7 @@ static struct {
     uint8_t bank;                /* SEQ: 16-step bank (follows the cursor) */
     uint8_t cursor;              /* SEQ: step being edited (STEP page KNOB 1 moves it) */
     uint8_t entry_open;          /* SEQ: keys held since the first press of this entry */
+    uint8_t sgrid;               /* SIMPLE: SEQ toggles the step keys: white keys = steps, black keys 1..4 = tracks */
     uint8_t lane;                /* SEQ > STEP on a DRUM track (the grid): the lane the keys and KNOB 3 / 4 edit */
     uint8_t plk_src;             /* parameter locks (ui_input.c lock_*): the sound page whose KNOB 1..4 a step held
                                   * locks, PAGES index + 1; 0 = HOME's four */
@@ -396,8 +398,8 @@ static uint32_t large_kind(void)
 }
 /* the geometry of the page shown: the cards' height, the panel's top and height */
 static uint32_t card_h(void) { return large_kind() == LK_TALL ? LG_CARD_H : CARD_H; }
-static uint32_t graph_y(void) { return large_kind() == LK_TALL ? LG_Y_GRAPH : Y_GRAPH; }
-static uint32_t graph_h(void) { return large_kind() == LK_TALL ? LG_H_GRAPH : H_GRAPH; }
+static uint32_t graph_y(void) { return dial_page() ? Y_LABEL : large_kind() == LK_TALL ? LG_Y_GRAPH : Y_GRAPH; }
+static uint32_t graph_h(void) { return dial_page() ? Y_SEP_END + 126u - Y_LABEL : large_kind() == LK_TALL ? LG_H_GRAPH : H_GRAPH; }
 static int large_face_has(const char *s)                /* every glyph of s in the sparse L face */
 {
     for (; *s; s++)
@@ -413,7 +415,7 @@ static int32_t ink_w(const aafont_t *f, const char *s)
 }
 
 /* the quick layers (ui_layer.c): a button held, the keys and KNOB 1..4 are its shortcuts, its map over the page */
-enum { LAYER_NONE, LAYER_FX, LAYER_GLO, LAYER_SCL, LAYER_EDIT, LAYER_SEQ, LAYER_REC, LAYER_N };
+enum { LAYER_NONE, LAYER_FX, LAYER_GLO, LAYER_SCL, LAYER_EDIT, LAYER_SEQ, LAYER_REC, LAYER_ENV, LAYER_N };
 static void draw_layer(void);
 static const char *layer_head(void);
 static int layer_locked(void);
@@ -425,6 +427,20 @@ static uint32_t layer_btn(void);
  * track's (its patch's operators, ui_fm6op.c) */
 static int page_visible(uint32_t i)
 {
+#if FELUCCA_SIMPLE                                    /* Digitone style: no chords, scales, slicer, insert, mod matrix, voice
+                                                       * or operator pages; SYN 1 / SYN 2 / FILTER / AMP / LFO and the globals */
+    {
+        static const char *const OFF[] = {"SCL", "CHORD", "SLICER", "INSERT", "INSERT 2", "OP1 ENV", "OP2 ENV",
+                                          "OP3 ENV", "OP4 ENV", "OP LEVEL", "VOICE", "VOICE 2", "VOICE 3", "LANES",
+                                          "LANES 2", "SLICES", "OPERATOR", "OP ENV", "OPERATOR 2", "MOD", "DLY", "REVERB", "CHORUS", "LFO 2",
+                                          "ARP", "ARP 2"};
+        uint32_t k;
+        for (k = 0; k < NELEM(OFF); k++)
+            if (str_eq(PAGES[i].title, OFF[k]))
+                return 0;
+        return 1;
+    }
+#endif
     if (PAGES[i].scope == SC_TRACK && PAGES[i].id[0] >= P_LN0 && PAGES[i].id[0] <= P_LN7)
         return TSEL->eng_req % NENGINES == ENGI_DRUM;
     if (PAGES[i].id[0] == P_FTYPE)                    /* FILTER (1.5, #104): ANALOG's */
@@ -601,6 +617,345 @@ static int detail_on(void)
 /* GLO > SONG (1.2): the white keys A B C D (A3 B3 C4 D4, white places 2..5: seq.c song_key) set the selected cell's slot;
  * they do not sound there, the other keys play as anywhere (seq.c keyboard_block: song.grid 3) */
 static int song_keys_on(void) { return !ui.home && !ui.menu && !ui.confirm && !ui.layer && cur_page()->graph == GR_SONG; }
+
+/* SIMPLE: the step keys (SEQ tapped): the page stays where it is; the keys are the 16 steps of the selected track (white)
+ * and the 4 tracks (black: they select and play it) */
+static int pm_page(void);
+static int sgrid_on(void) { return FELUCCA_SIMPLE && ui.sgrid && !ui.menu && !ui.confirm && !pm_page(); }   /* (PERF: its own keys) */
+
+/* ------------------------------------------------- performance macros --- */
+/* GLO is the performance page. Its black keys pick the track; its 16 white keys are three groups:
+ *   keys 1..8   the macros: punch-in settings. Hold one and turn knobs, on any page: each parameter turned is kept in that
+ *               macro (up to PM_N) and sounds while the key is held; let go, everything returns. OCT- with it held empties it.
+ *   keys 9..12  the fade time, 1/16, 1/8, 1 bar, 4 bars: it stays chosen (press it again for none). None: a macro is
+ *               instant. The time is the tempo's (the sequencer's 1/16 is a quarter of a beat).
+ *   keys 13..16 the master beat repeat: REPEAT 1/8, 1/16, 1/32 and REVERSE of the FX layer (perform.c), held (seq.c).
+ * How many macro keys are held says what happens (the FUNC knob, KNOB 1: HOLD, CYCLE, PINGPONG):
+ *   one     fades in, from the sound as it was to the macro's values, over the fade time
+ *   two     fades from the first pressed to the second
+ *   three+  steps through the held macros, one per fade time (the ARP knob, KNOB 2: UP DOWN UPDN RANDOM ORDER)
+ * HOLD goes there once and stays; CYCLE goes there and starts again; PINGPONG goes there and back. Let go and every
+ * parameter jumps back to what it was. */
+#define PM_N 8u                                          /* parameters in a macro */
+#define PM_NM 8u                                         /* macros */
+#define PM_B 32u                                         /* parameters moving at once (the held macros' together) */
+typedef struct { uint8_t n; uint8_t trk[PM_N], id[PM_N]; int16_t val[PM_N]; } perf_mac_t;
+static perf_mac_t pm_mac[PM_NM];                         /* one set, global: a macro can move parameters on any tracks */
+static struct {
+    uint8_t n;                                           /* macro keys held */
+    uint8_t mac[PM_NM], key[PM_NM];                      /* .. in the order pressed: the macro, its key */
+    uint32_t t0;                                         /* fm1_ms when the held set last changed */
+    uint8_t nb, btrk[PM_B], bid[PM_B], bedit[PM_B];      /* the parameters moving, edited (turned while held: left alone) */
+    int16_t bval[PM_B];                                  /* .. and what they were */
+} pm_h;
+static uint8_t pm_fade, pm_func, pm_arp;
+static uint8_t pm_rel;                                   /* the release fade, 0 none, 1..3 = 1/4 note, a bar, 4 bars: a let-go macro (and a beat repeat) glides out */
+static struct { uint8_t n, trk[32], id[32]; int16_t from[32], to[32]; uint32_t t0, dur; } pm_rl;   /* the parameters gliding back */
+static uint8_t pm_ui_a = 255, pm_ui_c = 255;             /* what the screen shows: the macro fading from, the one fading to / playing in the arp */
+static int16_t pm_ui_u;                                  /* .. how far (0..1024) */                 /* 0 none, 1..4 the fade time; FUNC 0..2; ARP 0..4 */
+static int pm_page(void) { return !ui.home && !ui.menu && !ui.confirm && !ui.layer && cur_page()->graph == GR_PERF; }
+/* the macro's parameter: track tr < NTRK, or tr == NTRK: a global (BPM, SWING) */
+static int16_t *pm_ptr(uint32_t tr, uint32_t id)
+{
+    return tr >= NTRK ? &song.g[id % G_COUNT] : &trk[tr].p[id];
+}
+static int pm_find(const perf_mac_t *m, uint32_t tr, uint32_t id)
+{
+    uint32_t i;
+    for (i = 0; i < m->n; i++)
+        if (m->trk[i] == tr && m->id[i] == id)
+            return (int)i;
+    return -1;
+}
+static int pm_bfind(uint32_t tr, uint32_t id)
+{
+    uint32_t i;
+    for (i = 0; i < pm_h.nb; i++)
+        if (pm_h.btrk[i] == tr && pm_h.bid[i] == id)
+            return (int)i;
+    return -1;
+}
+/* the value vp of track t is moving under a held macro: its dial shows inverted (ui_graph.c graph_dials) */
+static int pm_altered(const track_t *t, const int16_t *vp)
+{
+    if (!pm_h.n || !vp)
+        return 0;
+    if (vp >= song.g && vp < song.g + G_COUNT)
+        return pm_bfind(NTRK, (uint32_t)(vp - song.g)) >= 0;
+    if (vp < t->p || vp >= t->p + P_COUNT)
+        return 0;
+    return pm_bfind((uint32_t)(t - trk), (uint32_t)(vp - t->p)) >= 0;
+}
+/* parameter b of the moving ones takes the value of macro m (-1: what it was) */
+static int32_t pm_mv(int m, uint32_t b)
+{
+    if (m >= 0) {
+        int i = pm_find(&pm_mac[m], pm_h.btrk[b], pm_h.bid[b]);
+        if (i >= 0)
+            return pm_mac[m].val[i];
+    }
+    return pm_h.bval[b];
+}
+static void pm_put(uint32_t b, int32_t v)
+{
+    int16_t *vp = pm_ptr(pm_h.btrk[b], pm_h.bid[b]);
+    if (*vp != v)
+        *vp = (int16_t)v;
+}
+static int pm_badd(uint32_t tr, uint32_t id, int16_t was)
+{
+    int b = pm_bfind(tr, id);
+    if (b >= 0)
+        return b;
+    if (pm_h.nb >= PM_B)
+        return -1;
+    b = (int)pm_h.nb++;
+    pm_h.btrk[b] = (uint8_t)tr;
+    pm_h.bid[b] = (uint8_t)id;
+    pm_h.bedit[b] = 0;
+    pm_h.bval[b] = was;
+    return b;
+}
+static uint32_t pm_step_ms(void) { return beat_samples() * 250u / (uint32_t)FS; }   /* a 1/16, ms */
+static uint32_t pm_time(void)                           /* the fade time, ms; none (0) is instant for one macro */
+{
+    static const uint8_t ST[4] = {1, 2, 16, 64};
+    return pm_fade ? pm_step_ms() * ST[(pm_fade - 1u) & 3u] : 0u;
+}
+static uint32_t pm_rel_ms(void)                         /* the release time, ms (0: none) */
+{
+    static const uint8_t ST[3] = {2, 4, 16};
+    return pm_rel ? pm_step_ms() * ST[(pm_rel - 1u) % 3u] : 0u;
+}
+static void pm_rl_rebase(void)                           /* the glide starts again from where each value is */
+{
+    uint32_t i;
+    for (i = 0; i < pm_rl.n; i++)
+        pm_rl.from[i] = *pm_ptr(pm_rl.trk[i], pm_rl.id[i]);
+    pm_rl.t0 = fm1_ms;
+}
+static void pm_rl_snap(uint32_t tr, uint32_t id)         /* a macro takes a parameter that is gliding back: it is back */
+{
+    uint32_t i;
+    for (i = 0; i < pm_rl.n; i++)
+        if (pm_rl.trk[i] == tr && pm_rl.id[i] == id) {
+            *pm_ptr(tr, id) = pm_rl.to[i];
+            pm_rl.n--;
+            pm_rl.trk[i] = pm_rl.trk[pm_rl.n]; pm_rl.id[i] = pm_rl.id[pm_rl.n];
+            pm_rl.from[i] = pm_rl.from[pm_rl.n]; pm_rl.to[i] = pm_rl.to[pm_rl.n];
+            return;
+        }
+}
+static void pm_rl_step(void)
+{
+    uint32_t i, el = fm1_ms - pm_rl.t0;
+    if (!pm_rl.n)
+        return;
+    for (i = 0; i < pm_rl.n; i++)
+        *pm_ptr(pm_rl.trk[i], pm_rl.id[i]) = (int16_t)(el >= pm_rl.dur ? pm_rl.to[i]
+            : pm_rl.from[i] + (int32_t)(((int32_t)pm_rl.to[i] - pm_rl.from[i]) * (int32_t)(el * 1024u / pm_rl.dur) >> 10));
+    if (el >= pm_rl.dur)
+        pm_rl.n = 0;
+}
+/* the held macros in the order the ARP wants, into seq[]; returns how many */
+static uint32_t pm_order(uint8_t *seq)
+{
+    uint32_t i, j, n = pm_h.n, c = 0;
+    uint8_t tmp[PM_NM];
+    for (i = 0; i < n; i++)
+        tmp[i] = pm_h.mac[i];
+    if (pm_arp != 4u)                                    /* sorted up, unless the order pressed */
+        for (i = 1; i < n; i++)
+            for (j = i; j > 0 && tmp[j - 1u] > tmp[j]; j--) {
+                uint8_t x = tmp[j];
+                tmp[j] = tmp[j - 1u];
+                tmp[j - 1u] = x;
+            }
+    if (pm_arp == 1u)
+        for (i = 0; i < n; i++)
+            seq[c++] = tmp[n - 1u - i];
+    else {
+        for (i = 0; i < n; i++)
+            seq[c++] = tmp[i];
+        if (pm_arp == 2u)
+            for (i = n >= 2u ? n - 2u : 0u; i > 0; i--)
+                seq[c++] = tmp[i];
+    }
+    return c;
+}
+/* the moving parameters at this moment: called every input pass */
+static void pm_update(void)
+{
+    uint32_t el, T, i, n = pm_h.n;
+    pm_rl_step();
+    perf_rel_sl = pm_rel ? (int32_t)(32768u / (pm_rel_ms() * (uint32_t)FS / 1000u + 1u) + 1u) : 0;
+    if (!n) {
+        pm_ui_c = pm_ui_a = 255;
+        return;
+    }
+    el = fm1_ms - pm_h.t0;
+    T = pm_time();
+    if (n <= 2u) {                                       /* a fade: from A (what it was, or the first) to B */
+        int a = n == 2u ? (int)pm_h.mac[0] : -1, c = (int)pm_h.mac[n - 1u];
+        int32_t u;                                       /* 0..1024 */
+        if (!T)
+            u = n == 2u ? 0 : 1024;                      /* none: one macro is at once; two with no time hold the first */
+        else if (pm_func == 0u)
+            u = el >= T ? 1024 : (int32_t)(el * 1024u / T);
+        else if (pm_func == 1u)
+            u = (int32_t)((el % T) * 1024u / T);
+        else {
+            uint32_t ph = el % (2u * T);
+            u = (int32_t)((ph < T ? ph : 2u * T - ph) * 1024u / T);
+        }
+        pm_ui_a = (uint8_t)a;
+        pm_ui_c = (uint8_t)c;
+        pm_ui_u = (int16_t)u;
+        for (i = 0; i < pm_h.nb; i++) {
+            int32_t va, vb;
+            if (pm_h.bedit[i])
+                continue;
+            va = pm_mv(a, i);
+            vb = pm_mv(c, i);
+            pm_put(i, va + (((vb - va) * u) >> 10));
+        }
+    } else {                                             /* an arpeggio: a macro each fade time */
+        uint8_t seq[2u * PM_NM];
+        uint32_t cnt = pm_order(seq), step = el / (T ? T : pm_step_ms() * 2u), idx;
+        if (pm_arp == 3u) {                              /* RANDOM: a hash of the step */
+            uint32_t h = step * 2654435761u + 0x9E3779B9u;
+            h ^= h >> 15;
+            h *= 2246822519u;
+            h ^= h >> 13;
+            idx = (h >> 8) % cnt;
+        } else if (pm_func == 0u)
+            idx = step < cnt ? step : cnt - 1u;
+        else if (pm_func == 1u)
+            idx = step % cnt;
+        else {
+            uint32_t ph = cnt > 1u ? step % (2u * cnt - 2u) : 0u;
+            idx = ph < cnt ? ph : 2u * cnt - 2u - ph;
+        }
+        pm_ui_a = 255;
+        pm_ui_c = seq[idx];
+        pm_ui_u = (int16_t)(((el % (T ? T : pm_step_ms() * 2u)) * 1024u) / (T ? T : pm_step_ms() * 2u));
+        for (i = 0; i < pm_h.nb; i++)
+            if (!pm_h.bedit[i])
+                pm_put(i, pm_mv((int)seq[idx], i));
+    }
+}
+/* a macro key goes down */
+static void pm_begin(uint32_t mac, uint32_t key)
+{
+    perf_mac_t *m;
+    uint32_t i;
+    if (pm_h.n >= PM_NM || mac >= PM_NM)
+        return;
+    for (i = 0; i < pm_h.n; i++)
+        if (pm_h.mac[i] == mac)
+            return;
+    m = &pm_mac[mac];
+    pm_h.mac[pm_h.n] = (uint8_t)mac;
+    pm_h.key[pm_h.n] = (uint8_t)key;
+    pm_h.n++;
+    for (i = 0; i < m->n; i++) {
+        pm_rl_snap(m->trk[i], m->id[i]);
+        pm_badd(m->trk[i], m->id[i], *pm_ptr(m->trk[i], m->id[i]));
+    }
+    pm_h.t0 = fm1_ms;
+    pm_update();
+}
+/* every parameter back to what it was */
+static void pm_restore(uint32_t only_unused)
+{
+    uint32_t i, j, w = 0, rel = pm_rel_ms();
+    if (rel)
+        pm_rl_rebase();
+    for (i = 0; i < pm_h.nb; i++) {
+        int used = 0;
+        if (only_unused)
+            for (j = 0; j < pm_h.n && !used; j++)
+                used = pm_find(&pm_mac[pm_h.mac[j]], pm_h.btrk[i], pm_h.bid[i]) >= 0;
+        if (used) {                                      /* kept: moved down to the next place */
+            pm_h.btrk[w] = pm_h.btrk[i]; pm_h.bid[w] = pm_h.bid[i]; pm_h.bedit[w] = pm_h.bedit[i]; pm_h.bval[w] = pm_h.bval[i];
+            w++;
+        } else if (rel && pm_rl.n < 32u && *pm_ptr(pm_h.btrk[i], pm_h.bid[i]) != pm_h.bval[i]) {   /* glides back */
+            uint32_t r = pm_rl.n++;
+            pm_rl.trk[r] = pm_h.btrk[i]; pm_rl.id[r] = pm_h.bid[i];
+            pm_rl.from[r] = *pm_ptr(pm_h.btrk[i], pm_h.bid[i]); pm_rl.to[r] = pm_h.bval[i];
+        } else
+            *pm_ptr(pm_h.btrk[i], pm_h.bid[i]) = pm_h.bval[i];
+    }
+    if (rel) {
+        pm_rl.t0 = fm1_ms;
+        pm_rl.dur = rel;
+    }
+    pm_h.nb = (uint8_t)w;
+}
+/* a macro key comes up (the i-th held) */
+static void pm_drop(uint32_t i)
+{
+    uint32_t j;
+    for (j = i; j + 1u < pm_h.n; j++) {
+        pm_h.mac[j] = pm_h.mac[j + 1u];
+        pm_h.key[j] = pm_h.key[j + 1u];
+    }
+    pm_h.n--;
+    pm_restore(pm_h.n ? 1u : 0u);                        /* what no held macro holds any more goes back; all of it with the last */
+    if (!pm_h.n)
+        pm_h.nb = 0;
+    pm_h.t0 = fm1_ms;
+}
+static void pm_clear(void)                               /* OCT-: the macro held (alone) is emptied; its key stays down */
+{
+    if (pm_h.n != 1u)
+        return;
+    pm_restore(0u);
+    pm_mac[pm_h.mac[0]].n = 0;
+    pm_h.nb = 0;
+}
+/* the globals a macro can hold: the tempo and swing, the delay and the reverb, the master DJ filter and comb (not the actions, the clock mode, the names) */
+static int pm_global_ok(uint32_t id)
+{
+    return id == G_BPM || id == G_SWING || (id >= G_DTIME && id <= G_CDEPTH) || id == G_MIDI || id == G_SYNC || id == G_INFO ||
+           id == G_RTYPE;
+}
+/* a knob turned the value vp of track t from `old`: with one macro key down it is kept in that macro, and left alone by the fade */
+static void pm_record(track_t *t, int16_t *vp, int16_t old)
+{
+    perf_mac_t *m;
+    uint32_t id, tr = (uint32_t)(t - trk);
+    int i, b;
+    if (pm_h.n != 1u || *vp == old)
+        return;
+    if (vp >= song.g && vp < song.g + G_COUNT) {         /* a global: only the tempo and the swing */
+        id = (uint32_t)(vp - song.g);
+        tr = NTRK;
+        if (!pm_global_ok(id))
+            return;
+    } else {
+        if (vp < t->p || vp >= t->p + P_COUNT)
+            return;
+        id = (uint32_t)(vp - t->p);
+        if (!motion_param(id) && !(id >= P_M1SRC && id <= P_M4AMT) && id != P_FTYPE && id != P_ESYNC)   /* (a macro can hold the LFO's DEST and AMT and the filter TYPE too) */
+            return;
+    }
+    m = &pm_mac[pm_h.mac[0]];
+    i = pm_find(m, tr, id);
+    if (i < 0) {
+        if (m->n >= PM_N) {
+            ui_message("MACRO FULL");
+            return;
+        }
+        i = (int)m->n++;
+        m->trk[i] = (uint8_t)tr;
+        m->id[i] = (uint8_t)id;
+    }
+    b = pm_badd(tr, id, old);
+    if (b >= 0)
+        pm_h.bedit[b] = 1;
+    m->val[i] = *vp;
+}
 
 /* black key place p (seq.c key_place) held, 0 = not */
 static int black_held(uint32_t p)
@@ -800,6 +1155,19 @@ static void go_home(void)
 static void home_tap(void)
 {
     uint32_t i = ui.page + 1u;
+#if FELUCCA_SIMPLE                                    /* no HOME page: VOLUME (the MIXER) -> CLOCK -> back to the OSC pages */
+    if (!ui.home && cur_page()->fam == FAM_TRK) {
+        if (i < NPAGES && PAGES[i].fam == FAM_TRK)
+            open_family(FAM_TRK);
+        else
+            open_family(FAM_EDIT);
+    } else {
+        ui.home = 0;
+        ui.fam_last[FAM_TRK] = 0;
+        open_family(FAM_TRK);
+    }
+    return;
+#endif
     if (ui.home) {
         ui.fam_last[FAM_TRK] = 0;                     /* (open_family: the family's first, the MIXER) */
         open_family(FAM_TRK);
@@ -1334,6 +1702,21 @@ static void fm4_load_preset(track_t *t, uint32_t k)
 
 static void set_engine_of(track_t *t, uint32_t ei);
 /* preset pi of the engine the track asked for: the sound only (not the steps, not param_kept) */
+#if FELUCCA_SIMPLE
+/* MACH turned: the machine's own starting sound (its factory preset's values and envelope), the rest of the track kept */
+static void machine_defaults(track_t *t)
+{
+    static const uint8_t PI[6] = {0, 8, 9, 10, 12, 13};
+    const preset_t *pr = &DIGITAL_PRESETS[PI[t->p[P_E7] % 6]];
+    uint32_t i;
+    for (i = 0; i < 7u; i++)
+        t->p[P_E0 + i] = (int16_t)pr->e[i];
+    t->p[P_ATK] = pr->env[0];
+    t->p[P_DEC] = pr->env[1];
+    t->p[P_SUS] = pr->env[2];
+    t->p[P_REL] = pr->env[3];
+}
+#endif
 static void apply_preset_to(track_t *t, uint32_t pi)
 {
     const engine_t *e = ENGINES[t->eng_req % NENGINES];

@@ -94,6 +94,7 @@
 #include "menu_items.c"          /* MENU's rows and settings (ui_menu.c, editor_menu.c) */
 #include "icons.c"               /* parameter icons (FELUCCA_ICONS), used by ui_draw.c */
 #include "ui_graph.c"
+#include "ui_gb.c"               /* stage 15: the groovebox look (two-tone, pixel pass) */
 #include "ui_draw.c"
 #include "ui_menu.c"
 #include "ui_input.c"

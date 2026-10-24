@@ -60,30 +60,47 @@
 
 /* ------------------------------------------------- DIGITAL's tables --- */
 static const char *const N_FMALG[] = {"1", "2", "3", "4", "5", "6", "7", "8"};
+static const char *const N_MACH[] = {"SYN", "BD", "SD", "HH", "CYM", "PERC"};
 static const char *const N_RATIO[] = {".5", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "14", "16"};
 
 /* the factory presets (the stores' preset numbers of engine 1 index this table) */
 static const preset_t DIGITAL_PRESETS[] = {
     /* ALG R2 R3 R4 INDEX MODDEC FDBK - */
-    {"E.PIANO", {4, 1, 1, 14, 70, 55, 0, 0}, {0, 80, 40, 60}, 0, 0, FX(0, 50, 25, 35), PAT(6)},
-    {"BELL", {4, 8, 1, 4, 90, 70, 0, 0}, {0, 95, 0, 85}, 0, 0, FX(0, 0, 30, 70), PAT(7)},
-    {"BASS", {0, 1, 1, 1, 48, 40, 8, 0}, {0, 60, 70, 25}, 0, 1, FX(0, 0, 10, 10), PAT(2)},
-    {"BRASS", {0, 1, 1, 1, 70, 40, 20, 0}, {40, 70, 100, 40}, 20, 0, FX(0, 20, 20, 40), PAT(6)},
-    {"ORGAN", {7, 2, 3, 4, 0, 0, 0, 0}, {2, 60, 127, 20}, 0, 0, FX(10, 40, 0, 30), PAT(6)},
-    {"PAD", {5, 2, 1, 3, 40, 90, 10, 0}, {80, 90, 110, 95}, 0, 0, FX(0, 60, 30, 70), PAT(5)},
-    {"MARIMBA", {4, 4, 1, 1, 60, 30, 0, 0}, {0, 80, 0, 60}, 0, 0, FX(0, 0, 25, 40), PAT(3)},
-    {"FUNK KEY", {3, 1, 3, 5, 90, 25, 20, 0}, {0, 45, 30, 30}, 0, 0, FX(0, 20, 30, 20), PAT(6)},
+    {"INIT", {-56, 8, 8, 8, 70, 50, 0, 0}, {0, 70, 60, 40}, 0, 0, FX(0, 0, 0, 0), PAT(0)},
+    {"BELL", {8, 64, 8, 32, 90, 70, 0, 0}, {0, 95, 0, 85}, 0, 0, FX(0, 0, 0, 0), PAT(7)},
+    {"BASS", {-56, 8, 8, 8, 48, 40, 8, 0}, {0, 60, 70, 25}, 0, 1, FX(0, 0, 0, 0), PAT(2)},
+    {"BRASS", {-56, 8, 8, 8, 70, 40, 20, 0}, {40, 70, 100, 40}, 0, 0, FX(0, 0, 0, 0), PAT(6)},
+    {"ORGAN", {56, 16, 24, 32, 0, 0, 0, 0}, {2, 60, 127, 20}, 0, 0, FX(0, 0, 0, 0), PAT(6)},
+    {"PAD", {24, 16, 8, 24, 40, 90, 10, 0}, {80, 90, 110, 95}, 0, 0, FX(0, 0, 0, 0), PAT(5)},
+    {"MARIMBA", {8, 32, 8, 8, 60, 30, 0, 0}, {0, 80, 0, 60}, 0, 0, FX(0, 0, 0, 0), PAT(3)},
+    {"FUNK KEY", {-8, 8, 24, 40, 90, 25, 20, 0}, {0, 45, 30, 30}, 0, 0, FX(0, 0, 0, 0), PAT(6)},
+    /* the FM drum machines (E7 = MACH): E4..E6 are their macros (eng_digital.c MACH_D) */
+    {"BD", {0, 64, 60, 0, 0, 0, 0, 1}, {0, 100, 0, 40}, 0, 0, FX(0, 0, 0, 0), PAT(0)},
+    {"SD", {-24, 70, 71, 16, 35, 0, 0, 2}, {0, 84, 0, 40}, 0, 0, FX(0, 0, 0, 0), PAT(0)},
+    {"CH", {-44, 95, 90, 29, 103, 0, 0, 3}, {0, 58, 0, 30}, 0, 0, FX(0, 0, 0, 0), PAT(0)},
+    {"OH", {-44, 95, 90, 29, 103, 0, 0, 3}, {0, 95, 0, 60}, 0, 0, FX(0, 0, 0, 0), PAT(0)},
+    {"CYM", {0, 117, 70, 42, 47, 0, 0, 4}, {0, 108, 0, 70}, 0, 0, FX(0, 0, 0, 0), PAT(0)},
+    {"TOM", {0, 8, 50, 70, 30, 0, 0, 5}, {0, 92, 0, 40}, 0, 0, FX(0, 0, 0, 0), PAT(0)},
 };
-#define FM4_NPRESETS 8u
+#define FM4_NPRESETS 14u
 _Static_assert(NELEM(DIGITAL_PRESETS) == FM4_NPRESETS, "DIGITAL presets");
 /* DIGITAL preset k -> the FM6 factory preset (= its PTCH) that covers that sound */
-static const uint8_t FM4_TO_FM6[FM4_NPRESETS] = {0, 1, 2, 3, 6, 4, 5, 7};
+static const uint8_t FM4_TO_FM6[FM4_NPRESETS] = {0, 1, 2, 3, 6, 4, 5, 7, 0, 0, 0, 0, 0, 0};
 
 /* EDIT: the ranges are the stores' (a value of engine 1 is clamped to them before it converts) */
+#if FELUCCA_SIMPLE
+/* SIMPLE: E0 ALG / TUNE -64..63 (SYN: (E0 + 64) / 16 = the algorithm 0..7), E1..E3 the ratios in 1/8 steps (8 = 1.0, up to
+ * 15.9; the drum machines' macros), E4..E6 0..127, E7 the machine */
+#define FM4_EDIT(l0, l1, l2, l3, l4, l5, l6, f0, f1, n0, n1) {                                              \
+        {l0, F_INT, -64, 63, 0, 0, 0}, {l1, F_INT, 0, 127, 8, 0, 0}, {l2, F_INT, 0, 127, 8, 0, 0},         \
+        {l3, F_INT, 0, 127, 8, 0, 0}, {l4, F_PCT, 0, 127, 60, 0, 0}, {l5, f1, 0, 127, 60, 0, 0},            \
+        {l6, F_PCT, 0, 127, 0, 0, 0}, {"MACH", F_ENUM, 0, 5, 0, N_MACH, 0}}
+#else
 #define FM4_EDIT(l0, l1, l2, l3, l4, l5, l6, f0, f1, n0, n1) {                                              \
         {l0, f0, 0, 7, 0, n0, 0}, {l1, f0, 0, 14, 1, n1, 0}, {l2, f0, 0, 14, 1, n1, 0}, {l3, f0, 0, 14, 1, n1, 0}, \
         {l4, F_PCT, 0, 127, 60, 0, 0}, {l5, f1, 0, 127, 60, 0, 0}, {l6, F_PCT, 0, 127, 0, 0, 0},               \
-        {"-", F_INT, 0, 0, 0, 0, 0}}
+        {"MACH", F_ENUM, 0, 5, 0, N_MACH, 0}}
+#endif
 
 #if !FELUCCA_FM4
 /* engine 1 without the DSP: never selectable, no presets, silent (a track never keeps it: fm4_convert) */

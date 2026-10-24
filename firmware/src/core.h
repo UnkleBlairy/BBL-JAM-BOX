@@ -16,8 +16,11 @@
 #ifndef FELUCCA_SLICE
 #define FELUCCA_SLICE 1          /* the SLICE engine (eng_slice.c), engine 13; FELUCCA_SLICE=0 builds without it */
 #endif
+#ifndef FELUCCA_SIMPLE
+#define FELUCCA_SIMPLE 1         /* a Digitone-style synth: DIGITAL + filter only, the extra pages hidden (ui.c page_visible) */
+#endif
 #ifndef FELUCCA_FM4
-#define FELUCCA_FM4 0            /* the DIGITAL engine (eng_digital.c, four-operator FM): kept in the tree, not built
+#define FELUCCA_FM4 1            /* the DIGITAL engine (eng_digital.c, four-operator FM): kept in the tree, not built
                                   * by default; replaced by FM6, its sounds convert (fm4_convert.c) */
 #endif
 #ifndef FELUCCA_CPU2
@@ -30,7 +33,7 @@
 #define C1_PI(t) ((uint32_t)((t) - trk) % C1_NP)   /* a part's copy */
 #define NENGINES (13 + FELUCCA_SLICE)   /* SLICE (13) comes last: the other engines keep their numbers */
 #define ENGI_DIGITAL 1u          /* reserved without FELUCCA_FM4: never selectable (eng_ok), its sounds load as FM6 */
-#define NENG_SHOWN (NENGINES - !FELUCCA_FM4)   /* the engines one can pick: PRESETS, the EDIT layer, the editor,
+#define NENG_SHOWN (FELUCCA_SIMPLE ? 1 : NENGINES - !FELUCCA_FM4)   /* the engines one can pick: PRESETS, the EDIT layer, the editor,
                                                 * in the display order of engines.c ENGINE_ORDER */
 #define UP_SLOTS 32u             /* user presets (upreset.c) */
 
@@ -72,6 +75,17 @@ enum {                          /* per-track parameters */
     P_E0, P_E1, P_E2, P_E3, P_E4, P_E5, P_E6, P_E7,
     P_COUNT
 };
+/* the DIGITAL synth's filter (FELUCCA_SIMPLE): the operator-envelope ids (61..80) re-used, the operator envelopes gone */
+#define P_FLT_CUT P_FM1_ATK      /* CUT 0..127, 127 = open */
+#define P_FLT_RES P_FM1_DEC      /* RES */
+#define P_FLT_DRV P_FM1_SUS      /* DRV: drive into the filter */
+#define P_FLT_KTR P_FM1_REL      /* KTR: keyboard tracking */
+#define P_FE_ATK P_FM2_ATK       /* the filter envelope (DIGITAL): ATK DEC SUS (end level) AMT (depth, signed) */
+#define P_FE_DEC P_FM2_DEC
+#define P_FE_SUS P_FM2_SUS
+#define P_FE_AMT P_FM2_LEVEL
+#define P_FE_REL P_FM2_REL
+
 
 enum {                          /* global parameters */
     G_BPM, G_SWING, G_CLOCK, G_TUNE,

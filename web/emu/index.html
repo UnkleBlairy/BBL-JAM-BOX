@@ -87,6 +87,8 @@ footer small { font-size: 11px; opacity: .8; }
   <span><kbd>↑</kbd> <kbd>↓</kbd> SELECT</span>
   <span><kbd>←</kbd> <kbd>→</kbd> ALGORITHM</span>
   <span><kbd>Shift</kbd>-click holds a button</span>
+  <span id="ks" hidden><label><input type="checkbox" id="kson" checked> MIDI keyboard + knobs</label>
+  <button id="kslearn" type="button">Learn knobs 1–4</button> <output id="ksinfo"></output></span>
   <span id="midiknobs" hidden><label><input type="checkbox" id="knobson"> MIDI CC 20–27 turn the panel's knobs</label>
   <select id="knobmode" aria-label="How the controller sends CC 20–26" hidden>
     <option value="abs">absolute</option>
@@ -461,6 +463,45 @@ knobSelect.addEventListener("change", () => {
   try { localStorage.setItem(KNOB_MODE, knobMode); } catch {}
 });
 document.getElementById("midiknobs").hidden = !navigator.requestMIDIAccess;
+// KeyStep-style controller: notes play the panel's keys (folded by octaves into F3..G5), four CCs turn KNOB 1..4
+// (default CC 74,71,76,77; "Learn": move four controls in turn). Relative/absolute follows the select below.
+const ksBox = document.getElementById("kson"), ksLearn = document.getElementById("kslearn"), ksInfo = document.getElementById("ksinfo");
+document.getElementById("ks").hidden = !navigator.requestMIDIAccess;
+knobSelect.hidden = false;
+knobSelect.title = "How the controller sends its knob CCs";
+let ksCC = [74, 71, 76, 77], learning = -1;
+try { const v = JSON.parse(localStorage.getItem("felucca-ks-cc")); if (Array.isArray(v) && v.length === 4) ksCC = v; } catch {}
+const ksText = () => { ksInfo.textContent = learning >= 0 ? `move control for KNOB ${learning + 1}…` : `knobs: CC ${ksCC.join(", ")}`; };
+ksText();
+ksLearn.addEventListener("click", () => { learning = 0; ksCC = []; ksText(); });
+const ksLast = [];
+function ksMessage(d) {
+  const st = d[0] & 0xF0;
+  if ((st === 0x90 && d[2]) || st === 0x80 || st === 0x90) {
+    let k = d[1] - 53;
+    while (k < 0) k += 12;
+    while (k > 26) k -= 12;
+    if (st === 0x90 && d[2]) keyBy.set("pm" + d[1], k); else keyBy.delete("pm" + d[1]);
+    syncKeys();
+    return true;
+  }
+  if (st !== 0xB0) return false;
+  if (learning >= 0) {
+    if (ksCC.includes(d[1])) return true;
+    ksCC.push(d[1]);
+    if (++learning >= 4) { learning = -1; try { localStorage.setItem("felucca-ks-cc", JSON.stringify(ksCC)); } catch {} }
+    ksText();
+    return true;
+  }
+  const i = ksCC.indexOf(d[1]);
+  if (i < 0) return false;
+  const was = ksLast[i];
+  ksLast[i] = d[2];
+  const n = knobMode === "abs" ? (was === undefined ? 0 : d[2] - was)
+    : knobMode === "bin" ? d[2] - 64 : knobMode === "twos" ? (d[2] < 64 ? d[2] : d[2] - 128) : (d[2] < 64 ? d[2] : 64 - d[2]);
+  turn(knobs.find((x) => x.role === 3 + i), n);
+  return true;
+}
 async function midiOn() {
   if (!navigator.requestMIDIAccess) return;
   try {
@@ -470,6 +511,7 @@ async function midiOn() {
         input.onmidimessage = (e) => {
           const d = e.data;
           if (d.length < 2 || d[0] < 0x80 || d[0] >= 0xF0) return;
+          if (ksBox.checked && ksMessage(d)) return;
           const k = knobsOn && (d[0] & 0xF0) === 0xB0 ? midiKnob(knobCC, d[1], d[2] || 0, knobMode) : null;
           if (!k) send({ type: "midi", data: [d[0], d[1], d[2] || 0] });
           else if (k.master !== undefined) { setMaster(k.master); drawKnob(knobs.find((x) => x.role === "master")); }

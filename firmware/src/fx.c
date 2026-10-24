@@ -16,7 +16,9 @@ static union {                          /* ROOM's allpasses; SPRING's allpass ch
 #define rev_ap (rev_u.ap)
 static struct {
     uint32_t dly_w, cho_w, cho_ph;
-    int32_t dly_lp;
+    int32_t dly_cur;                     /* SIMPLE: the delay time now (Q8 samples), gliding to the knob: the tape / BBD repitch */
+    int32_t dly_lp, dly_lp2, dly_hp;     /* the delay's loop: two low-passes, a high-pass */
+    uint32_t dly_ph;                     /* .. the tap's slow wobble (a BBD's clock drift) */
     uint16_t comb_i[4], ap_i[2];
     int32_t comb_lp[4];
     uint8_t rtype;                       /* the reverb model running (G_RTYPE: 0 ROOM, 1 SPRING, 2 HALL) */
@@ -228,11 +230,25 @@ static uint32_t div_samples(uint32_t div)
 }
 
 #include "perform.c"                                 /* the FX hold layer's effects (the master) */
+#if FELUCCA_SIMPLE
+#include "mfx.c"                                     /* the groovebox's master DJ filter and comb */
+#endif
 #include "click.c"                                   /* the metronome's click (after the master: audio.c) */
 
 /* the delay's TIME (params.c N_DTIME): N_DIV's ten (div_samples), then 1.5.1's dotted 1/8D 1/16D 1/4D (10, 11, 12: 3/4,
  * 3/8, 3/2 of a quarter); at most DLY_LEN - 1 samples (1.486 s): 1/4D clamps at 60 BPM and below (1/2 below 81) */
 static const uint8_t DIV_DOT[3] = {2, 3, 1};           /* 3 quarters >> this */
+#if FELUCCA_SIMPLE
+/* SIMPLE: the delay runs free of the tempo: TIME 0..127 is 20 ms .. 1.45 s, exponential (6.2 octaves). -> samples, Q8 */
+static const uint16_t EXP2_Q15[17] = {32768, 34219, 35734, 37316, 38968, 40693, 42495, 44376, 46341, 48393, 50535, 52773, 55109, 57549, 60097, 62757, 65536};
+static int32_t delay_q8(void)
+{
+    uint32_t e = (uint32_t)song.g[G_DTIME] * 3189u, oct = e >> 16, fr = (e >> 12) & 15u, sub = e & 4095u;
+    uint32_t m = EXP2_Q15[fr] + (((uint32_t)EXP2_Q15[fr + 1u] - EXP2_Q15[fr]) * sub >> 12);
+    uint32_t s = ((880u << oct) * m) >> 15;
+    return (int32_t)(s >= DLY_LEN - 2u ? DLY_LEN - 2u : s) << 8;
+}
+#endif
 static uint32_t delay_samples(void)
 {
     uint32_t d = (uint32_t)song.g[G_DTIME];
@@ -560,7 +576,18 @@ static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t
                      uint32_t n)
 {
     uint32_t i, dl = delay_samples();
-    int32_t fb = song.g[G_DFDBK] * 230, col = 2000 + song.g[G_DCOLOR] * 240;
+    int32_t fb = song.g[G_DFDBK] * 260, col = 2000 + song.g[G_DCOLOR] * 240, hpk = 700;
+#if FELUCCA_SIMPLE
+    int32_t dtarget = delay_q8();
+    {   /* TONE: 64 the dub echo, below it the repeats go darker (a low-pass), above it thinner (a high-pass) */
+        int32_t tn = song.g[G_DCOLOR] - 64;
+        col = tn < 0 ? 14000 + tn * 180 : 14000 + tn * 127;
+        hpk = tn > 0 ? 700 + tn * 130 : 700;
+    }
+#define SIMPLE_DT(dl) (fx.dly_cur)
+#else
+#define SIMPLE_DT(dl) ((int32_t)(dl) << 8)
+#endif
     int32_t dmix = song.g[G_DMIX] * 258;
     int32_t cdepth = song.g[G_CDEPTH] * 6, rt;
     uint32_t cinc = LFO_INC[song.g[G_CRATE] & 127] / CTL;
@@ -580,11 +607,40 @@ static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t
             y += (c0 + (((c1 - c0) * f) >> 8)) << 1;
         }
         fx.cho_w++;
-        /* delay with a low-passed feedback */
-        x = dly_buf[(fx.dly_w - dl) & (DLY_LEN - 1u)];
-        fx.dly_lp += mulq15(x - fx.dly_lp, col);
-        dly_buf[fx.dly_w & (DLY_LEN - 1u)] =
-            (int16_t)clamp((dly_in[i] >> 1) + mulq15(fx.dly_lp, fb), -32768, 32767);
+        /* delay: a dub-style BBD echo. The tap wobbles slowly (a clock that drifts: +-20 samples at 0.8 Hz), every repeat goes
+         * through two low-passes (COLR) and a low cut, and the loop saturates (tanh), so the echoes darken, thin out and
+         * thicken as they pile up, and a high FDBK swells into self-oscillation instead of running away */
+        {
+            int32_t dm, pos, f, x0, x1, lp;
+            uint32_t ri;
+#if FELUCCA_SIMPLE
+            {   /* free running: the time glides to the knob (a one-pole, ~90 ms), so sweeping TIME bends the echoes' pitch */
+                int32_t d = dtarget - fx.dly_cur, step = d >> 12;
+                if (!fx.dly_cur)
+                    d = step = dtarget, fx.dly_cur = 0;
+                else if (d > 0 && !step)
+                    step = 1;
+                step = step > 128 ? 128 : step < -128 ? -128 : step;   /* the pitch bends at most an octave down / half up */
+                fx.dly_cur += step;
+                dl = (uint32_t)fx.dly_cur >> 8;
+            }
+#endif
+            dm = (int32_t)(dl >> 2) < 20 ? (int32_t)(dl >> 2) : 20;
+            fx.dly_ph += 77900u;
+            pos = (int32_t)(SIMPLE_DT(dl)) + ((osc_sine(fx.dly_ph) * dm) >> 7);
+            ri = (uint32_t)pos >> 8;
+            f = pos & 255;
+            x0 = dly_buf[(fx.dly_w - ri) & (DLY_LEN - 1u)];
+            x1 = dly_buf[(fx.dly_w - ri - 1u) & (DLY_LEN - 1u)];
+            x = x0 + (((x1 - x0) * f) >> 8);
+            fx.dly_lp += mulq15(x - fx.dly_lp, col);
+            fx.dly_lp2 += mulq15(fx.dly_lp - fx.dly_lp2, col);
+            fx.dly_hp += mulq15(fx.dly_lp2 - fx.dly_hp, hpk);
+            lp = fx.dly_lp2 - fx.dly_hp;
+            dly_buf[fx.dly_w & (DLY_LEN - 1u)] =
+                (int16_t)clamp((dly_in[i] >> 1) + softclip(mulq15(lp, fb) * 5 >> 2), -32768, 32767);
+            x = lp;
+        }
         fx.dly_w++;
         y += mulq15(x << 1, dmix);
         wet[i] = y;
@@ -965,6 +1021,9 @@ static __attribute__((noinline)) void perf_master(int32_t *out, uint32_t n)
         mix_r[i] = (((mix_r[i] + wet[i]) >> 2) * mg) >> 10;
     }
     perf_block(mix_l, mix_r, n);
+#if FELUCCA_SIMPLE
+    mfx_block(mix_l, mix_r, n);
+#endif
     for (i = 0; i < n; i++) {
         int32_t l = mix_l[i], r = mix_r[i];
         master_out(&l, &r);
@@ -1075,6 +1134,20 @@ static void mix_block(int32_t *out, uint32_t n)
         perf_master(out, n);
         return;
     }
+#if FELUCCA_SIMPLE
+    for (i = 0; i < n; i++) {
+        mix_l[i] = (((mix_l[i] + wet[i]) >> 2) * mg) >> 10;
+        mix_r[i] = (((mix_r[i] + wet[i]) >> 2) * mg) >> 10;
+    }
+    mfx_block(mix_l, mix_r, n);
+    for (i = 0; i < n; i++) {
+        int32_t l = mix_l[i], r = mix_r[i];
+        master_out(&l, &r);
+        out[2u * i] = l;
+        out[2u * i + 1u] = r;
+    }
+    return;
+#endif
     for (i = 0; i < n; i++) {
         int32_t l = (((mix_l[i] + wet[i]) >> 2) * mg) >> 10;
         int32_t r = (((mix_r[i] + wet[i]) >> 2) * mg) >> 10;

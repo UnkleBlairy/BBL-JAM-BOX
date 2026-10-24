@@ -1156,6 +1156,8 @@ static void page_title(char *ti)
                 k = n;
         }
     str_cpy(ti, pt ? pt : grid_on() && !detail_on() ? "GRID" : pg->title, 12);
+    if (FELUCCA_SIMPLE && alt_mode && alt_ids(pg))     /* OCT+ held: the page's setup values */
+        str_cpy(ti + str_len(ti), "+", 4);
     if (n > 1) {
         str_cpy(ti + str_len(ti), " ", 4);
         fmt_int(ti + str_len(ti), (int32_t)k);
@@ -1202,6 +1204,13 @@ static uint32_t graph_signature(void)
         for (i = 0; i < CHORD_MAX; i++)
             h = (h ^ chord_last[song.sel].note[i]) * 16777619u;
         h ^= (uint32_t)t->engine * 389u;             /* (MONO and kits follow the sounding engine) */
+    }
+    h ^= pm_h.n ? 0x9E3779B1u * (pm_h.n + 1u) : 0u;
+    if (pg->graph == GR_PERF) {
+        uint32_t j;
+        for (j = 0; j < PM_NM; j++)
+            h = (h ^ (pm_mac[j].n | (j < pm_h.n ? (uint32_t)(pm_h.mac[j] + 1u) << 8 : 0u))) * 16777619u;
+        h = (h ^ (pm_fade | pm_func << 4 | pm_arp << 8)) * 16777619u;
     }
     if (pg->graph == GR_SONG) {
         h ^= ui.song_row * 40503u + chain_config.count * 7919u + ui.song_trk * 3571u;
@@ -2229,6 +2238,169 @@ static void graph_song(void)
                      i < 4u ? "[K3] ADD SECTION" : "[SAVE] PROJECT A-D", T_MID, T_SURF, x0 - 10 - SG_X0);
     }
 }
+/* Elektron-style dials (EDIT / FILTER family pages): four big knobs over the cards, centred on their cards, a 270 degree
+ * arc that fills to the value, a pointer, and the parameter's short name under each. */
+static int32_t dial_sin(int32_t deg)                     /* sin * 256, deg 0..359 */
+{
+    static const int16_t Q[7] = {0, 66, 128, 181, 222, 247, 256};
+    int32_t neg = 0, i, f;
+    if (deg >= 180) { deg -= 180; neg = 1; }
+    if (deg > 90) deg = 180 - deg;
+    i = deg / 15;
+    f = deg % 15;
+    i = Q[i] + (i < 6 ? (Q[i + 1] - Q[i]) * f / 15 : 0);
+    return neg ? -i : i;
+}
+static void dial_pt(int32_t cx, int32_t cy, int32_t r, int32_t deg, int32_t *x, int32_t *y)
+{
+    deg %= 360;
+    *x = cx + (r * dial_sin(deg) + 128) / 256;           /* 0 deg = up, clockwise */
+    *y = cy - (r * dial_sin((deg + 90) % 360) + 128) / 256;
+}
+/* the pages drawn as dials: EDIT / FILTER family pages that have no graph of their own */
+static int dial_page(void)
+{
+    const page_t *pg;
+    const track_t *t;
+    if (ui.home || ui.layer || large_kind() != LK_OFF)
+        return 0;
+    pg = cur_page();
+    t = TSEL;
+    if ((pg->graph != GR_NONE && pg->graph != GR_ADSR && pg->graph != GR_LFO) ||
+        (pg->fam != FAM_EDIT && pg->fam != FAM_FLT && pg->fam != FAM_ENV && pg->fam != FAM_LFO && pg->fam != FAM_FX))
+        return 0;
+    if (pg->scope == SC_ENGINE && (ENGINES[t->eng_req % NENGINES] == &ENG_WHEEL || t->eng_req % NENGINES == ENGI_FM6 ||
+                                   (ENGINES[t->eng_req % NENGINES] == &ENG_SAMPLE && sample_wave.ready)))
+        return 0;
+    return 1;
+}
+static void graph_adsr(const track_t *t, uint16_t c);
+static void graph_lfo(const track_t *t, uint16_t c);
+/* PERF: row 1 the 8 macros (filled = something in it, held ones inverted), row 2 the 4 fade times then the 4 beat repeats; the
+ * footer / header says the track, the held mode, FUNC and ARP */
+static void graph_pm(void)
+{
+    static const char *const FADE_N[4] = {"1/16", "1/8", "BAR", "4BAR"};
+    static const char *const REP_N[4] = {"1/8", "1/16", "1/32", "REV"};
+    static const char *const FUNC_N[3] = {"HOLD", "CYCLE", "PING"};
+    static const char *const ARP_N[5] = {"UP", "DOWN", "UPDN", "RAND", "ORDER"};
+    uint32_t i, j;
+    char nb[8], tb[24];
+    for (i = 0; i < 16u; i++) {
+        int32_t x = 4 + (int32_t)(i & 7u) * 29, y = 26 + (int32_t)(i >> 3) * 44;
+        int held = 0, sel = 0;
+        uint32_t n = 0;
+        const char *top = 0, *cap = 0;
+        if (i < PM_NM) {
+            n = pm_mac[i].n;
+            for (j = 0; j < pm_h.n; j++)
+                held |= pm_h.mac[j] == i;
+        } else if (i < PM_NM + 4u) {
+            sel = pm_fade == i - PM_NM + 1u;
+            top = FADE_N[i - PM_NM];
+            cap = "FADE";
+        } else {
+            top = REP_N[i - PM_NM - 4u];
+            cap = "RPT";
+        }
+        cv_rrect(x, y, 27, 38, 4, held || sel ? T_ACCENT : n ? T_RAISE : T_SURF, T_SURF);
+        cv_frame(x, y, 27, 38, held || sel ? T_ACCENT : T_LINE);
+        if (top) {
+            cv_text_in(x, y + 6, 27, &AF_S, top, sel ? T_INK : T_ACCENT, sel ? T_ACCENT : T_SURF);
+            cv_text_in(x, y + 24, 27, &AF_S, cap, sel ? T_INK : T_MID, sel ? T_ACCENT : T_SURF);
+            continue;
+        }
+        fmt_int(nb, (int32_t)i + 1);
+        cv_text_in(x, y + 3, 27, &AF_M, nb, held ? T_INK : n ? T_ACCENT : T_MID, held ? T_ACCENT : n ? T_RAISE : T_SURF);
+        if (n) {
+            fmt_int(nb, (int32_t)n);
+            cv_text_in(x, y + 24, 27, &AF_S, nb, held ? T_INK : T_MID, held ? T_ACCENT : T_RAISE);
+        }
+    }
+    tb[0] = 'T'; tb[1] = 'R'; tb[2] = 'K'; tb[3] = ' ';
+    fmt_int(tb + 4, (int32_t)song.sel + 1);
+    cv_text_in(4, 4, 80, &AF_M, tb, T_ACCENT, T_SURF);
+    if (pm_h.n == 1u)
+        cv_text_in(84, 8, 150, &AF_S, "TURN KNOBS  OCT-: CLEAR", T_MID, T_SURF);
+    else if (pm_h.n == 2u)
+        cv_text_in(84, 8, 150, &AF_S, "FADE BETWEEN", T_ACCENT, T_SURF);
+    else if (pm_h.n > 2u)
+        cv_text_in(84, 8, 150, &AF_S, "ARP", T_ACCENT, T_SURF);
+    else {                                                  /* the two knobs: K1 FUNC, K2 ARP */
+        uint32_t o = 0, k;
+        const char *s = "F:";
+        for (k = 0; s[k]; k++) tb[o++] = s[k];
+        for (k = 0; FUNC_N[pm_func % 3u][k]; k++) tb[o++] = FUNC_N[pm_func % 3u][k];
+        tb[o++] = ' '; tb[o++] = 'A'; tb[o++] = ':';
+        for (k = 0; ARP_N[pm_arp % 5u][k]; k++) tb[o++] = ARP_N[pm_arp % 5u][k];
+        tb[o] = 0;
+        cv_text_in(84, 8, 150, &AF_S, tb, T_MID, T_SURF);
+    }
+}
+
+static void graph_dials(const track_t *t, uint16_t c)
+{
+    uint32_t k;
+    uint32_t g = cur_page()->graph;
+    int gr = g == GR_ADSR || g == GR_LFO;                /* ENV / LFO pages: the dials above, the curve below */
+    int32_t oy0 = cv_oy;
+    int um = 0;                                          /* one value face for the page: M if any value is too wide for L */
+    for (k = 0; k < 4u; k++) {
+        int16_t *vq;
+        const param_desc_t *dq = page_desc(cur_page(), k, &vq);
+        char vb[12];
+        const char *uq;
+        if (!dq || !dq->label || dq->label[0] == '-')
+            continue;
+        param_format(dq, *vq, vb, &uq);
+        if (text_w(&AF_L, vb) > 44)
+            um = 1;
+    }
+    for (k = 0; k < 4u; k++) {
+        int16_t *vp;
+        const param_desc_t *d = page_desc(cur_page(), k, &vp);
+        int32_t cx = CARD_X(k) + CARD_W / 2, cy = gr ? 34 : 50, R = gr ? 23 : 26, a, x, y, ratio, on, i;
+        int hot = k == ui.hot_col && ui.hot_t, inv = 0;
+        uint16_t fc = hot ? T_ACCENT : c;
+        const aafont_t *vf = &AF_L;
+        const char *unit;
+        char ab[6], val[12];
+        if (!d || !d->label || d->label[0] == '-')
+            continue;
+        if (pm_altered(t, vp)) {                       /* PERF: a value this macro holds: inverted, boxed */
+            cv_rrect(CARD_X(k), gr ? 2 : 18, CARD_W, gr ? 104 : 122, 5, T_ACCENT, T_SURF);
+            fc = T_INK;
+            inv = 1;
+        }
+        ratio = RATIO(d, enum_rank(d, *vp));
+        if (ratio < 0) ratio = 0;
+        on = ratio * 270 / 1000;
+        for (a = 0; a <= 270; a += 3) {                  /* the track, then the value over it */
+            dial_pt(cx, cy, R, 225 + a, &x, &y);
+            cv_rect(x - 1, y - 1, 3, 3, a <= on ? fc : inv ? T_MID : T_RAISE);
+        }
+        dial_pt(cx, cy, R - 6, 225 + on, &x, &y);        /* the pointer */
+        cv_line_t(cx, cy, x, y, inv ? T_INK : hot ? T_ACCENT : T_MID, 2);
+        cv_rect(cx - 2, cy - 2, 5, 5, inv ? T_INK : hot ? T_ACCENT : T_MID);
+        for (i = 0; i < 4 && d->label[i]; i++)           /* the short name, 4 letters */
+            ab[i] = d->label[i];
+        ab[i] = 0;
+        cv_text_in(cx - CARD_W / 2, gr ? 62 : 92, CARD_W, &AF_M, ab, inv ? T_INK : hot ? T_ACCENT : T_MID, inv ? T_ACCENT : T_SURF);
+        param_format(d, *vp, val, &unit);                /* the value under the name, the face that fits */
+        if (gr || um) vf = &AF_M;
+        if (text_w(vf, val) > CARD_W - 2) vf = &AF_S;
+        cv_text_in(cx - CARD_W / 2, gr ? 84 : 124, CARD_W, vf, val, fc, inv ? T_ACCENT : T_SURF);
+    }
+    if (gr) {                                            /* the curve in the strip under the dials (y 112 .. 170) */
+        cv_oy = oy0 + 112 + 3;
+        graph_ht = 52;
+        if (g == GR_ADSR) graph_adsr(t, c);
+        else graph_lfo(t, c);
+        graph_ht = 100;
+        cv_oy = oy0;
+    }
+}
+
 static void draw_graph(void)
 {
     const page_t *pg = cur_page();
@@ -2248,6 +2420,19 @@ static void draw_graph(void)
     if (!ui.force && sig == ui.graph_sig)
         return;
     ui.graph_sig = sig;
+    if (dial_page()) {                               /* the canvas holds 124 rows, the dials' panel is 170: two halves */
+        uint32_t g = pg->graph, half = g == GR_ADSR || g == GR_LFO ? 112u : graph_h() / 2u, hi;
+        for (hi = 0; hi < 2u; hi++) {
+            cv_begin(240, hi ? graph_h() - half : half, T_BG);
+            cv_oy = -(int32_t)(hi * half);
+            cv_rrect(3, 0, 234, (int32_t)graph_h(), 5, T_SURF, T_BG);
+            cv_bg = T_SURF;
+            graph_dials(t, c);
+            cv_oy = 0;
+            cv_blit(0, graph_y() + hi * half);
+        }
+        return;
+    }
     cv_begin(240, graph_h(), T_BG);
     cv_rrect(3, 0, 234, graph_h(), 5, T_SURF, T_BG);   /* the panel (MENU > LARGE: the strip) */
     cv_bg = T_SURF;                                  /* (text drawn with cv_text lands on it) */
@@ -2317,6 +2502,10 @@ static void draw_graph(void)
             cv_oy = 0;
             graph_song();
             break;
+        case GR_PERF:
+            cv_oy = 0;
+            graph_pm();
+            break;
         case GR_PATS:
             cv_oy = 0;
             graph_pats();
@@ -2350,6 +2539,7 @@ static void draw_graph(void)
             else if ((pg->scope == SC_ENGINE || pg->id[0] == P_FM1_LEVEL) && t->eng_req % NENGINES == ENGI_DIGITAL)
                 graph_fm(t, c);                      /* (OP LEVEL too: the levels on the chart) */
 #endif
+            else if (dial_page()) { cv_oy = 0; graph_dials(t, c); }
             else { cv_oy = 0; graph_scope(c); }
             break;
         }

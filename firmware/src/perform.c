@@ -97,6 +97,7 @@ static volatile uint32_t kb_layer;    /* ISR: the keys held that are the layer's
 static volatile uint32_t perf_held;   /* ISR: the effects held (PF_*) */
 static volatile uint8_t perf_latch_on;   /* main: MENU > FX LATCH ON (#40): a key with FX toggles its effect */
 static volatile uint32_t perf_latched;   /* ISR: the effects latched (FX LATCH; main clears it: OCT-, the menu) */
+static volatile int32_t perf_rel_sl;  /* main (ui.c, PERF's release fade): the buffer effect's share falls this much a sample when let go (0: SL_SLOPE) */
 static volatile uint32_t perf_act;    /* ISR: .. running (a 1/16 one from its start on) */
 static uint32_t perf_ord[PF_N], perf_seq;   /* press order: the last pressed buffer effect plays */
 
@@ -617,7 +618,10 @@ static inline void perf_buf(int32_t *pl, int32_t *pr)
         on = 2;                                     /* (KNOB 4 is the shimmer: the level stays full) */
     }
     pf.tw = on && pf.src != PF_N ? on == 2 ? 32768 : 32768 - perf_k[3] * 327 : 0;
-    pf.w += clamp(pf.tw - pf.w, -SL_SLOPE, SL_SLOPE);
+    {
+        int32_t dn = pf.src == PF_N && pf.next == PF_N && perf_rel_sl > 0 && perf_rel_sl < SL_SLOPE ? perf_rel_sl : SL_SLOPE;
+        pf.w += clamp(pf.tw - pf.w, -dn, SL_SLOPE);
+    }
     if (pf.w) {
         *pl = pf_mix(l, yl, pf.w);
         *pr = pf_mix(r, yr, pf.w);

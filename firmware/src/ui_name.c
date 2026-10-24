@@ -59,7 +59,7 @@ static void name_close(void)
 }
 /* the keys: 2 = NAME's (silent), 1 = the DRUM grid, 3 = SONG's A..D (ui.c song_keys_on), 0 = notes (seq.c keyboard_block
  * reads song.grid) */
-static uint32_t keys_mode(void) { return name_on() ? 2u : grid_on() ? 1u : song_keys_on() ? 3u : 0u; }
+static uint32_t keys_mode(void) { return name_on() ? 2u : sgrid_on() ? 1u : grid_on() ? 1u : song_keys_on() ? 3u : pm_page() ? 4u : 0u; }
 
 static const char *nm_group(uint32_t p)                /* white key place p's characters */
 {

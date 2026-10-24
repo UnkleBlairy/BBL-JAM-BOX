@@ -10,8 +10,8 @@
  * what they are. Every hint fits its row with every word (tests/ui_test.c test_help: no word dropped). The setting and
  * the timer: ui.c help_on, help_start (PREF_HELP, ui.help_t) */
 
-static const char H_EDIT[] = "[K1-4]SOUND[EDIT]HOLD: ENGINES";
-static const char H_LANES[] = "[K1-4]LANE LEVELS[EDIT]HOLD: MUTES";
+static const char H_EDIT[] = "[K1-4]SOUND[FX]HOLD: ENGINES";
+static const char H_LANES[] = "[K1-4]LANE LEVELS[FX]HOLD: MUTES";
 static const char H_FMOP[] = "[K1]OPERATOR[SAVE]HOLD: UNDO";
 static const struct { const char *title, *hint; } HELP_PAGE[] = {
     {"ENV", "[K1-4]A D S R[ENV]ENV DEST"},
@@ -20,18 +20,21 @@ static const struct { const char *title, *hint; } HELP_PAGE[] = {
     {"LFO 2", "[K1]SYNC TO BPM[LFO]LFO DEST"},
     {"LFO DEST", "[K1-4]LFO AMOUNTS[LFO]MOD"},
     {"MOD", "[K1]SLOT[K2]SOURCE[K3]DEST"},
-    {"FX", "[K1-4]SENDS[FX]HOLD: PERFORM"},
-    {"SLICER", "[K1]ON[K2]PATTERN[FX]INSERT"},
-    {"INSERT", "[K1]TYPE[FX]DRY / WET"},
-    {"INSERT 2", "[K1]DRY / WET[FX]DLY"},
-    {"DLY", "[K1-4]ALL TRACKS[FX]REVERB"},
-    {"REVERB", "[K1]ROOM SPRING HALL[FX]CHORUS"},
-    {"CHORUS", "[K1-4]ALL TRACKS[FX]FX"},
-    {"SCL", "[K2]SCALE[K3]QUANTIZE[SCL]CHORDS"},
-    {"CHORD", "[K1]CHORD[KEYS]ONE FINGER[SCL]SCL"},
+    {"DELAY", "[K1-4]DELAY"},
+    {"VERB", "[K1-4]REVERB"},
+    {"SLICER", "[K1]ON[K2]PATTERN[EDIT]INSERT"},
+    {"INSERT", "[K1]TYPE[EDIT]DRY / WET"},
+    {"INSERT 2", "[K1]DRY / WET[EDIT]DLY"},
+    {"DLY", "[K1-4]ALL TRACKS[EDIT]REVERB"},
+    {"REVERB", "[K1]ROOM SPRING HALL[EDIT]CHORUS"},
+    {"CHORUS", "[K1-4]ALL TRACKS[EDIT]FX"},
+    {"SCL", "[K2]SCALE[K3]QUANTIZE[ARP]CHORDS"},     /* (the scale pages are ARP's later presses) */
+    {"CHORD", "[K1]CHORD[KEYS]ONE FINGER[ARP]ARP"},
     {"EDIT 1", H_EDIT},
     {"EDIT 2", H_EDIT},
-    {"FILTER", "[K1]LP BP HP[K2]CUTOFF[EDIT]VOICE"},
+    {"OSC 1", H_EDIT},
+    {"OSC 2", H_EDIT},
+    {"FILTER", "[K1]LP BP HP[K2]CUTOFF[SCL]EDIT 2"},
     {"LANES", H_LANES},
     {"LANES 2", H_LANES},
     {"SLICES", "[K1]SLICE[K2]MOVE[OCT+]SPLIT, JOIN"},
@@ -40,7 +43,7 @@ static const struct { const char *title, *hint; } HELP_PAGE[] = {
     {"OPERATOR 2", H_FMOP},
     {"VOICE", "[K1]POLY, MONO[K2]GLIDE"},
     {"VOICE 2", "[K2]DETUNE[K3]PAN[K4]MUTE"},
-    {"VOICE 3", "[K1]STEREO SPREAD[EDIT]EDIT 1"},
+    {"VOICE 3", "[K1]STEREO SPREAD[FX]EDIT 1"},
     {"SONG", "[K1]SECTION[KEYS]A-D[PLAY]SONG"},
     {"USER", "[K1]SLOT[OCT+]SAVE[SAVE]PRESETS"},
     {"PRESETS", "[K2]ENGINE[K3]FAV[K4]LIST"},
@@ -48,7 +51,7 @@ static const struct { const char *title, *hint; } HELP_PAGE[] = {
     {"PROJECT", "[K2]ERASE[K4]SAVE[EDIT]NAME"},   /* (1.5.5, #199: ERASE) */
     {"TOOLS", "[K1]CLEAR[K2]INIT, CLEAN[OCT+]DO"},   /* (1.5.5, #190: KNOB 2 on, CLEAN INIT) */
     {"ARP", "[K1]MODE[KEYS]CHORD[ARP]ARP 2"},
-    {"ARP 2", "[K3]LATCH[K4]ORDER[ARP]ARP"},
+    {"ARP 2", "[K3]LATCH[K4]ORDER[ARP]SCL"},
     {"STEP", "[KEYS]WRITE[K1]STEP[SEQ]RATCH"},   /* (1.5.1: SEQ to DETAIL) */
     {"DETAIL", "[PRESETS]STEP[K1]CHANCE, 1:4, FILL"},   /* (1.5.5: the conditions past 100 %) */
     {"AUTOMATION", "[K1]ROW[OCT+]DO[EDIT]DELETE"},
@@ -60,8 +63,9 @@ static const struct { const char *title, *hint; } HELP_PAGE[] = {
 #define H_GRID "[KEYS]STEPS[K2]LANE[SEQ]RATCH"
 /* a layer's (LAYER_*): what its footer row (LAYERS[].foot) does not say */
 static const char *const HELP_LAYER[LAYER_N] = {
-    "", "[KEYS]BLACK: MUTES[FX]2 TAPS: LOCK", "[KEYS]SOLO MUTE FILL TAP[K1-4]LEVELS", "[KEYS]ROOT[K1-4]ROOT SCL CHORD",
+    "", "[KEYS]BLACK: MUTES[EDIT]2 TAPS: LOCK", "[KEYS]SOLO MUTE FILL TAP[K1-4]LEVELS", "[KEYS]ROOT[K1-4]ROOT SCL CHORD",
     "[K1]ENGINE[K2]SOUND[K3]FAV", "[K1]LENGTH[K3]SWING[K4]GATE", "[K1]CLICK[K2]COUNT-IN[K3]LEVEL",
+    "[KEYS]T1-T4[K1-4]ENVELOPE",
 };
 
 static const char H_EUCLID[] = "[K1]HITS[K2]STEPS[K3]ROTATE";   /* SEQ TOOLS' EUCLID open (1.5.5) */
