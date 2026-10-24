@@ -57,9 +57,7 @@ static const char *const N_MIDI_INPUT[] = {"USB", "TRS"};
 static const char *const N_ROUTE[] = {"CH1-4", "SEL", "CH5-8", "CH9-12", "CH13-16", "TRACK"};
 static const char *const N_NOTE[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
 static const char *const N_DASH[] = {"--"};
-#if FELUCCA_SIMPLE
-static const char *const N_RTYPE[] = {"ROOM", "SPRING", "HALL", "QUAD"};   /* (SIMPLE: QUAD, the 90s rack plate: fx.c rev_quad) */
-#else
+#if !FELUCCA_SIMPLE
 static const char *const N_RTYPE[] = {"ROOM", "SPRING", "HALL"};
 #endif   /* G_RTYPE: the reverb bus's model (fx.c) */
 static const char *const N_GO[] = {"--", "GO"};
@@ -251,7 +249,7 @@ static const param_desc_t GP[G_COUNT] = {
     [G_INITSND] = PE("INIT", N_GO, 0),
     /* the reverb's model on the REVERB page: the id of the old GM drum channel (G_DRCH, inert since 1.0) */
 #if FELUCCA_SIMPLE
-    [G_RTYPE] = PE("TYPE", N_RTYPE, 3),         /* SIMPLE: QUAD at power-on */
+    [G_RTYPE] = PD("GRIT", F_PCT, 0, 127, 0),   /* SIMPLE: one reverb (fx.c rev_quad); this is its GRIT, clean at 0 */
 #else
     [G_RTYPE] = PE("TYPE", N_RTYPE, 2),         /* HALL at power-on since 1.2 (ROOM before; projects keep theirs) */
 #endif

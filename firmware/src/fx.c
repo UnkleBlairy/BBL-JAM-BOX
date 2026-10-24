@@ -256,6 +256,7 @@ static uint32_t delay_samples(void)
     return s < 16u ? 16u : s >= DLY_LEN ? DLY_LEN - 1u : s;
 }
 
+#if !FELUCCA_SIMPLE                                      /* (SIMPLE: one reverb, QUAD below) */
 /* ROOM (G_RTYPE 0): 4 damped combs + 2 allpasses (Freeverb-like, mono), added to out */
 static __attribute__((noinline)) void rev_room(const int32_t *rev_in, int32_t *out, uint32_t n)
 {
@@ -505,12 +506,15 @@ static __attribute__((noinline)) void rev_hall(const int32_t *rev_in, int32_t *o
     hl.side = 1;
 }
 
-#define QV_GAIN 12                                       /* QUAD's outputs: about ROOM's tail */
+#endif
+
+#define QV_GAIN 22                                       /* QUAD's outputs: about ROOM's tail */
 #if FELUCCA_SIMPLE
-/* QUAD (G_RTYPE 3, SIMPLE): a 90s rack reverb, a plate tank of the Dattorro kind (Griesinger's figure-of-eight: four
- * input diffusers, then two halves each a modulated allpass, a delay, a damping low-pass, the decay, an allpass, a
- * delay, crossing into the other half) run at a quarter of the rate (11 kHz: the band stops ~5 kHz, a box average in,
- * the old converters' grit) and 12-bit out. Stereo: taps of both halves (rev_side). TIME 127 is FREEZE: the input
+/* QUAD (SIMPLE: the one reverb): a 90s rack reverb, a plate tank of the Dattorro kind (Griesinger's figure-of-eight:
+ * four input diffusers, then two halves each a modulated allpass, a delay, a damping low-pass, the decay, an allpass, a
+ * delay, crossing into the other half) run at a quarter of the rate (11 kHz: the band stops ~5 kHz), filtered in and
+ * out so it is clean. GRIT (G_RTYPE, 0..127, squared: only near the top) opens those filters (the old converters'
+ * aliasing), holds the samples instead of joining them and takes the bits down to 8. Stereo: taps of both halves (rev_side). TIME 127 is FREEZE: the input
  * fades out, the decay is 1 and the damping opens: the tail holds as long as it is left there. In ROOM's buffers
  * (rev_comb, rev_ap), as SPRING and HALL; a model change clears them */
 #define QV_R 4u                                          /* the rate's divider */
@@ -524,9 +528,12 @@ static struct {
     uint16_t w[QV_NL];                                   /* each line's write place */
     int32_t bw, dl, dr, le, re;                          /* the input's low-pass; the damping low-passes; the halves' ends */
     int32_t pl, pr, acc[2];                              /* the last outputs (back to 44.1 kHz between them) */
+    int32_t fi[2], fo[4];                                /* the filters in and out (two poles each, a side) */
     uint32_t ph;                                         /* the modulation */
     int32_t frz;                                         /* FREEZE's share (Q15) */
 } qv __attribute__((section(".pool")));
+/* QUAD's products: 64-bit (no overflow), rounded to the nearest (a tail dies out to 0, no offset left) */
+static inline int32_t qmul(int32_t a, int32_t b) { return (int32_t)(((int64_t)a * b + 16384) >> 15); }
 static int16_t *qv_buf(uint32_t k)                       /* line k's memory */
 {
     uint32_t j, oc = 0, oa = 0;
@@ -561,37 +568,44 @@ static void qv_put(uint32_t k, int32_t v)
 }
 static int32_t qv_ap(uint32_t k, int32_t x, int32_t g)  /* an allpass of line k's length, coefficient g (Q15) */
 {
-    int32_t d = qv_tap(k, QV_LEN[k]), v = x - mulq15(d, g);
+    int32_t d = qv_tap(k, QV_LEN[k]), v = x - qmul(d, g);
     qv_put(k, v);
-    return d + mulq15(v, g);
+    return d + qmul(v, g);
 }
 static int32_t qv_mod(uint32_t k, int32_t x, int32_t g, int32_t ofs)   /* .. with its delay moving +-4 (ofs Q8) */
 {
     uint32_t L = QV_LEN[k], D = ((L - 8u) << 8) + (uint32_t)(ofs + (4 << 8)), di = D >> 8, fr = D & 255u;
-    int32_t a = qv_tap(k, di), b = qv_tap(k, di + 1u), d = a + (((b - a) * (int32_t)fr) >> 8), v = x - mulq15(d, g);
+    int32_t a = qv_tap(k, di), b = qv_tap(k, di + 1u), d = a + (((b - a) * (int32_t)fr) >> 8), v = x - qmul(d, g);
     qv_put(k, v);
-    return d + mulq15(v, g);
+    return d + qmul(v, g);
 }
 static __attribute__((noinline)) void rev_quad(const int32_t *rev_in, int32_t *out, uint32_t n)
 {
     uint32_t i, j, k;
     int32_t sz = song.g[G_RSIZE], freeze = sz >= 127, dec = QV_DEC[clamp(sz, 0, 126)];
     int32_t dmp = 32767 - song.g[G_RDAMP] * 220, pl = qv.pl, pr = qv.pr;
+    int32_t gr = clamp(song.g[G_RTYPE], 0, 127), q = gr * gr / 127;   /* GRIT, squared: clean until near the top */
+    int32_t kin = 20700 + ((32767 - 20700) * q) / 127, kout = 22000 + ((32767 - 22000) * q) / 127;   /* ~7 / 8 kHz .. open */
+    int32_t hold = q > 64 ? (q - 64) * 520 : 0, bits = 16 - (q * 8) / 127;   /* (hold Q15: 0 .. ~1; 16 .. 8 bits) */
     (void)n;
     if (!qv_b[0])
         for (k = 0; k < QV_NL; k++)
             qv_b[k] = qv_buf(k);
     for (i = 0; i < QV_NC; i++) {
         int32_t x = 0, a, b, l, r, tri, gin, dk, dp;
-        for (j = 0; j < QV_R; j++)
-            x += rev_in[QV_R * i + j];
-        x = mulq15(clamp(x >> 2, -262143, 262143), 2580);   /* (ROOM's level) */
+        for (j = 0; j < QV_R; j++) {                     /* down to 11 kHz: two poles, then the four averaged */
+            int32_t xi = qmul(clamp(rev_in[QV_R * i + j], -262143, 262143), 2580);   /* (ROOM's level) */
+            qv.fi[0] += qmul(xi - qv.fi[0], kin);
+            qv.fi[1] += qmul(qv.fi[0] - qv.fi[1], kin);
+            x += qv.fi[1];
+        }
+        x >>= 2;
         qv.frz += clamp((freeze ? 32768 : 0) - qv.frz, -512, 512);   /* (~23 ms) */
         gin = 32768 - qv.frz;
         dk = dec + (int32_t)(((int64_t)(32768 - dec) * qv.frz) >> 15);
         dp = dmp + (int32_t)(((int64_t)(32767 - dmp) * qv.frz) >> 15);
         x = (int32_t)(((int64_t)x * gin) >> 15);
-        qv.bw += mulq15(x - qv.bw, 20000);               /* the input's band (the rate does the rest) */
+        qv.bw += qmul(x - qv.bw, 20000);                 /* the input's band (the rate does the rest) */
         a = qv_ap(QV_D0, qv.bw, 24576);
         a = qv_ap(QV_D1, a, 24576);
         a = qv_ap(QV_D2, a, 20480);
@@ -601,31 +615,44 @@ static __attribute__((noinline)) void rev_quad(const int32_t *rev_in, int32_t *o
         tri = (tri < 256 ? tri : 511 - tri) * 8 - (4 << 8);   /* (-4 .. +4 samples, Q8) */
         tri = (int32_t)(((int64_t)tri * gin) >> 15);     /* (FREEZE: still, so nothing smooths the tail away) */
         /* the left half, fed by the right's end; the right, by the left's */
-        l = qv_mod(QV_MAL, a + mulq15(qv.re, dk), -22938, tri);
+        l = qv_mod(QV_MAL, a + qmul(qv.re, dk), -22938, tri);
         b = qv_tap(QV_DL1, QV_LEN[QV_DL1]);
         qv_put(QV_DL1, l);
-        qv.dl += mulq15(b - qv.dl, dp);
-        b = qv_ap(QV_APL, mulq15(qv.dl, dk), 16384);
+        qv.dl += qmul(b - qv.dl, dp);
+        b = qv_ap(QV_APL, qmul(qv.dl, dk), 16384);
         l = qv_tap(QV_DL2, QV_LEN[QV_DL2]);
         qv_put(QV_DL2, b);
-        r = qv_mod(QV_MAR, a + mulq15(qv.le, dk), -22938, -tri);
+        r = qv_mod(QV_MAR, a + qmul(qv.le, dk), -22938, -tri);
         b = qv_tap(QV_DR1, QV_LEN[QV_DR1]);
         qv_put(QV_DR1, r);
-        qv.dr += mulq15(b - qv.dr, dp);
-        b = qv_ap(QV_APR, mulq15(qv.dr, dk), 16384);
+        qv.dr += qmul(b - qv.dr, dp);
+        b = qv_ap(QV_APR, qmul(qv.dr, dk), 16384);
         r = qv_tap(QV_DR2, QV_LEN[QV_DR2]);
         qv_put(QV_DR2, b);
         qv.le = l;
         qv.re = r;
-        /* the taps: both halves to each side, then 12 bits */
+        /* the taps: both halves to each side, then GRIT's bits */
         l = qv_tap(QV_DL1, 67) + qv_tap(QV_DL1, 749) - qv_tap(QV_APL, 400) + qv_tap(QV_DL2, 503) - qv_tap(QV_DR1, 501) -
             qv_tap(QV_APR, 47) - qv_tap(QV_DR2, 269);
         r = qv_tap(QV_DR1, 89) + qv_tap(QV_DR1, 914) - qv_tap(QV_APR, 309) + qv_tap(QV_DR2, 674) - qv_tap(QV_DL1, 532) -
             qv_tap(QV_APL, 84) - qv_tap(QV_DL2, 30);
-        l = (mulq15(l, 19661) + 8) & ~15;
-        r = (mulq15(r, 19661) + 8) & ~15;
-        for (j = 0; j < QV_R; j++) {                     /* back to 44.1 kHz, between the two */
+        l = qmul(l, 19661);
+        r = qmul(r, 19661);
+        if (bits < 16) {
+            int32_t h = 1 << (15 - bits);
+            l = (l + h) & ~(2 * h - 1);
+            r = (r + h) & ~(2 * h - 1);
+        }
+        for (j = 0; j < QV_R; j++) {                     /* back to 44.1 kHz, between the two (GRIT: held), one pole */
             int32_t lo = pl + (((l - pl) * (int32_t)(j + 1u)) >> 2), ro = pr + (((r - pr) * (int32_t)(j + 1u)) >> 2);
+            lo += qmul(pl - lo, hold);
+            ro += qmul(pr - ro, hold);
+            qv.fo[0] += qmul(lo - qv.fo[0], kout);
+            qv.fo[1] += qmul(qv.fo[0] - qv.fo[1], kout);
+            qv.fo[2] += qmul(ro - qv.fo[2], kout);
+            qv.fo[3] += qmul(qv.fo[2] - qv.fo[3], kout);
+            lo = qv.fo[1];
+            ro = qv.fo[3];
             out[QV_R * i + j] += ((lo + ro) >> 1) * QV_GAIN;
             rev_side[QV_R * i + j] = ((lo - ro) >> 1) * QV_GAIN;
         }
@@ -656,6 +683,7 @@ static void rev_clear(void)
     for (i = 0; i < QV_NL; i++)
         qv.w[i] = 0;
     qv.bw = qv.dl = qv.dr = qv.le = qv.re = qv.pl = qv.pr = qv.frz = 0;
+    qv.fi[0] = qv.fi[1] = qv.fo[0] = qv.fo[1] = qv.fo[2] = qv.fo[3] = 0;
 #endif
 }
 
@@ -687,6 +715,7 @@ static int32_t part_buf[CTL];                            /* a part's block (mix_
 #define SM1_b part_buf
 #endif
 
+#if !FELUCCA_SIMPLE
 /* the model changed (to rt): the old one's block fades out (HALL's stereo difference with it), its buffers are
  * cleared, the new one starts from silence */
 static __attribute__((noinline)) void rev_switch(const int32_t *rev_in, int32_t *wet, uint32_t n, int32_t rt)
@@ -713,6 +742,7 @@ static __attribute__((noinline)) void rev_switch(const int32_t *rev_in, int32_t 
     rev_clear();
     fx.rtype = (uint8_t)rt;
 }
+#endif
 
 /* process the three buses for one block; sends in, wet stereo-equal out */
 static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t *rev_in, int32_t *wet,
@@ -788,21 +818,22 @@ static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t
         y += mulq15(x << 1, dmix);
         wet[i] = y;
     }
-    rt = song.g[G_RTYPE];
-    rt = rt == 1 || rt == 2 || (FELUCCA_SIMPLE && rt == 3) ? rt : 0;
     hl.side = 0;
+#if FELUCCA_SIMPLE
+    (void)rt;
+    rev_quad(rev_in, wet, n);                           /* SIMPLE: the one reverb */
+#else
+    rt = song.g[G_RTYPE];
+    rt = rt == 1 || rt == 2 ? rt : 0;
     if (rt != fx.rtype)
         rev_switch(rev_in, wet, n, rt);
-#if FELUCCA_SIMPLE
-    else if (rt == 3)
-        rev_quad(rev_in, wet, n);
-#endif
     else if (rt == 2)
         rev_hall(rev_in, wet, n);
     else if (rt)
         rev_spring(rev_in, wet, n);
     else
         rev_room(rev_in, wet, n);
+#endif
 }
 
 /* after the buses: HALL's stereo difference to the left and from the right of the dry mix (the wet bus adds the

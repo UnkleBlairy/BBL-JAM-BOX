@@ -71,10 +71,12 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   (MFX_CSLOPE), the comb loop soft-limits (mfx_soft), the DJ filter updates
   every 32 samples with smooth resonance. Test with a sine + 2nd-difference
   check (jump ~20 = clean) before changing mfx.c.
-- Reverb: QUAD (fx.c rev_quad) is the default type: 90s rack plate (Quadraverb
-  feel), Dattorro tank at 11 kHz, 12-bit out, stereo. TIME 0..126 = RT60
-  0.3 s..~9 s (~3.5 s at 90, like HALL); TIME 127 = FREEZE (input fades out,
-  tail holds). ROOM/SPRING/HALL still selectable on TYPE.
+- ONE reverb only (streamlined): QUAD (fx.c rev_quad), a 90s rack plate
+  (Dattorro tank at 11 kHz, stereo). ROOM/SPRING/HALL are not in this build.
+  VERB page: REV, TIME, DAMP, GRIT. Clean by default; GRIT (G_RTYPE's id,
+  squared so it only bites near the top) adds aliasing, sample-hold and down to
+  8 bits. TIME 0..126 = RT60 0.3 s..~9 s (~3.5 s at 90); TIME 127 = FREEZE.
+  QUAD maths is 64-bit and rounded (qmul): no overflow crackle, tails die to 0.
 - Mutes (seq.c keyboard_block): hold OCT+ and press white key 1-4 (= track
   1-4). Quick press latches the mute, holding mutes only while held. Works
   with step keys on (those presses don't touch steps).
