@@ -251,8 +251,17 @@ static struct {
     uint32_t ph;                                         /* the modulation */
     int32_t frz;                                         /* FREEZE's share (Q15) */
 } qv __attribute__((section(".pool")));
-/* QUAD's products: 64-bit (no overflow), rounded to the nearest (a tail dies out to 0, no offset left) */
-static inline int32_t qmul(int32_t a, int32_t b) { return (int32_t)(((int64_t)a * b + 16384) >> 15); }
+/* QUAD's products: 64-bit (no overflow), rounded toward 0: every pass round the tank can only make a value smaller, so a
+ * tail dies out to 0 (rounding to the nearest kept a faint tone circling at ~-79 dB for ever) and leaves no offset.
+ * FREEZE (qv_near) rounds to the nearest: there the tail is meant to stay */
+static uint8_t qv_near;
+static inline int32_t qmul(int32_t a, int32_t b)
+{
+    int64_t p = (int64_t)a * b;
+    if (qv_near)
+        return (int32_t)((p + 16384) >> 15);
+    return (int32_t)(p >= 0 ? p >> 15 : -((-p) >> 15));
+}
 static int16_t *qv_buf(uint32_t k)                       /* line k's memory */
 {
     uint32_t j, oc = 0, oa = 0;
@@ -307,6 +316,7 @@ static __attribute__((noinline)) void rev_quad(const int32_t *rev_in, int32_t *o
     int32_t kin = 20700 + ((32767 - 20700) * q) / 127, kout = 22000 + ((32767 - 22000) * q) / 127;   /* ~7 / 8 kHz .. open */
     int32_t hold = q > 64 ? (q - 64) * 520 : 0, bits = 16 - (q * 8) / 127;   /* (hold Q15: 0 .. ~1; 16 .. 8 bits) */
     (void)n;
+    qv_near = qv.frz != 0 || freeze;
     if (!qv_b[0])
         for (k = 0; k < QV_NL; k++)
             qv_b[k] = qv_buf(k);

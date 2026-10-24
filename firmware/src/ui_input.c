@@ -125,7 +125,8 @@ static uint32_t oct_leds(void)
  * the black keys the selected track */
 static int gbs_trigless(const track_t *t, uint32_t p)   /* step p: no note, a lock (a trigless lock) */
 {
-    return p < NSTEP && !(t->step[p].time == ST_NOTE && t->step[p].n) && ((motion_lock_steps(trk_index(t)) >> p) & 1u);
+    return p < NSTEP && !(t->step[p].time == ST_NOTE && t->step[p].n) &&
+           (t->step[p].time == ST_LOCK || ((motion_lock_steps(trk_index(t)) >> p) & 1u));
 }
 static uint32_t sgrid_leds(uint32_t *br)                 /* (*br: the trigless steps, breathing) */
 {
@@ -803,6 +804,11 @@ static void sgrid_keys(uint32_t pressed)
             step_t *st = &TSEL->step[p];
             if ((st->time == ST_NOTE && st->n) || gbs_trigless(TSEL, p)) {
                 gbs_off |= 1u << k;                     /* (goes when let go: sgrid_release) */
+            } else if (kb_octup) {                      /* OCT+ held: a trigless lock step (hold it and turn knobs) */
+                gbs_step_off(st);
+                st->time = ST_LOCK;
+                mt_used = 1;                            /* (OCT+ was used: no setup values, no octave) */
+                ui.force = 1;
             } else {
                 gbs_step_off(st);
                 st->time = ST_NOTE;
@@ -1252,9 +1258,11 @@ static void ui_input(void)
                     break;
                 }
                 if (b == B_OCTDN || all) {
-                    for (a = all ? 0u : song.sel; a < (all ? NTRK : song.sel + 1u); a++)
+                    for (a = all ? 0u : song.sel; a < (all ? NTRK : song.sel + 1u); a++) {
                         for (i2 = 0; i2 < NSTEP; i2++)
                             step_clear(&trk[a].step[i2]);
+                        motion_clear(&trk[a]);          /* (its locks and automation too) */
+                    }
                     ui_message(all ? "ALL TRACKS CLEARED" : "TRACK CLEARED");
                 }
                 break;

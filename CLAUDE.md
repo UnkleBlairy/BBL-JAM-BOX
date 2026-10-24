@@ -73,8 +73,14 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   that value locked on the step. OCT+ held + key = a trigless lock (the value,
   no note). On pages that can't lock (SEQ, VOLUME, CLOCK) the keys just play.
   The MACH knob is left out (it needs its starting sound).
-- Trigless locks: a step with locks but no note. Its step key breathes in SEQ
-  mode; pressing it removes it on release (unless a knob is turned).
+- Trigless locks: a step with locks but no note (core.h ST_LOCK). In SEQ mode
+  hold OCT+ and press an empty step key to make one, then hold it and turn
+  knobs. Its step key breathes; pressing it removes it on release (unless a
+  knob is turned).
+- A lock stays until the track's next trig (Elektron-style), not just one
+  step: only a step that plays a note puts the earlier locks back. Trigless
+  lock steps add theirs on top. Stopping puts everything back.
+- OCT- clear (SEQ mode) wipes the track's locks and automation too.
 - Parameter locks: with step keys on, hold step(s) on any sound page and turn
   a knob = lock. Locked dials show inverted (like macros). Hold step + OCT-
   clears that step's locks. Every knob locks: all sound pages incl. machine,
@@ -92,7 +98,9 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   VERB page: REV, TIME, DAMP, GRIT. Clean by default; GRIT (G_RTYPE's id,
   squared so it only bites near the top) adds aliasing, sample-hold and down to
   8 bits. TIME 0..126 = RT60 0.3 s..~9 s (~3.5 s at 90); TIME 127 = FREEZE.
-  QUAD maths is 64-bit and rounded (qmul): no overflow crackle, tails die to 0.
+  QUAD maths is 64-bit and rounds toward 0 (qmul): no overflow crackle, and
+  tails die to exactly 0 (rounding to the nearest left a faint tone circling
+  for ever). FREEZE rounds to the nearest so its tail holds.
 - Mutes (seq.c keyboard_block): hold OCT+ and press black key 1-6 (the track
   keys, = track 1-6). Quick press latches the mute, holding mutes only while
   held. With OCT+ held those keys don't select the track.

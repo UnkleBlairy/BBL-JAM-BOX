@@ -731,6 +731,8 @@ static __attribute__((noinline)) int par_key(uint32_t k, track_t *t)   /* 1: the
         if (t->seq_pos < 0x7FFFFFFFu && t->seq_pos > step_samples(t, period, t->seq_idx) / 2u)
             idx = (idx + 1u) % len;
         (void)motion_set_lock(t, idx, id, v);
+        if (kb_octup && !(t->step[idx].time == ST_NOTE && t->step[idx].n))
+            t->step[idx].time = ST_LOCK;            /* (trigless: the step shows as one) */
         if ((motion_base_valid >> tk) & 1u) {       /* .. and it sounds now, back at the next step */
             motion_active[tk][id / 32u] |= b;
             motion_locked[tk][id / 32u] |= b;
@@ -970,7 +972,7 @@ static __attribute__((noinline)) void seq_step(track_t *t, const step_t *s, uint
         }
         return;
     }
-    if (s->time == ST_REST || (!s->n && !s->hit)) {
+    if (s->time >= ST_REST || (!s->n && !s->hit)) {
         seq_release(t);
         return;
     }
@@ -1083,7 +1085,7 @@ static __attribute__((noinline)) void seq_play(track_t *t, uint32_t idx, uint32_
     uint32_t skip = SEQ_ROLLED, i, k;
     if (seq_miss(t, s, idx))
         skip = SEQ_MISS;
-    motion_step(t, idx, &motion, skip == SEQ_ROLLED);
+    motion_step(t, idx, &motion, skip == SEQ_ROLLED, skip == SEQ_ROLLED && s->time == ST_NOTE && (s->n || s->hit));
     if (t->rskip_n && t->rskip_idx == idx) {
         for (k = 0; k < t->rskip_n; k++) {
             for (i = 0; i < s->n; i++)

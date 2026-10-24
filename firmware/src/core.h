@@ -138,7 +138,7 @@ enum { V_POLY, V_MONO, V_LEGATO, V_UNISON };   /* P_VOICE */
 /* voice_t, vmod_t, preset_t, engine_t: engine.h (above) */
 
 /* ------------------------------------------------- tracks, the song --- */
-enum { ST_NOTE, ST_TIE, ST_REST };
+enum { ST_NOTE, ST_TIE, ST_REST, ST_LOCK };   /* (SIMPLE ST_LOCK: a trigless lock step: no note, its locks) */
 #define SF_ACCENT 1u
 #define SF_SLIDE 2u
 #define SF_RATCH_SH 3u                   /* RATCH: the hits of a NOTE step - 1 (0..3: x1..x4, seq.c seq_ratchet); */

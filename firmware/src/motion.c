@@ -260,8 +260,11 @@ static __attribute__((noinline)) void motion_unlock(track_t *t, uint32_t step, c
     }
     memset(motion_locked[k], 0, sizeof motion_locked[k]);
 }
-/* step `step` of track t starts (seq.c seq_tick); play: it plays (its chance passed): its locks apply */
-static __attribute__((noinline)) void motion_step(track_t *t, uint32_t step, const motion_store_t *m, uint32_t play)
+/* step `step` of track t starts (seq.c seq_tick); play: it plays (its chance passed): its locks apply. trig: it plays a
+ * note (SIMPLE: a lock stays until the track's next trig, Elektron-style: only a trig puts the locks before it back;
+ * a trigless lock step adds its own on top). Automation still starts again each pass (step 0) */
+static __attribute__((noinline)) void motion_step(track_t *t, uint32_t step, const motion_store_t *m, uint32_t play,
+                                                  uint32_t trig)
 {
     uint32_t k = trk_index(t), i, w, any = 0;
     if (!((m->on >> k) & 1u)) return;
@@ -271,8 +274,22 @@ static __attribute__((noinline)) void motion_step(track_t *t, uint32_t step, con
     }
     for (w = 0; w < (MOTION_N + 31u) / 32u; w++)
         any |= motion_locked[k][w];
-    if (!step) motion_restore(t);
-    else if (any) motion_unlock(t, step, m);
+    if (!FELUCCA_SIMPLE) {
+        if (!step) motion_restore(t);
+        else if (any) motion_unlock(t, step, m);
+    } else {
+        if (any && trig) motion_unlock(t, step, m);
+        if (!step) {                                    /* (the pass's automation back; a lock held stays) */
+            uint32_t id;
+            for (id = 0; id < MOTION_N; id++) {
+                uint32_t b = 1u << (id % 32u);
+                if ((motion_active[k][id / 32u] & b) && !(motion_locked[k][id / 32u] & b)) {
+                    *motion_vp(t, id) = motion_base[k][id];
+                    motion_active[k][id / 32u] &= ~b;
+                }
+            }
+        }
+    }
     for (i = 0; i < m->count; i++) {
         const motion_event_t *e = &m->event[i];
         uint32_t id = MOTION_ID(e);
