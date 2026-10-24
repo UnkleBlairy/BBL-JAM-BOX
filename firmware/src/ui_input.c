@@ -990,7 +990,7 @@ static void sgrid_keys(uint32_t pressed)
 static void gbseq_knob(uint32_t slot, int32_t steps)
 {
     track_t *t = TSEL;
-    uint32_t held = gbs_held(), p, k;
+    uint32_t held = gbs_held(), p;
     int16_t was;
     if (slot >= 2u && held) {                            /* the held steps' own: they stay when let go */
         gbs_keep();

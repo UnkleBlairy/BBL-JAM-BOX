@@ -211,6 +211,8 @@ static void gb_fill(gb_view_t *v)
             }
         }
         param_format(d, cur, v->val[k], &u);
+        if (vp == &song.g[G_RSIZE] && cur >= 127)       /* the reverb's TIME at the top: FREEZE (fx.c rev_quad) */
+            str_cpy(v->val[k], "FREEZE", sizeof v->val[k]);
         if (str_eq(v->val[k], "CYM"))                 /* (too wide beside a negative value) */
             str_cpy(v->val[k], "CY", sizeof v->val[k]);
         r = RATIO(d, enum_rank(d, cur));

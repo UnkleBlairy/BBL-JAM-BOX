@@ -71,6 +71,10 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   (MFX_CSLOPE), the comb loop soft-limits (mfx_soft), the DJ filter updates
   every 32 samples with smooth resonance. Test with a sine + 2nd-difference
   check (jump ~20 = clean) before changing mfx.c.
+- Reverb: QUAD (fx.c rev_quad) is the default type: 90s rack plate (Quadraverb
+  feel), Dattorro tank at 11 kHz, 12-bit out, stereo. TIME 0..126 = RT60
+  0.3 s..~9 s (~3.5 s at 90, like HALL); TIME 127 = FREEZE (input fades out,
+  tail holds). ROOM/SPRING/HALL still selectable on TYPE.
 - The DJ filter always starts open (centre) at power-on and on project load.
 - Saving (gb_store.c): 16 sound slots per machine (6 machines = 96; more
   machines later). Hold SAVE = SAVE screen: white key = save the selected

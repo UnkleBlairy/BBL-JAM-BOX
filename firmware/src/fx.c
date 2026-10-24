@@ -505,6 +505,139 @@ static __attribute__((noinline)) void rev_hall(const int32_t *rev_in, int32_t *o
     hl.side = 1;
 }
 
+#define QV_GAIN 12                                       /* QUAD's outputs: about ROOM's tail */
+#if FELUCCA_SIMPLE
+/* QUAD (G_RTYPE 3, SIMPLE): a 90s rack reverb, a plate tank of the Dattorro kind (Griesinger's figure-of-eight: four
+ * input diffusers, then two halves each a modulated allpass, a delay, a damping low-pass, the decay, an allpass, a
+ * delay, crossing into the other half) run at a quarter of the rate (11 kHz: the band stops ~5 kHz, a box average in,
+ * the old converters' grit) and 12-bit out. Stereo: taps of both halves (rev_side). TIME 127 is FREEZE: the input
+ * fades out, the decay is 1 and the damping opens: the tail holds as long as it is left there. In ROOM's buffers
+ * (rev_comb, rev_ap), as SPRING and HALL; a model change clears them */
+#define QV_R 4u                                          /* the rate's divider */
+#define QV_NC (CTL / QV_R)
+enum { QV_D0, QV_D1, QV_D2, QV_D3, QV_MAL, QV_DL1, QV_APL, QV_DL2, QV_MAR, QV_DR1, QV_APR, QV_DR2, QV_NL };
+static const uint16_t QV_LEN[QV_NL] = {37, 27, 95, 70, 169 + 8, 1122, 454, 937, 229 + 8, 1063, 669, 797};
+static const uint8_t QV_IN_AP[QV_NL] = {0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0, 0};   /* 1: in rev_ap, 0: in rev_comb */
+_Static_assert(37 + 27 + 95 + 70 + 1122 + 937 + 1063 + 669 + 797 <= sizeof rev_comb / 2u &&
+               169 + 8 + 454 + 229 + 8 <= sizeof rev_u.ap / 2u, "QUAD in ROOM's buffers");
+static struct {
+    uint16_t w[QV_NL];                                   /* each line's write place */
+    int32_t bw, dl, dr, le, re;                          /* the input's low-pass; the damping low-passes; the halves' ends */
+    int32_t pl, pr, acc[2];                              /* the last outputs (back to 44.1 kHz between them) */
+    uint32_t ph;                                         /* the modulation */
+    int32_t frz;                                         /* FREEZE's share (Q15) */
+} qv __attribute__((section(".pool")));
+static int16_t *qv_buf(uint32_t k)                       /* line k's memory */
+{
+    uint32_t j, oc = 0, oa = 0;
+    for (j = 0; j < k; j++) {
+        if (QV_IN_AP[j])
+            oa += QV_LEN[j];
+        else
+            oc += QV_LEN[j];
+    }
+    return QV_IN_AP[k] ? rev_ap + oa : rev_comb + oc;
+}
+static int16_t *qv_b[QV_NL];
+static const uint16_t QV_DEC[127] = {   /* TIME 0..126 -> the decay (Q15): RT60 0.3 s * e^(TIME / 36.6), ~3.5 s at 90 */
+    1997, 2154, 2317, 2489, 2668, 2854, 3048, 3249, 3458, 3674, 3897, 4127, 4364, 4607, 4857, 5113,
+    5376, 5644, 5918, 6197, 6481, 6770, 7064, 7362, 7664, 7970, 8279, 8592, 8907, 9225, 9545, 9868,
+    10192, 10517, 10844, 11172, 11501, 11830, 12159, 12488, 12816, 13144, 13472, 13798, 14123, 14447, 14769, 15090,
+    15408, 15724, 16038, 16350, 16659, 16965, 17269, 17569, 17867, 18161, 18452, 18739, 19024, 19304, 19581, 19855,
+    20124, 20390, 20653, 20911, 21165, 21416, 21663, 21905, 22144, 22379, 22610, 22837, 23060, 23280, 23495, 23706,
+    23914, 24118, 24318, 24514, 24706, 24895, 25080, 25261, 25439, 25613, 25783, 25950, 26114, 26274, 26430, 26584,
+    26734, 26881, 27025, 27165, 27303, 27437, 27569, 27697, 27823, 27946, 28066, 28183, 28298, 28410, 28519, 28626,
+    28731, 28833, 28932, 29029, 29124, 29217, 29307, 29395, 29481, 29565, 29647, 29727, 29806, 29882, 29956};
+static int32_t qv_tap(uint32_t k, uint32_t back)        /* line k, `back` samples before the next write (1..LEN) */
+{
+    uint32_t L = QV_LEN[k];
+    return qv_b[k][(qv.w[k] + L - back) % L];
+}
+static void qv_put(uint32_t k, int32_t v)
+{
+    qv_b[k][qv.w[k]] = (int16_t)clamp(v, -32767, 32767);
+    if (++qv.w[k] >= QV_LEN[k])
+        qv.w[k] = 0;
+}
+static int32_t qv_ap(uint32_t k, int32_t x, int32_t g)  /* an allpass of line k's length, coefficient g (Q15) */
+{
+    int32_t d = qv_tap(k, QV_LEN[k]), v = x - mulq15(d, g);
+    qv_put(k, v);
+    return d + mulq15(v, g);
+}
+static int32_t qv_mod(uint32_t k, int32_t x, int32_t g, int32_t ofs)   /* .. with its delay moving +-4 (ofs Q8) */
+{
+    uint32_t L = QV_LEN[k], D = ((L - 8u) << 8) + (uint32_t)(ofs + (4 << 8)), di = D >> 8, fr = D & 255u;
+    int32_t a = qv_tap(k, di), b = qv_tap(k, di + 1u), d = a + (((b - a) * (int32_t)fr) >> 8), v = x - mulq15(d, g);
+    qv_put(k, v);
+    return d + mulq15(v, g);
+}
+static __attribute__((noinline)) void rev_quad(const int32_t *rev_in, int32_t *out, uint32_t n)
+{
+    uint32_t i, j, k;
+    int32_t sz = song.g[G_RSIZE], freeze = sz >= 127, dec = QV_DEC[clamp(sz, 0, 126)];
+    int32_t dmp = 32767 - song.g[G_RDAMP] * 220, pl = qv.pl, pr = qv.pr;
+    (void)n;
+    if (!qv_b[0])
+        for (k = 0; k < QV_NL; k++)
+            qv_b[k] = qv_buf(k);
+    for (i = 0; i < QV_NC; i++) {
+        int32_t x = 0, a, b, l, r, tri, gin, dk, dp;
+        for (j = 0; j < QV_R; j++)
+            x += rev_in[QV_R * i + j];
+        x = mulq15(clamp(x >> 2, -262143, 262143), 2580);   /* (ROOM's level) */
+        qv.frz += clamp((freeze ? 32768 : 0) - qv.frz, -512, 512);   /* (~23 ms) */
+        gin = 32768 - qv.frz;
+        dk = dec + (int32_t)(((int64_t)(32768 - dec) * qv.frz) >> 15);
+        dp = dmp + (int32_t)(((int64_t)(32767 - dmp) * qv.frz) >> 15);
+        x = (int32_t)(((int64_t)x * gin) >> 15);
+        qv.bw += mulq15(x - qv.bw, 20000);               /* the input's band (the rate does the rest) */
+        a = qv_ap(QV_D0, qv.bw, 24576);
+        a = qv_ap(QV_D1, a, 24576);
+        a = qv_ap(QV_D2, a, 20480);
+        a = qv_ap(QV_D3, a, 20480);
+        qv.ph += 272700u;                                /* ~0.7 Hz */
+        tri = (int32_t)(qv.ph >> 23);                    /* (0 .. 511: up, then down) */
+        tri = (tri < 256 ? tri : 511 - tri) * 8 - (4 << 8);   /* (-4 .. +4 samples, Q8) */
+        tri = (int32_t)(((int64_t)tri * gin) >> 15);     /* (FREEZE: still, so nothing smooths the tail away) */
+        /* the left half, fed by the right's end; the right, by the left's */
+        l = qv_mod(QV_MAL, a + mulq15(qv.re, dk), -22938, tri);
+        b = qv_tap(QV_DL1, QV_LEN[QV_DL1]);
+        qv_put(QV_DL1, l);
+        qv.dl += mulq15(b - qv.dl, dp);
+        b = qv_ap(QV_APL, mulq15(qv.dl, dk), 16384);
+        l = qv_tap(QV_DL2, QV_LEN[QV_DL2]);
+        qv_put(QV_DL2, b);
+        r = qv_mod(QV_MAR, a + mulq15(qv.le, dk), -22938, -tri);
+        b = qv_tap(QV_DR1, QV_LEN[QV_DR1]);
+        qv_put(QV_DR1, r);
+        qv.dr += mulq15(b - qv.dr, dp);
+        b = qv_ap(QV_APR, mulq15(qv.dr, dk), 16384);
+        r = qv_tap(QV_DR2, QV_LEN[QV_DR2]);
+        qv_put(QV_DR2, b);
+        qv.le = l;
+        qv.re = r;
+        /* the taps: both halves to each side, then 12 bits */
+        l = qv_tap(QV_DL1, 67) + qv_tap(QV_DL1, 749) - qv_tap(QV_APL, 400) + qv_tap(QV_DL2, 503) - qv_tap(QV_DR1, 501) -
+            qv_tap(QV_APR, 47) - qv_tap(QV_DR2, 269);
+        r = qv_tap(QV_DR1, 89) + qv_tap(QV_DR1, 914) - qv_tap(QV_APR, 309) + qv_tap(QV_DR2, 674) - qv_tap(QV_DL1, 532) -
+            qv_tap(QV_APL, 84) - qv_tap(QV_DL2, 30);
+        l = (mulq15(l, 19661) + 8) & ~15;
+        r = (mulq15(r, 19661) + 8) & ~15;
+        for (j = 0; j < QV_R; j++) {                     /* back to 44.1 kHz, between the two */
+            int32_t lo = pl + (((l - pl) * (int32_t)(j + 1u)) >> 2), ro = pr + (((r - pr) * (int32_t)(j + 1u)) >> 2);
+            out[QV_R * i + j] += ((lo + ro) >> 1) * QV_GAIN;
+            rev_side[QV_R * i + j] = ((lo - ro) >> 1) * QV_GAIN;
+        }
+        pl = l;
+        pr = r;
+    }
+    qv.pl = pl;
+    qv.pr = pr;
+    hl.side = 1;
+}
+#endif
+
 /* the reverb's buffers and states to silence (the model changed) */
 static void rev_clear(void)
 {
@@ -519,6 +652,11 @@ static void rev_clear(void)
         hl.lp[i] = hl.le[i] = 0;
     fx.sp_lp = fx.sp_hp = fx.sp_he = 0;
     hl.x = hl.m = hl.s = hl.hp = hl.he = 0;
+#if FELUCCA_SIMPLE
+    for (i = 0; i < QV_NL; i++)
+        qv.w[i] = 0;
+    qv.bw = qv.dl = qv.dr = qv.le = qv.re = qv.pl = qv.pr = qv.frz = 0;
+#endif
 }
 
 #if FELUCCA_CPU2
@@ -557,6 +695,11 @@ static __attribute__((noinline)) void rev_switch(const int32_t *rev_in, int32_t 
     uint32_t i;
     for (i = 0; i < n; i++)
         t[i] = 0;
+#if FELUCCA_SIMPLE
+    if (fx.rtype == 3u)
+        rev_quad(rev_in, t, n);
+    else
+#endif
     if (fx.rtype == 2u)
         rev_hall(rev_in, t, n);
     else if (fx.rtype)
@@ -646,10 +789,14 @@ static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t
         wet[i] = y;
     }
     rt = song.g[G_RTYPE];
-    rt = rt == 1 || rt == 2 ? rt : 0;
+    rt = rt == 1 || rt == 2 || (FELUCCA_SIMPLE && rt == 3) ? rt : 0;
     hl.side = 0;
     if (rt != fx.rtype)
         rev_switch(rev_in, wet, n, rt);
+#if FELUCCA_SIMPLE
+    else if (rt == 3)
+        rev_quad(rev_in, wet, n);
+#endif
     else if (rt == 2)
         rev_hall(rev_in, wet, n);
     else if (rt)
