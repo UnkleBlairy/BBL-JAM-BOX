@@ -803,7 +803,7 @@ static __attribute__((noinline)) void kb_lat(uint32_t k)
 #endif
 
 #if FELUCCA_SIMPLE
-/* OCT+ held and one of the first four white keys: that track's mute. A tap toggles it; held (350 ms) it is only for as
+/* OCT+ held and one of the first four black keys (the track keys): that track's mute. A tap toggles it; held (350 ms) it is only for as
  * long as the key is down */
 static uint8_t kb_octup, mt_used, kb_mt[27], mt_prev[4];
 static uint32_t mt_t0[4];
@@ -841,7 +841,7 @@ static void keyboard_block(void)
                 continue;
             }
 #if FELUCCA_SIMPLE
-            if (kb_octup && !key_black(k) && key_place(k) < NTRK) {
+            if (kb_octup && key_black(k) && key_place(k) < NTRK) {
                 uint32_t tr = key_place(k);
                 kb_note[k] = KB_SILENT;
                 kb_layer |= 1u << k;

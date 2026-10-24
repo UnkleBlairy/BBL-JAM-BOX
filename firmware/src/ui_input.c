@@ -706,7 +706,7 @@ static void pm_keys(uint32_t pressed)
         if (!((pressed >> k) & 1u))
             continue;
         if (key_black(k)) {
-            if (p < NTRK)
+            if (p < NTRK && !kb_octup)                  /* (OCT+ held: the track keys are the mutes, seq.c) */
                 track_select(p);
 #if !FELUCCA_SIMPLE
             else if (p >= 8u && p <= 10u) {                 /* the last three black keys: the release fade 1/8 1/4 BAR, again for none */
@@ -960,14 +960,12 @@ static void sgrid_keys(uint32_t pressed)
         if (!((pressed >> k) & 1u))
             continue;
         if (key_black(k)) {
-            if (p < NTRK) {
+            if (p < NTRK && !kb_octup) {                /* (OCT+ held: the track keys are the mutes, seq.c) */
                 gbs_off = gbs_kept = 0;                 /* (the steps held were the other track's) */
                 track_select(p);
             }
             continue;
         }
-        if (kb_octup && p < NTRK)                       /* (OCT+ held: the first four white keys are the mutes, seq.c) */
-            continue;
         if (chain_busy()) { ui_message("STOP TO EDIT"); continue; }
         if (p >= len)
             continue;

@@ -77,9 +77,9 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   squared so it only bites near the top) adds aliasing, sample-hold and down to
   8 bits. TIME 0..126 = RT60 0.3 s..~9 s (~3.5 s at 90); TIME 127 = FREEZE.
   QUAD maths is 64-bit and rounded (qmul): no overflow crackle, tails die to 0.
-- Mutes (seq.c keyboard_block): hold OCT+ and press white key 1-4 (= track
-  1-4). Quick press latches the mute, holding mutes only while held. Works
-  with step keys on (those presses don't touch steps).
+- Mutes (seq.c keyboard_block): hold OCT+ and press black key 1-4 (the track
+  keys, = track 1-4). Quick press latches the mute, holding mutes only while
+  held. With OCT+ held those keys don't select the track.
 - The DJ filter always starts open (centre) at power-on and on project load.
 - Saving (gb_store.c): 16 sound slots per machine (6 machines = 96; more
   machines later). Hold SAVE = SAVE screen: white key = save the selected
