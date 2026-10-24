@@ -83,7 +83,6 @@
 #if FELUCCA_UART
 #include "midi_uart.c"
 #endif
-#include "song_chain.c"
 #include "seq.c"
 #include "audio.c"
 

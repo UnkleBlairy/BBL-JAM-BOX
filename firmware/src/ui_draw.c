@@ -287,13 +287,8 @@ static void head_msg(int32_t x, int32_t maxw)
  * b: the letter (b[1] '*' or 0); 0 = none */
 static int head_slot(char *b)
 {
-    uint32_t k = song.sel % NTRK, s;
+    uint32_t k = song.sel % NTRK;
     b[1] = b[2] = 0;
-    if (chain.running) {
-        s = chain.lane[k];
-        b[0] = s < 4u ? (char)('A' + s) : '-';
-        return 1;
-    }
     if (!pat_from[k] || pat_from[k] > 4u)
         return 0;
     b[0] = (char)('A' + pat_from[k] - 1u);
@@ -306,11 +301,7 @@ static void head_group(void)
 {
     char b[8];
     int32_t x;
-    if (chain.running) {
-        fmt_int(b, (int32_t)chain.row + 1);
-        x = HEAD_GRP_R - (16 + 4 + text_w(&AF_M, b));
-        x += cv_icon_mid(x, H_HEAD / 2, 16, ICON_X_SONG, T_MID, T_BG);   /* SONG: the disc */
-    } else {
+    {
         str_cpy(b, song.octave > 0 ? "+" : "", sizeof b);
         fmt_int(b + str_len(b), song.octave);
         x = HEAD_GRP_R - (text_w(&AF_S, "OCT") + 4 + text_w(&AF_M, b));
@@ -333,7 +324,7 @@ static void draw_head(void)
     uint32_t sig = (uint32_t)song.playing * 3u + rec * 5u + (uint32_t)(song.octave + 8) * 11u + song.sel * 13131u +
                    (ui.msg_t ? str_hash(7u, ui.msg) : 0u) + (uint32_t)song.g[G_BPM] * 101u + (ui.bpm_t != 0) * 31u +
                    (uint32_t)seq_counting() * 7u + (ui_prefs & PREF_BPM_LOCK) * 4099u +
-                   (uint32_t)batt_shown() * 7777u + (chain.running ? (chain.row + 1u) * 104729u : 0u) +
+                   (uint32_t)batt_shown() * 7777u + 0u +
                    (slot ? str_hash(11u, sl) : 0u) + (uint32_t)midi_lit(song.sel) * 15485863u;   /* (1.5.5) */
     int msg = ui.msg_t;
     int centre = !msg || ui.bpm_t == LAYER_GLO;   /* the BPM being changed: it stays, the message right */
@@ -382,7 +373,7 @@ static void draw_head(void)
     draw_rec_mark(rx, T_BG);
     if (centre) {
         int32_t ib[4], lx = g.bx + g.b[2];             /* lx: the right end of the BPM (and its lock) */
-        uint32_t id = song.playing ? (chain.running ? ICON_X_SONG : ICON_X_PLAY) : seq_counting() ? ICON_X_PLAY : ICON_X_STOP;
+        uint32_t id = song.playing ? ICON_X_PLAY : seq_counting() ? ICON_X_PLAY : ICON_X_STOP;
         icon_ink(16, id, ib);                          /* the play state: the song's disc, play (counting in: the
                                                         * accent's, about to play), stop */
         cv_icon_mid(g.px1 - ib[2], H_HEAD / 2, 16, id, /* (right-aligned in its slot) */
@@ -405,7 +396,7 @@ static void draw_head(void)
     } else {
         head_msg(-1, HEAD_MSG_W);
     }
-    if (!msg && (chain.running || song.octave))
+    if (!msg && (song.octave))
         head_group();
     if (!(msg && centre))
         draw_battery(HEAD_BAT_X);

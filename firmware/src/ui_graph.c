@@ -109,32 +109,6 @@ static uint32_t graph_pden[4][NTRK];                  /* .. and its picture for 
 static uint8_t graph_pcell[4][NTRK];                  /* .. in this many cells (min(LEN, 16)) */
 static uint32_t graph_pname_sig;
 
-/* SONG's timeline (graph_song): the sections left to right, each as wide as it plays: REPS x its clock track's pattern
- * (song_chain.c chain_clock: the first track not silent there; project_info: that track's LEN x DIV in its slot, what
- * chain_tick counts; a slot not saved, or every track silent: one bar). A short song is stretched over the strip
- * (fitted); a section under SG_MINW gets SG_MINW and the rest is shared out again; when the sections would get under
- * SG_FITBAR px a bar the song scrolls at SG_BAR px a bar, the view following the cursor's section and, playing, the
- * playing one. + ADD's slot (count < CHAIN_ROWS) at the end. Content px: 0 .. the width. Four lanes, T1 at the top */
-#define SG_X0 24                                       /* the strip: x 24 .. 234 (the lanes' cushions left of it) */
-#define SG_W 210
-#define SG_Y 3                                         /* the lanes: y 3 .. 88 */
-#define SG_LH 20                                       /* a lane's height (its letter, the pattern's picture), SG_LG between two */
-#define SG_LG 2
-#define SG_H (NTRK * (SG_LH + SG_LG) - SG_LG)
-#define SG_LY(k) (SG_Y + (int32_t)(k) * (SG_LH + SG_LG))   /* lane k's top */
-#define SG_GAP 2                                       /* between two blocks (in a block's width) */
-#define SG_MINW 16                                     /* a block's least width, its gap included: a letter in it */
-#define SG_ADDW 20                                     /* + ADD's slot */
-#define SG_BAR 6                                       /* scrolled: px a bar */
-#define SG_FITBAR 3                                    /* fitted: at least this many px a bar */
-#define SG_BARU 192u                                   /* a 4/4 bar in 1/48 quarters */
-#define SG_RY (SG_Y + SG_H + 3)                        /* the ruler's line (92); its ticks and numbers under it */
-typedef struct {
-    uint32_t n, add, fit;                              /* the rows, + ADD shown, fitted (no scrolling) */
-    uint32_t u0[CHAIN_ROWS + 1u];                      /* each row's start in 1/48 quarters; u0[n]: the song's length */
-    int32_t x[CHAIN_ROWS + 2u];                        /* each row's left edge (content px); x[n]: + ADD's; x[n + 1]: the end */
-} song_lay_t;
-static struct { int32_t off; uint32_t frame; uint8_t init, cur, play, last; } sgv;   /* the view (scrolled) */
 
 /* MENU > LARGE's strip under the tall cards (ui.c LK_TALL): HOME's scope, ENV's ADSR, LFO's wave,
  * MIXER's tracks drawn small; on the other pages the page's title and number (their charts need the whole panel) */

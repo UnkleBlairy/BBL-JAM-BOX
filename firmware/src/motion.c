@@ -36,6 +36,7 @@ static uint32_t motion_gid(uint32_t g)                   /* global g's id, 0xFF 
     (void)g;
     return 0xFFu;
 }
+static uint32_t step_samples(const track_t *t, uint32_t period, uint32_t idx);   /* (seq.c) */
 static motion_store_t motion;
 static int16_t motion_base[NTRK][MOTION_N];
 static uint32_t motion_active[NTRK][(MOTION_N + 31u) / 32u];
@@ -182,7 +183,7 @@ static int motion_put(track_t *t, uint32_t step, uint32_t id, int16_t value, uin
     for (i = 0; i < motion.count; i++)
         if (motion.event[i].place == (k << 6 | step) && MOTION_ID(&motion.event[i]) == id) break;
     if (i == MOTION_MAX) { motion_full = 1; motion_unguard(f); return 2; }
-    motion.event[i].place = (uint8_t)(k << 6 | step);
+    motion.event[i].place = (uint16_t)(k << 6 | step);
     motion.event[i].param = (uint8_t)(id | kind);
     motion.event[i].value = (int8_t)value;
     RING_PUBLISH();

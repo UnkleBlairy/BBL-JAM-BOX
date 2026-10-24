@@ -9,7 +9,7 @@
 
 /* ------------------------------------------------------------ sizes --- */
 #define NVOICE 8                 /* voices per part, and the budget shared by all parts */
-#define NPART 4                  /* synth parts: tracks 1..4 */
+#define NPART 6                  /* synth parts: tracks 1..6 */
 #define NTRK NPART               /* tracks (the formats and the protocol count these): every track is a part */
 #define NSTEP 64
 #define HALF_FRAMES 128          /* I2S half buffer: 2.9 ms at 44.1 kHz (a key waits 0..1 half, then plays 1 half later) */
@@ -210,25 +210,9 @@ static void step_set_nudge(step_t *s, int32_t v)
  * value holds until another one changes it. One record per (track, step, id), of either kind */
 #define MOTION_LOCK 0x80u
 #define MOTION_ID(e) ((uint32_t)(e)->param & 0x7Fu)
-typedef struct { uint8_t place, param; int8_t value; } motion_event_t;
+typedef struct { uint16_t place; uint8_t param; int8_t value; } motion_event_t;   /* place: track << 6 | step */
 typedef struct { uint8_t count, on, rsv[2]; motion_event_t event[MOTION_MAX]; } motion_store_t;
-_Static_assert(sizeof(motion_store_t) == 388u, "motion disk layout (FUN10)");
-#define CHAIN_ROWS 16u
-/* A song section (1.2, FUN10): the PROJECT slot each track plays (0..3, A..D; CHAIN_SILENT "-": that track plays
- * nothing there) and its repeats (1..16). Up to 1.1 a row was {slot, repeat}, all four tracks on that slot
- * (chain_v9_t, FUN6..FUN9): it loads as a section with the four on it (song_chain.c chain_from_v9) */
-#define CHAIN_SILENT 4u
-typedef struct { uint8_t slot[NTRK], repeat; } chain_row_t;
-typedef struct {
-    uint8_t count, rsv[3];
-    chain_row_t row[CHAIN_ROWS];
-} chain_config_t;
-typedef struct { uint8_t slot, repeat; } chain_row_v9_t;   /* frozen: the rows of FUN6..FUN9 */
-typedef struct {
-    uint8_t count, rsv[3];
-    chain_row_v9_t row[CHAIN_ROWS];
-} chain_v9_t;
-_Static_assert(sizeof(chain_config_t) == 84u && sizeof(chain_v9_t) == 36u, "song chain layouts (FUN10 / FUN6..FUN9)");
+_Static_assert(sizeof(motion_store_t) == 516u, "motion: 128 records of 4 bytes");
 
 typedef struct track {
     int16_t p[P_COUNT];

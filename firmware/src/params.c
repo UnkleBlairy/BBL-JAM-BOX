@@ -442,7 +442,8 @@ static const page_t PAGES[] = {
     {"PERF", FAM_GLO, SC_GLOBAL, GR_PERF, {0xFF, 0xFF, 0xFF, 0xFF}},        /* GLO: the performance macros (ui.c perf_*) */
     {"COMB", FAM_GLO, SC_GLOBAL, GR_NONE, {G_SYNC, G_CRATE, G_CDEPTH, G_INFO}},   /* the master comb: MIX TUNE FDBK DAMP (mfx.c) */
     {"SEQ", FAM_SEQ, SC_TRACK, GR_GBSEQ, {P_SLEN, P_SDIV, P_APROB, 0xFF}},   /* LEN SPEED CHANCE TRIG (ui_input.c gbseq_knob) */
-    {"MIXER", FAM_TRK, SC_TRK, GR_TRK, {0, 1, 2, 3}},
+    {"VOLUME 1-4", FAM_TRK, SC_TRK, GR_TRK, {0, 1, 2, 3}},   /* the tracks' levels, KNOB k track id[k] (0xFF: none) */
+    {"VOLUME 5-6", FAM_TRK, SC_TRK, GR_TRK, {4, 5, 0xFF, 0xFF}},
     {"CLOCK", FAM_TRK, SC_GLOBAL, GR_NONE, {G_BPM, G_SWING, G_CLOCK, 0xFF}},
 };
 #define NPAGES (sizeof(PAGES) / sizeof(PAGES[0]))

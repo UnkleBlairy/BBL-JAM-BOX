@@ -1,10 +1,11 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* gb_store.c - the groovebox's sounds and kits (FELUCCA_SIMPLE). Patterns are never saved: it is for jamming.
  *   SOUND  16 slots a machine (SYN BD SD HH CYM PERC: 96): a track's sound, its sequencer and mixer settings left out
- *   KIT    11 slots: the four tracks' sounds, the macros, the PERF fade, the FX and COMB globals (not the tempo,
+ *   KIT    11 slots: the six tracks' sounds, the macros, the PERF fade, the FX and COMB globals (not the tempo,
  *          the DJ filter, MIDI or the clock)
- * Six storage objects (storage.c OBJ_GB0..): three of 32 sounds (two machines each), three of 4 kits. They live in
- * the old projects' and user presets' sectors (st_sector), which this build no longer writes. A RAM mirror of each
+ * Seven storage objects (storage.c OBJ_GB0..): three of 32 sounds (two machines each), four of 3 kits. They live in
+ * Felucca's old projects', user presets' and autosave's sectors (st_sector). Kits of the four-track build (four to
+ * an object, GB_MAGIC) load into these (gb_kit_old: tracks 5 and 6 as they are). A RAM mirror of each
  * (.pool) is what loads read; a save changes the mirror at once and goes to flash when nothing plays (an erase
  * stops the audio: project.c autosave_quiet), one object a pass. A slot keeps P_COUNT with it, so a later build
  * with other parameters maps the values by count (core.h params_by_count). */
@@ -12,9 +13,10 @@
 #define GB_SLOTS 16u
 #define GB_KITS 11u
 #define GB_SOBJ 3u                                       /* sound objects (two machines each) */
-#define GB_KOBJ 3u                                       /* kit objects (4 kits each) */
-#define GB_KPER 4u
-#define GB_MAGIC 0x31534247u                             /* "GBS1" */
+#define GB_KOBJ 4u                                       /* kit objects (3 kits each) */
+#define GB_KPER 3u
+#define GB_MAGIC 0x31534247u                             /* "GBS1": the sounds; the four-track build's kits */
+#define GB_KMAGIC 0x324B4247u                            /* "GBK2": the six-track kits */
 typedef struct { uint8_t used, np; int8_t p[P_COUNT]; } gb_snd_t;   /* values - 64 (all of them fit in -64..127: project.c) */
 typedef struct { uint32_t magic; uint16_t np, kind; gb_snd_t s[2u * GB_SLOTS]; } gb_sobj_t;
 typedef struct {
@@ -24,11 +26,21 @@ typedef struct {
     int16_t g[G_COUNT];
 } gb_kit_t;
 typedef struct { uint32_t magic; uint16_t np, kind; gb_kit_t k[GB_KPER]; } gb_kobj_t;
+/* the four-track build's kit objects (OBJ_GB0 + 3 .. 5, four kits each): read once, then written as gb_kobj_t */
+typedef struct {
+    uint8_t used, rel, fade, rsv;
+    gb_snd_t s[4];
+    perf_mac_t mac[PM_NM];
+    int16_t g[G_COUNT];
+} gb_kit_old_t;
+typedef struct { uint32_t magic; uint16_t np, kind; gb_kit_old_t k[4]; } gb_kobj_old_t;
+_Static_assert(sizeof(gb_kobj_old_t) == 3136u, "the four-track build's kit objects");
 _Static_assert(sizeof(gb_sobj_t) <= 3840u, "32 sounds in a storage object");
-_Static_assert(sizeof(gb_kobj_t) <= 3840u, "4 kits in a storage object");
+_Static_assert(sizeof(gb_kobj_t) <= 3840u, "3 kits in a storage object");
+_Static_assert(GB_KOBJ * GB_KPER >= GB_KITS, "every kit has a place");
 static gb_sobj_t gb_so[GB_SOBJ] __attribute__((section(".pool")));
 static gb_kobj_t gb_ko[GB_KOBJ] __attribute__((section(".pool")));
-static uint8_t gb_dirty, gb_ready;                       /* bit o: object o (sounds 0..2, kits 3..5) to write */
+static uint8_t gb_dirty, gb_ready;                       /* bit o: object o (sounds 0..2, kits 3..6) to write */
 
 /* a sound's own values: not its sequencer's (LEN DIV SWING GATE QUANTIZE CHANCE) nor the track's MUTE */
 static int gb_sound_id(uint32_t id)
@@ -38,6 +50,43 @@ static int gb_sound_id(uint32_t id)
 /* the globals a kit holds: the delay, the reverb, the COMB, swing */
 static const uint8_t GB_KIT_G[] = {G_SWING, G_DTIME, G_DFDBK, G_DCOLOR, G_DMIX, G_RSIZE, G_RDAMP, G_RTYPE,
                                    G_SYNC, G_CRATE, G_CDEPTH, G_INFO};
+
+static gb_kit_t *gb_kit(uint32_t k);
+/* old kit object o (four kits of four tracks) into the mirrors (gb_store_init: only while no new kit object is in
+ * flash); written back as new kits at the next quiet moment (gb_store_poll). Its macros' globals (track 4 then) become
+ * PM_G */
+static void gb_kit_old_load(uint32_t o)
+{
+    static gb_kobj_old_t old __attribute__((section(".pool")));
+    uint32_t i, j, k;
+    if (st_load(OBJ_GB0 + GB_SOBJ + o, &old, sizeof old) != (int)sizeof old || old.magic != GB_MAGIC)
+        return;
+    for (i = 0; i < 4u; i++) {
+        const gb_kit_old_t *ok = &old.k[i];
+        gb_kit_t *kt;
+        k = o * 4u + i;
+        if (k >= GB_KITS || !ok->used)
+            continue;
+        kt = gb_kit(k);
+        memset(kt, 0, sizeof *kt);
+        kt->used = 1;
+        kt->rel = ok->rel;
+        kt->fade = ok->fade;
+        for (j = 0; j < 4u; j++)
+            kt->s[j] = ok->s[j];
+        memcpy(kt->mac, ok->mac, sizeof kt->mac);
+        for (j = 0; j < PM_NM; j++) {
+            uint32_t n;
+            for (n = 0; n < PM_N; n++)
+                if (kt->mac[j].trk[n] == 4u)
+                    kt->mac[j].trk[n] = PM_G;
+        }
+        memcpy(kt->g, ok->g, sizeof kt->g);
+        gb_ko[k / GB_KPER].magic = GB_KMAGIC;
+        gb_ko[k / GB_KPER].np = old.np;
+        gb_dirty |= (uint8_t)(1u << (GB_SOBJ + k / GB_KPER));
+    }
+}
 
 static void gb_store_init(void)
 {
@@ -54,11 +103,18 @@ static void gb_store_init(void)
     }
     for (o = 0; o < GB_KOBJ; o++) {
 #if FELUCCA_FLASH
-        if (st_load(OBJ_GB0 + GB_SOBJ + o, &gb_ko[o], sizeof gb_ko[o]) == (int)sizeof gb_ko[o] && gb_ko[o].magic == GB_MAGIC)
+        if (st_load(OBJ_GB0 + GB_SOBJ + o, &gb_ko[o], sizeof gb_ko[o]) == (int)sizeof gb_ko[o] && gb_ko[o].magic == GB_KMAGIC)
             continue;
 #endif
         memset(&gb_ko[o], 0, sizeof gb_ko[o]);
     }
+#if FELUCCA_FLASH
+    for (o = 0; o < GB_KOBJ && gb_ko[o].magic != GB_KMAGIC; o++)
+        ;
+    if (o == GB_KOBJ)                                    /* no six-track kits yet: the four-track build's, once */
+        for (o = 0; o < 3u; o++)
+            gb_kit_old_load(o);
+#endif
 }
 
 /* every input pass: a changed object to flash, when an erase would not be heard */
@@ -158,7 +214,7 @@ static int gbk_save(uint32_t k)
     kt->fade = pm_fade;
     for (i = 0; i < G_COUNT; i++)
         kt->g[i] = song.g[i];
-    gb_ko[k / GB_KPER].magic = GB_MAGIC;
+    gb_ko[k / GB_KPER].magic = GB_KMAGIC;
     gb_ko[k / GB_KPER].np = (uint16_t)P_COUNT;
     gb_dirty |= (uint8_t)(1u << (GB_SOBJ + k / GB_KPER));
     return 1;
@@ -180,7 +236,8 @@ static int gbk_load(uint32_t k)
         return 0;
     }
     for (i = 0; i < NTRK; i++)
-        gb_snd_put(&kt->s[i], &trk[i]);
+        if (kt->s[i].used)                               /* (a kit of the four-track build: tracks 5 and 6 stay) */
+            gb_snd_put(&kt->s[i], &trk[i]);
     memcpy(pm_mac, kt->mac, sizeof pm_mac);
     for (i = 0; i < PM_NM; i++)                          /* (a kit of another build: what this one can hold) */
         if (pm_mac[i].n > PM_N)

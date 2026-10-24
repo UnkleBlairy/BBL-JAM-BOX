@@ -19,7 +19,7 @@ SRC = _ROOT / "firmware" / "src" if (_ROOT / "firmware" / "src").is_dir() else _
 # reaches (ISR_ROOTS and everything they call or name, from the IR) keeps -Os (isr_reach)
 SIZE_FILES = ["ui.c", "icons.c", "ui_graph.c", "ui_draw.c", "ui_input.c", "ui_buttons.c",
               "storage.c", "persist.c",
-              "usb.c", "midi_uart.c", "midi_control.c", "midi_clock.c", "seq.c", "song_chain.c", "chord.c", "motion.c",
+              "usb.c", "midi_uart.c", "midi_control.c", "midi_clock.c", "seq.c", "chord.c", "motion.c",
               "panel.c", "lcd.c", "gfx.c", "ota.c", "ota_hw.c", "params.c",
               "main.c", "libc.c", "storage_hw.c", "engines.c"]
 ISR_ROOTS = ("fm1_alnk0_irq", "fm1_timer5_irq")      # hal/fm1_isr.S: the audio ISR, the key / LED scan (+ USB poll)

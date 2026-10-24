@@ -6,20 +6,21 @@
  * PERF, MIXER, CLOCK; the rest keep the old look. */
 #define GB_STRIP 60                           /* canvas rows a strip */
 #define GB_RGB(r, g, b) ((uint16_t)((((r) >> 3) << 11) | (((g) >> 2) << 5) | ((b) >> 3)))
-static uint16_t gb_col[4] = {GB_RGB(255, 90, 54), GB_RGB(255, 214, 10), GB_RGB(46, 196, 255), GB_RGB(179, 136, 255)};   /* a colour a TRACK */
+static uint16_t gb_col[NTRK] = {GB_RGB(255, 90, 54), GB_RGB(255, 214, 10), GB_RGB(46, 196, 255), GB_RGB(179, 136, 255),
+                                GB_RGB(64, 214, 120), GB_RGB(255, 112, 196)};   /* a colour a TRACK */
 static const char *const GB_PILL[6] = {"SYNTH", "KICK", "SNARE", "HATS", "CYMBAL", "PERC"};
 
 typedef struct {
-    uint8_t perf, mixer, mach, sel, page, npages, mask, fade, rpt, hn, sv, flash;   /* SAVE / LOAD: 1 2; flash: 1 lit, 2 dark */
+    uint8_t perf, mixer, mach, sel, ring, page, npages, mask, fade, rpt, hn, sv, flash;   /* ring: the VOLUME dial of the selected track (4 none) */   /* SAVE / LOAD: 1 2; flash: 1 lit, 2 dark */
     char msg[2][16];
     int16_t bpm;
-    uint8_t tm[4];                            /* each track's machine */
+    uint8_t tm[NTRK];                         /* each track's machine */
     uint8_t mac_n[8], mac_held[8];
     int16_t ratio[4];
     uint8_t alt[4];
     int16_t dj, cmix, ctune;                 /* PERF: the master DJ filter and comb */
     uint8_t fill[8], rel, bpm_alt;           /* PERF: each held macro's tile filled 0..26 rows; the release fade; the tempo is held by a macro */                           /* a macro holds this value: its dial is drawn inverted */
-    char title[10], lab[4][8], val[4][12];
+    char title[12], lab[4][8], val[4][12];
 } gb_view_t;
 static gb_view_t gb_v, gb_last;
 static uint8_t gb_have;
@@ -54,7 +55,7 @@ static uint32_t gb_trig(const step_t *s)                 /* a step's TRIG 0..4 (
     uint32_t c = step_cond(s + GB_TRIG);
     return c > GB_TRIG_C0 && c <= GB_TRIG_C0 + 4u ? c - GB_TRIG_C0 : 0u;
 }
-static uint32_t gb_mach(uint32_t k) { return (uint32_t)trk[k & 3u].p[P_E7] % 6u; }
+static uint32_t gb_mach(uint32_t k) { return (uint32_t)trk[k % NTRK].p[P_E7] % 6u; }
 
 static void gb_fill(gb_view_t *v)
 {
@@ -70,9 +71,9 @@ static void gb_fill(gb_view_t *v)
     v->bpm = song.g[G_BPM];
     v->bpm_alt = (uint8_t)(pm_altered(TSEL, &song.g[G_BPM]) != 0);
     str_cpy(v->title, pg->title, sizeof v->title);
-    for (k = 0; k < 4u; k++)
+    for (k = 0; k < NTRK; k++)
         v->tm[k] = (uint8_t)gb_mach(k);
-    v->mach = v->tm[song.sel & 3u];
+    v->mach = v->tm[song.sel % NTRK];
     for (i = 0; i < NPAGES; i++)
         if (PAGES[i].fam == pg->fam && page_visible(i)) {
             if (i == ui.page)
@@ -114,10 +115,18 @@ static void gb_fill(gb_view_t *v)
         v->rpt = (uint8_t)(perf_held & 15u);
         return;
     }
-    if (v->mixer) {                           /* the four tracks' levels */
+    if (v->mixer) {                           /* the page's tracks' levels (VOLUME 1-4, 5-6) */
+        v->ring = 4;
         for (k = 0; k < 4u; k++) {
-            const char *nm = GB_PILL[v->tm[k] % 6u];
-            const track_t *t = &trk[k];
+            uint32_t tk = pg->id[k];
+            const char *nm;
+            const track_t *t;
+            if (tk >= NTRK)
+                continue;
+            nm = GB_PILL[v->tm[tk] % 6u];
+            t = &trk[tk];
+            if (tk == song.sel)
+                v->ring = (uint8_t)k;
             const param_desc_t *d = &TP[P_LEVEL];
             const char *u;
             for (i = 0; i < 4u && nm[i]; i++)
@@ -129,7 +138,6 @@ static void gb_fill(gb_view_t *v)
             v->ratio[k] = (int16_t)(RATIO(d, t->p[P_LEVEL]) < 0 ? 0 : RATIO(d, t->p[P_LEVEL]));
             v->mask |= (uint8_t)(1u << k);
         }
-        str_cpy(v->title, "VOLUME", sizeof v->title);
         return;
     }
     if (pg->graph == GR_GBSEQ) {                  /* LEN SPEED CHANCE TRIG; a step held: STEP n, its own CHANCE and TRIG */
@@ -376,7 +384,7 @@ static void gb_scene(const gb_view_t *v, uint16_t bgc)
             dial_pt(cx, cy, 22, a, &px, &py);
             cv_rect(px - 1, py - 1, 3, 3, dc);
         }
-        if (v->mixer && k == v->sel)                              /* the selected track: a second ring */
+        if (v->mixer && k == v->ring)                             /* the selected track: a second ring */
             for (a = 0; a < 360; a += 2) {
                 dial_pt(cx, cy, 28, a, &px, &py);
                 cv_rect(px, py, 2, 2, dc);
@@ -411,7 +419,7 @@ static void gb_draw(void)
     uint16_t c;
     const uint8_t *a, *b;
     gb_fill(&gb_v);
-    c = gb_col[gb_v.sel & 3u];
+    c = gb_col[gb_v.sel % NTRK];
     a = (const uint8_t *)&gb_v;
     b = (const uint8_t *)&gb_last;
     for (i = 0; i < sizeof gb_v && a[i] == b[i]; i++)

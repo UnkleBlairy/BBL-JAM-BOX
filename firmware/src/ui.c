@@ -8,7 +8,6 @@ static int project_save(uint32_t slot);
 static void panel_setup(void);
 static void project_load(uint32_t slot);
 static int project_used(uint32_t slot);
-static uint32_t chain_prepare(void);
 static int up_used(uint32_t k);              /* user presets: upreset.c */
 static int up_load(uint32_t k);
 static uint32_t up_count(void);
@@ -400,14 +399,13 @@ static void ui_message(const char *s) { ui_say(s, ""); }
  * for the header's 130 px after the icon) */
 #define MSG_NO_SAMPLE MSG_NOFILE "NO SAMPLE"
 
-static int chain_busy(void) { return chain.running || chain.armed; }
 /* Main loop only, with interrupts enabled. PLAY may be consumed between reads;
  * take one coherent snapshot before a flash operation or song preparation. */
 static int transport_busy(void)
 {
     int busy;
     fm1_irq_off();
-    busy = song.playing || chain_busy() || transport_req == 1u || seq_counting();   /* (a count-in: as playing) */
+    busy = song.playing || transport_req == 1u || seq_counting();   /* (a count-in: as playing) */
     fm1_irq_on();
     return busy;
 }
@@ -496,9 +494,6 @@ static int detail_on(void)
 {
     return !ui.home && !ui.confirm && cur_page()->scope == SC_STEP && str_eq(cur_page()->title, "DETAIL");
 }
-/* GLO > SONG (1.2): the white keys A B C D (A3 B3 C4 D4, white places 2..5: seq.c song_key) set the selected cell's slot;
- * they do not sound there, the other keys play as anywhere (seq.c keyboard_block: song.grid 3) */
-static int song_keys_on(void) { return !ui.home && !ui.confirm && cur_page()->graph == GR_SONG; }
 
 /* SIMPLE: the step keys (SEQ tapped): the page stays where it is; the keys are the 16 steps of the selected track (white)
  * and the 4 tracks (black: they select and play it) */
@@ -540,7 +535,8 @@ static struct { uint8_t n, trk[32], id[32]; int16_t from[32], to[32]; uint32_t t
 static uint8_t pm_ui_a = 255, pm_ui_c = 255;             /* what the screen shows: the macro fading from, the one fading to / playing in the arp */
 static int16_t pm_ui_u;                                  /* .. how far (0..1024) */                 /* 0 none, 1..4 the fade time; FUNC 0..2; ARP 0..4 */
 static int pm_page(void) { return !ui.home && !ui.confirm && cur_page()->graph == GR_PERF; }
-/* the macro's parameter: track tr < NTRK, or tr == NTRK: a global (BPM, SWING) */
+/* the macro's parameter: track tr < NTRK, or tr == PM_G: a global (BPM, SWING, the master's) */
+#define PM_G 0xFFu
 static int16_t *pm_ptr(uint32_t tr, uint32_t id)
 {
     return tr >= NTRK ? &song.g[id % G_COUNT] : &trk[tr].p[id];
@@ -567,7 +563,7 @@ static int pm_altered(const track_t *t, const int16_t *vp)
     if (!pm_h.n || !vp)
         return 0;
     if (vp >= song.g && vp < song.g + G_COUNT)
-        return pm_bfind(NTRK, (uint32_t)(vp - song.g)) >= 0;
+        return pm_bfind(PM_G, (uint32_t)(vp - song.g)) >= 0;
     if (vp < t->p || vp >= t->p + P_COUNT)
         return 0;
     return pm_bfind((uint32_t)(t - trk), (uint32_t)(vp - t->p)) >= 0;
@@ -815,7 +811,7 @@ static void pm_record(track_t *t, int16_t *vp, int16_t old)
         return;
     if (vp >= song.g && vp < song.g + G_COUNT) {         /* a global: only the tempo and the swing */
         id = (uint32_t)(vp - song.g);
-        tr = NTRK;
+        tr = PM_G;
         if (!pm_global_ok(id))
             return;
     } else {

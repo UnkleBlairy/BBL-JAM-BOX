@@ -2,11 +2,12 @@
 
 ## Project
 
-Felucca firmware for the M-VAVE FM-1, being turned into a live-jamming
-groovebox in the style of Digitone / Model:Cycles:
+A live-jamming groovebox firmware for the M-VAVE FM-1 in the style of
+Digitone / Model:Cycles, started from Felucca (everything else of Felucca has
+been taken out):
 
 - One 4-op FM DIGITAL engine with machines: SYN, BD, SD, HH, CYM, PERC
-- 4 tracks
+- 6 tracks
 - Minimal menus
 
 Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
@@ -16,6 +17,11 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
 - `firmware/src/ui_gb.c` — groovebox screen code
 - `firmware/src/mfx.c` — master DJ filter and comb
 - `firmware/src/ui.c` — macro system (PERF page), `pm_*` functions
+- `firmware/src/eng_digital.c` — the FM engine (its presets and filter too)
+- `firmware/src/engines.c` — the engine table and the tracks' power-on sounds
+- `firmware/src/repeat.c` — PERF's beat repeats (1/8 1/16 1/32 REV)
+- `firmware/src/gb_store.c` — sounds and kits; `persist.c` — device settings
+- `firmware/src/ui_buttons.c` — page buttons (a release is a tap)
 
 ## How we work
 
@@ -77,14 +83,14 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   squared so it only bites near the top) adds aliasing, sample-hold and down to
   8 bits. TIME 0..126 = RT60 0.3 s..~9 s (~3.5 s at 90); TIME 127 = FREEZE.
   QUAD maths is 64-bit and rounded (qmul): no overflow crackle, tails die to 0.
-- Mutes (seq.c keyboard_block): hold OCT+ and press black key 1-4 (the track
-  keys, = track 1-4). Quick press latches the mute, holding mutes only while
+- Mutes (seq.c keyboard_block): hold OCT+ and press black key 1-6 (the track
+  keys, = track 1-6). Quick press latches the mute, holding mutes only while
   held. With OCT+ held those keys don't select the track.
-- PERF page: black keys 1-4 are lit while that track is NOT muted.
+- PERF page: black keys 1-6 are lit while that track is NOT muted.
 - The DJ filter always starts open (centre) at power-on and on project load.
 - Saving (gb_store.c): 16 sound slots per machine (6 machines = 96; more
   machines later). Hold SAVE = SAVE screen: white key = save the selected
-  track's sound, black key (11) = save kit (4 sounds + macros + FADE + FX/COMB
+  track's sound, black key (11) = save kit (6 sounds + macros + FADE + FX/COMB
   globals; not tempo/DJ). Tap SAVE = LOAD screen: key loads and the screen
   closes so the keys play it at once; SAVE or a page button closes it. Patterns
   are NEVER saved: it's for jamming from scratch.
@@ -93,10 +99,23 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   lights show which slots are used.
 - No Felucca screens: no layers (holding a button = tapping it, holds are free
   for groovebox features), no MENU (HOME hold does nothing). The groovebox has
-  its own PAGES table in params.c (15 pages); Felucca's table is #else.
+  its own PAGES table in params.c (16 pages).
 - Saves while playing apply at once but write to flash at stop (a flash erase
   stops the audio). Old Felucca projects / user presets are gone in this build:
   their flash sectors hold the sounds and kits.
+- 6 tracks (core.h NPART). Power-on sounds: BD SD CH OH PERC SYN (engines.c
+  TRK_DEF). Track colours 1-6: orange, yellow, blue, purple, green, pink.
+- HOME taps: VOLUME 1-4 -> VOLUME 5-6 -> CLOCK (each knob = one track's level).
+- Kits hold 6 sounds: 3 kits per storage object, 4 objects (the 4th in the old
+  FM6 bank's flash pair). Kits saved by the 4-track build convert once at
+  power-on; loading one leaves tracks 5-6 as they are.
+- A PERF macro's global (BPM, DJ, COMB..) has track number PM_G (255), not
+  NTRK, so adding tracks never turns a global into a track.
+- The FM-1 starts fresh at power-on (no Felucca autosave / "RESTORED").
+- The PRESETS knob does nothing for now (it browsed Felucca's sounds).
+- LFO DEST skips DIST and CHO (their effects are gone; ids kept for old saves).
+- Parameter ids (core.h P_*) never move: saved sounds map by count. New
+  parameters go just before P_E0.
 
 ## Workflow (after every change)
 
