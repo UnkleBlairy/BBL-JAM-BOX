@@ -38,6 +38,13 @@ static uint32_t layer_gesture(void)
     return l;
 }
 
+/* the armed button's release is no tap (SEQ held + a black key: PARAM's knob) */
+static void layer_kill(void)
+{
+    if (ui.ly)
+        ui.ly_t0 |= LY_DEAD;
+}
+
 /* a tap: the button's page; REC arms / disarms */
 static void layer_tap(uint32_t l)
 {

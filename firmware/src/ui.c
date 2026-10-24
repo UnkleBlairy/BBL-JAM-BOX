@@ -137,7 +137,8 @@ static struct {
     uint8_t bank;                /* SEQ: 16-step bank (follows the cursor) */
     uint8_t cursor;              /* SEQ: step being edited (STEP page KNOB 1 moves it) */
     uint8_t entry_open;          /* SEQ: keys held since the first press of this entry */
-    uint8_t sgrid;               /* SIMPLE: SEQ toggles the step keys: white keys = steps, black keys 1..4 = tracks */
+    uint8_t sgrid;               /* SIMPLE, what the keys are (SEQ taps on the SEQ page): 1 SEQ the step keys (white keys =
+                                  * steps, black keys 1..6 = tracks), 2 PARAM (ui_input.c par_*), 0 KEY the keyboard */
     uint8_t lane;                /* SEQ > STEP on a DRUM track (the grid): the lane the keys and KNOB 3 / 4 edit */
     uint8_t plk_src;             /* parameter locks (ui_input.c lock_*): the sound page whose KNOB 1..4 a step held
                                   * locks, PAGES index + 1; 0 = HOME's four */
@@ -505,7 +506,7 @@ static uint8_t gbsv;                                  /* SIMPLE, the SAVE screen
 static char gbsv_msg[2][16];                          /* .. what was saved / loaded, flashing from gbsv_t (fm1_ms | 1, 0 none) */
 static uint32_t gbsv_t;
 static int gbsv_keys_on(void) { return gbsv == 1u || gbsv == 2u; }   /* the keys are the slots' */
-static int sgrid_on(void) { return FELUCCA_SIMPLE && ui.sgrid && !ui.confirm && !pm_page() && !pm_down() && !gbsv_keys_on(); }   /* (PERF and a macro held: their own keys) */
+static int sgrid_on(void) { return FELUCCA_SIMPLE && ui.sgrid == 1u && !ui.confirm && !pm_page() && !pm_down() && !gbsv_keys_on(); }   /* (PERF and a macro held: their own keys) */
 
 /* ------------------------------------------------- performance macros --- */
 /* GLO is the performance page. Its black keys pick the track; its 16 white keys are three groups:
@@ -539,6 +540,13 @@ static uint8_t pm_ui_a = 255, pm_ui_c = 255;             /* what the screen show
 static int16_t pm_ui_u;                                  /* .. how far (0..1024) */                 /* 0 none, 1..4 the fade time; FUNC 0..2; ARP 0..4 */
 static int pm_page(void) { return !ui.home && !ui.confirm && cur_page()->graph == GR_PERF; }
 static int pm_down(void) { return pm_h.n != 0u; }   /* a macro key held (on any page) */
+/* SIMPLE, PARAM keys on: on a page whose knobs lock, the white keys set the chosen knob (par_k) and play (seq.c par_key) */
+static uint8_t par_k;
+static int par_on(void)
+{
+    return FELUCCA_SIMPLE && ui.sgrid == 2u && !ui.confirm && !ui.home && !pm_page() && !pm_down() && !gbsv_keys_on() &&
+           lock_page_ok(ui.page);
+}
 /* the macro's parameter: track tr < NTRK, or tr == PM_G: a global (BPM, SWING, the master's) */
 #define PM_G 0xFFu
 static int16_t *pm_ptr(uint32_t tr, uint32_t id)

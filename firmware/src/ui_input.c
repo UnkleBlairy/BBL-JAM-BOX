@@ -123,7 +123,11 @@ static uint32_t oct_leds(void)
 
 /* SIMPLE, the step keys (SEQ): the white keys light where the selected track has a step (the playing step inverted),
  * the black keys the selected track */
-static uint32_t sgrid_leds(void)
+static int gbs_trigless(const track_t *t, uint32_t p)   /* step p: no note, a lock (a trigless lock) */
+{
+    return p < NSTEP && !(t->step[p].time == ST_NOTE && t->step[p].n) && ((motion_lock_steps(trk_index(t)) >> p) & 1u);
+}
+static uint32_t sgrid_leds(uint32_t *br)                 /* (*br: the trigless steps, breathing) */
 {
     const track_t *t = TSEL;
     uint32_t k, m = 0, len = (uint32_t)t->p[P_SLEN];
@@ -133,6 +137,8 @@ static uint32_t sgrid_leds(void)
         if (!key_black(k)) {
             on = p < len && t->step[p].time == ST_NOTE && t->step[p].n != 0u;
             on ^= (uint32_t)(p == ph);
+            if (br && p < len && gbs_trigless(t, p))
+                *br |= 1u << k;
         } else {
             on = p < NTRK ? p == song.sel : 0u;
         }
@@ -277,6 +283,8 @@ static uint32_t scale_leds(uint32_t *root)
 
 static uint32_t pm_leds(void);
 static uint32_t trk_keys(int playing);
+static uint32_t par_leds(void);
+static void layer_kill(void);                         /* (ui_buttons.c) */
 /* MENU > ANIM IDLE (1.2, Discussion #135): after IDLE_LEDS_MS without panel input (ui.c scrn.idle: a button or key
  * pressed or held, a knob turned; what SCREEN OFF counts) the LEDs play the idle animation (hal/fm1_led_anim.h
  * fm1_idle_level: a soft light drifting over the keys and back, the buttons breathing with it; the scan draws it,
@@ -309,7 +317,7 @@ static uint32_t key_leds(uint32_t *br)                 /* (*br: a layer's keys t
     uint32_t c;
     if (br)
         *br = 0;
-    c = gbsv_keys_on() ? gbsv_leds() : sgrid_on() ? sgrid_leds() :
+    c = gbsv_keys_on() ? gbsv_leds() : sgrid_on() ? sgrid_leds(br) : par_on() ? par_leds() | (fm1_in.notes & ~kb_layer) :
                  (fm1_in.notes & ~kb_layer) | play_leds() | step_leds() | (pm_page() ? pm_leds() : 0u);
     if (FELUCCA_SIMPLE && kb_octup && !gbsv_keys_on())  /* OCT+ held (the mutes): the tracks not muted lit */
         c = (c & ~trk_keys(0)) | trk_keys(1);
@@ -351,7 +359,8 @@ static void ui_leds(void)
     }
     led_put(nl, panel.btn[FAM_BTN[fam]], 1);
     if (sgrid_on())
-        led_put(nl, panel.btn[B_SEQ], 1);               /* SIMPLE: SEQ lit while the keys are the steps */
+        led_put(nl, panel.btn[B_SEQ], 1);               /* SIMPLE: SEQ lit while the keys are the steps, */
+    led_put(nb, panel.btn[B_SEQ], FELUCCA_SIMPLE && ui.sgrid == 2u);   /* .. breathing while they are PARAM */
     if ((k = arp_led()) != 2u)
         led_put(nl, panel.btn[B_ARP], FAM_BTN[fam] == B_ARP ? !k : (int)k);   /* (on ARP's page: dark flashes) */
     led_put(nl, panel.btn[B_REC], song.rec != 0u);
@@ -723,6 +732,57 @@ static void sgrid_release(void)                          /* every input pass: th
     gbs_off &= ~up;
     gbs_kept &= ~up;
 }
+/* SIMPLE, PARAM (song.grid 6): what seq.c par_key needs, every input pass: the chosen knob's id and range, SEQ held */
+static void par_poll(void)
+{
+    uint32_t id = par_on() ? lock_pid(cur_page(), par_k) : 0xFFu;
+    kb_seqdn = (uint8_t)(par_on() && ((fm1_in.buttons >> panel.btn[B_SEQ]) & 1u));
+    if (id == P_E7)
+        id = 0xFFu;                                     /* (MACH: a machine wants its starting sound, machine_defaults) */
+    if (id != 0xFFu) {
+        const param_desc_t *d = id < P_COUNT ? track_desc(TSEL, id) : motion_desc(TSEL, id);
+        int16_t lo = (int16_t)clamp(d->min, -64, 127), hi = (int16_t)clamp(d->max, -64, 127);   /* (what a lock holds) */
+        if (par_id != id || par_lo != lo || par_hi != hi) {
+            par_id = 0xFFu;                             /* (the audio ISR never sees a half-changed knob) */
+            par_lo = lo;
+            par_hi = hi;
+        }
+    }
+    par_id = (uint8_t)id;
+}
+/* .. its black keys: the track (as SEQ's), SEQ held: black keys 1..4 pick the knob (SEQ's release is then no tap) */
+static void par_keys(uint32_t pressed)
+{
+    uint32_t k;
+    for (k = 0; k < 27u; k++) {
+        uint32_t p = key_place(k);
+        if (!((pressed >> k) & 1u) || !key_black(k))
+            continue;
+        if (kb_seqdn) {
+            layer_kill();
+            if (p < 4u)
+                par_k = (uint8_t)p;
+            ui.force = 1;
+        } else if (p < NTRK && !kb_octup) {
+            track_select(p);
+        }
+    }
+}
+/* .. its keys' LEDs: the key of the knob's value, the selected track's key; SEQ held: the knob's key (black 1..4) */
+static uint32_t par_leds(void)
+{
+    uint32_t k, m = 0, pos = 0xFFu;
+    if (par_id != 0xFFu && par_hi > par_lo) {
+        int32_t v = *motion_vp(TSEL, par_id);
+        pos = (uint32_t)clamp(((v - par_lo) * 15 + (par_hi - par_lo) / 2) / (par_hi - par_lo), 0, 15);
+    }
+    for (k = 0; k < 27u; k++) {
+        uint32_t p = key_place(k);
+        if (key_black(k) ? p == (kb_seqdn ? par_k : song.sel) : p == pos)
+            m |= 1u << k;
+    }
+    return m;
+}
 static void sgrid_keys(uint32_t pressed)
 {
     uint32_t k, len = (uint32_t)TSEL->p[P_SLEN];
@@ -741,7 +801,7 @@ static void sgrid_keys(uint32_t pressed)
             continue;
         {
             step_t *st = &TSEL->step[p];
-            if (st->time == ST_NOTE && st->n) {
+            if ((st->time == ST_NOTE && st->n) || gbs_trigless(TSEL, p)) {
                 gbs_off |= 1u << k;                     /* (goes when let go: sgrid_release) */
             } else {
                 gbs_step_off(st);
@@ -973,8 +1033,8 @@ static void enc_drop(void)                             /* knob turns nobody take
         panel_enc(k);
 }
 
-/* what the keys are (seq.c song.grid): 5 the SAVE screen's, 1 the steps, 4 PERF's macros, 0 notes */
-static uint32_t keys_mode(void) { return gbsv_keys_on() ? 5u : sgrid_on() ? 1u : pm_page() || pm_down() ? 4u : 0u; }
+/* what the keys are (seq.c song.grid): 5 the SAVE screen's, 1 the steps, 4 PERF's macros, 6 PARAM, 0 notes */
+static uint32_t keys_mode(void) { return gbsv_keys_on() ? 5u : sgrid_on() ? 1u : pm_page() || pm_down() ? 4u : par_on() ? 6u : 0u; }
 
 /* the page buttons: ui_buttons.c (included after this file) */
 static void layer_arm(uint32_t pressed, uint32_t now);
@@ -995,8 +1055,8 @@ static int page_tap(uint32_t b)
         return 1;
     }
     if (FELUCCA_SIMPLE && b == B_SEQ) {                  /* .. on the SEQ page: the step keys off / on */
-        ui.sgrid ^= 1u;
-        ui_message(ui.sgrid ? "STEP KEYS ON" : "STEP KEYS OFF");
+        ui.sgrid = (uint8_t)((ui.sgrid + 1u) % 3u);     /* SEQ -> PARAM -> KEY -> SEQ */
+        ui_message(ui.sgrid == 1u ? "SEQ" : ui.sgrid == 2u ? "PARAM" : "KEY");
         return 1;
     }
     for (f = FAM_HOME + 1u; f < FAM_COUNT; f++)        /* (GLO SEQ SAVE ..: HOME is ui_input's, home_tap) */
@@ -1108,6 +1168,7 @@ static void ui_input(void)
         ui.rec_t0 |= 2u;                                /* (REC is a page button: its tap is layer_tap's) */
     oct = oct_taps(pressed, ui.confirm != 0);
     lytap = layer_gesture();
+    par_poll();
     song.grid = (uint8_t)keys_mode();                 /* (a dialog: the keys play again) */
     if (rec == BT_TAP && !ui.confirm)
         rec_tap();
@@ -1226,7 +1287,7 @@ static void ui_input(void)
             ou_used = 1;
         }
         if (!dn && ou_dn && !ou_used && fm1_ms - ou_t0 < 250u &&
-            !ui.confirm && !sgrid_on())
+            !ui.confirm && !sgrid_on() && !par_on())
             song.octave += song.octave < 3 ? 1 : 0;
         kb_octup = (uint8_t)dn;                         /* (seq.c: OCT+ held + a track key = mute) */
         if (mt_used) {
@@ -1234,8 +1295,9 @@ static void ui_input(void)
             mt_used = 0;
         }
         ou_dn = (uint8_t)dn;
-        alt_mode = (uint8_t)(dn && !ou_used && fm1_ms - ou_t0 >= 250u && !ui.home && !ui.confirm);
+        alt_mode = (uint8_t)(dn && !ou_used && fm1_ms - ou_t0 >= 250u && !ui.home && !ui.confirm && !par_on());
     }
+    par_poll();
     song.grid = (uint8_t)keys_mode();                 /* (seq.c: the keys are the grid's) */
     pm_poll();
     sgrid_release();
@@ -1244,6 +1306,8 @@ static void ui_input(void)
         gbsv_keys(notes);
     } else if (song.grid == 4u) {
         pm_keys(notes);
+    } else if (song.grid == 6u) {
+        par_keys(notes);
     } else if (song.grid && sgrid_on()) {
         sgrid_keys(notes);
     }

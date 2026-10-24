@@ -63,8 +63,18 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
 - Storage: track CHANCE lives in P_APROB (no ARP in this build); step i's TRIG
   lives in step[i+16]'s chance byte (core.h GB_TRIG) so the save format is
   unchanged.
-- SEQ button: from any page opens the SEQ page with step keys on; on the SEQ
-  page it toggles the step keys off/on.
+- SEQ button: from any page opens the SEQ page with step keys on (SEQ mode); on
+  the SEQ page each tap goes SEQ -> PARAM -> KEY -> SEQ. The mode's name is at
+  the bottom of the screen. SEQ's light is on in SEQ mode and breathes in PARAM.
+- PARAM key mode (ui_input.c par_*, seq.c par_key): on a sound/FX page the 16
+  white keys set one of the 4 knobs (key 1 = lowest, key 16 = highest) and play
+  the step note. Hold SEQ + black key 1-4 picks the knob (underlined on screen).
+  Black keys 1-6 pick the track. While recording, each key records its note with
+  that value locked on the step. OCT+ held + key = a trigless lock (the value,
+  no note). On pages that can't lock (SEQ, VOLUME, CLOCK) the keys just play.
+  The MACH knob is left out (it needs its starting sound).
+- Trigless locks: a step with locks but no note. Its step key breathes in SEQ
+  mode; pressing it removes it on release (unless a knob is turned).
 - Parameter locks: with step keys on, hold step(s) on any sound page and turn
   a knob = lock. Locked dials show inverted (like macros). Hold step + OCT-
   clears that step's locks. Every knob locks: all sound pages incl. machine,

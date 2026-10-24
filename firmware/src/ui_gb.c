@@ -19,6 +19,7 @@ typedef struct {
     uint8_t alt[4];
     int16_t dj, cmix, ctune;                 /* PERF: the master DJ filter and comb */
     uint8_t fill[8], rel, bpm_alt;           /* PERF: each held macro's tile filled 0..26 rows; the release fade; the tempo is held by a macro */                           /* a macro holds this value: its dial is drawn inverted */
+    uint8_t kmode, pk;                       /* the keys: 1 SEQ 2 PARAM 3 KEY; PARAM's knob + 1 (0: the keys play) */
     char title[12], lab[4][8], val[4][12];
 } gb_view_t;
 static gb_view_t gb_v, gb_last;
@@ -70,6 +71,8 @@ static void gb_fill(gb_view_t *v)
     v->bpm = song.g[G_BPM];
     v->bpm_alt = (uint8_t)(pm_altered(TSEL, &song.g[G_BPM]) != 0);
     str_cpy(v->title, pg->title, sizeof v->title);
+    v->kmode = (uint8_t)(ui.sgrid == 1u ? 1u : ui.sgrid == 2u ? 2u : 3u);
+    v->pk = (uint8_t)(par_on() && par_id != 0xFFu ? par_k + 1u : 0u);
     for (k = 0; k < NTRK; k++)
         v->tm[k] = (uint8_t)gb_mach(k);
     v->mach = v->tm[song.sel % NTRK];
@@ -396,6 +399,12 @@ static void gb_scene(const gb_view_t *v, uint16_t bgc)
         if (text_w(vf, v->val[k]) > 54)
             vf = &AF_S;
         cv_text_in(cx - 27, vf == &AF_L ? 142 : 150, 54, vf, v->val[k], dc, bk);
+        if (v->pk == k + 1u)                                      /* PARAM: the knob the white keys set, underlined */
+            cv_rrect(cx - 18, 182, 36, 5, 2, GB_W, bgc);
+    }
+    {                                                             /* what the keys are, bottom middle */
+        static const char *const KM[4] = {"", "SEQ", "PARAM", "KEY"};
+        cv_text_in(70, 201, 90, &AF_M, KM[v->kmode & 3u], c, bgc);
     }
     for (k = 0; k < v->npages; k++)                               /* the page dots */
         if (k == v->page)

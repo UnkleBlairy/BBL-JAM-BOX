@@ -40,6 +40,7 @@ static uint8_t kb_note[27], kb_trk[27];  /* per key: the note it started and on 
 /* SIMPLE: each track's last chord (the notes played together on its keys): the step keys play it and write it into steps, so
  * the root is found by ear, then steps are punched in */
 static uint8_t lastn[NTRK][4], lastc[NTRK], lheld[NTRK], kb_lh[27];   /* (kb_lh: key k counts in lheld) */
+static uint8_t kb_g[27];                         /* SIMPLE: key k plays the track's step notes (grid_chord), not its own */
 static uint8_t in_key;                   /* the key (+ 1) whose notes go into input_on now (key_on), 0: none (MIDI IN) */
 static uint8_t kb_vel = 100;             /* 1.5.6 (#84): the keys' velocity (MENU > SELECT VEL, ui_input.c sel_play) */
 /* #191: where each track's held[i] came from, so the arp maps it again as it plays (arp_list: TRN, ROOT, SCALE, QNT as
@@ -645,7 +646,7 @@ static uint32_t grid_chord(const track_t *t, uint8_t *out)
 }
 static void key_on(uint32_t k, track_t *t)
 {
-    uint32_t n = FELUCCA_SIMPLE && song.grid == 1u ? grid_chord(t, kb_chord[k]) : chord_build(t, kb_note[k], kb_chord[k]);
+    uint32_t n = FELUCCA_SIMPLE && kb_g[k] ? grid_chord(t, kb_chord[k]) : chord_build(t, kb_note[k], kb_chord[k]);
     uint32_t i, mc = trk_midi_ch(trk_index(t)), vel = kb_vel;
     kb_chn[k] = 0;
     in_key = (uint8_t)(k + 1u);                     /* (the arp keeps the key: arp_add) */
@@ -659,7 +660,7 @@ static void key_on(uint32_t k, track_t *t)
     in_key = 0;
     kb_chn[k] = (uint8_t)n;
     last_note = kb_note[k];                         /* (step entry, the SAMPLE zone: the key's note) */
-    if (song.grid != 1u) {                          /* played on the keys: the track's last chord (a new one when none is held) */
+    if (!kb_g[k]) {                                 /* played on the keys: the track's last chord (a new one when none is held) */
         uint32_t ti = trk_index(t) % NTRK, j;
         if (!lheld[ti])
             lastc[ti] = 0;
@@ -709,9 +710,42 @@ static __attribute__((noinline)) void kb_lat(uint32_t k)
 }
 #endif
 
+static uint8_t kb_octup, mt_used, kb_mt[27], mt_prev[NTRK];   /* (the mutes, below) */
+/* SIMPLE, the PARAM keys (song.grid 6, ui_input.c par_poll): white key 1..16 sets one of the page's four knobs of the
+ * selected track, key 1 its lowest .. key 16 its highest, and plays the track's step notes (grid_chord). Recording (REC,
+ * playing): the notes are recorded as ever and their step gets a lock of the value (it sounds until the next step);
+ * OCT+ held: the lock alone, no note (a trigless lock). par_id: the knob's id (motion.c; 0xFF none: the keys play),
+ * par_lo / par_hi its range; kb_seqdn: SEQ held (its black keys 1..4 pick the knob: silent) */
+static uint8_t par_id = 0xFFu, kb_seqdn;
+static int16_t par_lo, par_hi;
+static __attribute__((noinline)) int par_key(uint32_t k, track_t *t)   /* 1: the key plays the notes */
+{
+    uint32_t tk = trk_index(t), id = par_id, len, idx, period, b = 1u << (id % 32u);
+    int16_t v = (int16_t)(par_lo + (int32_t)(par_hi - par_lo) * (int32_t)key_place(k) / 15);
+    if (id >= MOTION_N)
+        return 1;
+    if (rec_on(t)) {                                /* the step the notes go on (as rec_note rounds) */
+        len = t->p[P_SLEN] > 0 ? (uint32_t)t->p[P_SLEN] : 1u;
+        period = div_samples((uint32_t)t->p[P_SDIV]);
+        idx = t->seq_idx % len;
+        if (t->seq_pos < 0x7FFFFFFFu && t->seq_pos > step_samples(t, period, t->seq_idx) / 2u)
+            idx = (idx + 1u) % len;
+        (void)motion_set_lock(t, idx, id, v);
+        if ((motion_base_valid >> tk) & 1u) {       /* .. and it sounds now, back at the next step */
+            motion_active[tk][id / 32u] |= b;
+            motion_locked[tk][id / 32u] |= b;
+        }
+    } else if ((motion_base_valid >> tk) & 1u) {
+        motion_base[tk][id] = v;                    /* (playing: the new value is the sound's own) */
+    }
+    *motion_vp(t, id) = v;
+    if (kb_octup)
+        mt_used = 1;                                /* (OCT+ was used: no octave up) */
+    return !kb_octup;
+}
+
 /* OCT+ held and one of the first six black keys (the track keys): that track's mute. A tap toggles it; held (350 ms) it is only for as
  * long as the key is down */
-static uint8_t kb_octup, mt_used, kb_mt[27], mt_prev[NTRK];
 static uint32_t mt_t0[NTRK];
 static void keyboard_block(void)
 {
@@ -733,7 +767,8 @@ static void keyboard_block(void)
             continue;
         if ((cur >> k) & 1u) {                    /* the selected track; the key-up goes to the same one */
             kb_trk[k] = song.sel;
-            if (song.grid == 1u && key_black(k) && key_place(k) < NTRK)
+            kb_g[k] = (uint8_t)(song.grid == 1u || (song.grid == 6u && (key_black(k) || par_id != 0xFFu)));
+            if ((song.grid == 1u || song.grid == 6u) && key_black(k) && key_place(k) < NTRK)
                 kb_trk[k] = (uint8_t)key_place(k);          /* the step keys: black key n plays track n */
             if (kb_asleep) {                      /* (SCREEN OFF: the wake press is swallowed) */
                 kb_note[k] = KB_SILENT;
@@ -758,9 +793,21 @@ static void keyboard_block(void)
                 perf_press(e, 1);
                 continue;
             }
-            if ((mute >> k) & 1u)                 /* NAME (ui_name.c): every key types, none sounds; SONG: A..D */
+            if (song.grid == 6u && key_black(k) && kb_seqdn) {   /* PARAM: SEQ + black key 1..4 picks the knob */
                 kb_note[k] = KB_SILENT;
-            else if (song.grid == 1u)             /* the DRUM grid: a lane key plays its lane, the rest are the UI's */
+                kb_layer |= 1u << k;
+                continue;
+            }
+            if (song.grid == 6u && !key_black(k) && par_id != 0xFFu) {   /* PARAM: the key is a value */
+                uint8_t c[4];
+                kb_note[k] = par_key(k, &trk[kb_trk[k]]) ? (grid_chord(&trk[kb_trk[k]], c), c[0]) : KB_SILENT;
+                if (kb_note[k] == KB_SILENT) {
+                    kb_layer |= 1u << k;
+                    continue;
+                }
+            } else if ((mute >> k) & 1u)          /* NAME (ui_name.c): every key types, none sounds; SONG: A..D */
+                kb_note[k] = KB_SILENT;
+            else if (song.grid == 1u || (song.grid == 6u && key_black(k)))             /* the DRUM grid: a lane key plays its lane, the rest are the UI's */
                 kb_note[k] = grid_key_note(k);
             else
                 kb_note[k] = (uint8_t)kb_map(&trk[kb_trk[k]], k);
