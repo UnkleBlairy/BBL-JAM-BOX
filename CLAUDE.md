@@ -247,7 +247,17 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
 - Machine names and order (engines.c MACHINES, by type, 808 then FM): 8BD FMBD
   8SD FMSD 8TOM 8RIM 8CLP 8COW 8HH FMHH 8CYM FMCYM FMPRC FMSYN SMPL.
 - 808s start with AGE 0 (clean).
-- REC armed (the selected track): a red "REC" pill left of the BPM.
+- REC armed (the selected track): a red "REC" pill left of the BPM; playing, it
+  breathes twice a bar. Recording follows the track: change tracks, keep
+  recording (ui.c track_select).
 - LFO DEST order = the knobs as their pages show them, left to right (params.c
   MDST_ORDER), then PITCH AMP. PAN SHP DEPTH VEL TIME E8 are left out. VIB is
   called L.PIT.
+- Overlay on every page (ui_gb.c gb_overlay): six track squares at the bottom
+  (track colour; white on a hit; muted = dark with an X; selected = thick edge)
+  and the loop border: 3 px round the screen edge, clockwise from the top left,
+  white as far as the selected track's loop has got. They redraw straight onto
+  the panel (no full redraw).
+- SAMPLER waveform: a held step shows its START/LEN locks. Turning START or LEN
+  (or locking them) swaps the dials for a zoomed waveform (~1/6 of the chunk)
+  round START or the end, the turned bracket bold, "START 20" under it.

@@ -21,11 +21,15 @@ typedef struct {
     int16_t dj, cmix, ctune;                 /* PERF: the master DJ filter and comb */
     uint8_t fill[8], rel, bpm_alt;           /* PERF: each held macro's tile filled 0..26 rows; the release fade; the tempo is held by a macro */                           /* a macro holds this value: its dial is drawn inverted */
     uint8_t kmode, pk, fx;                   /* the keys: 1 SEQ 2 PARAM 3 KEY; PARAM's knob + 1 (0: the keys play); the FX lane */
-    uint8_t rec;                             /* the selected track is armed (REC): a red REC by the BPM */
+    uint8_t rec;                             /* the selected track is armed (REC): a red REC by the BPM, 1 + its glow 0..15 */
+    uint8_t thit, tmute;                     /* the track squares (the bottom): bit k track k just hit, is muted */
+    uint16_t brd;                            /* the loop border: how far round (1..960 px, the selected track's loop); 0 stopped */
     uint8_t icon, picon, hit, an;            /* the header's icon and the machine pill's (IC_*, engines.c); a drum just hit; an 808 */
     uint8_t vic[4];                          /* a dial's value as an icon (SAMPLER's MODE), 0 = its text */
     uint8_t wv, wa, wb;                      /* SAMPLER's waveform: 1 NO SAMPLE, 2 the chunk (window wa .. wb of GB_WAVE) */
     uint16_t wkey;                           /* .. which chunk (its peaks) */
+    uint8_t zoom;                            /* START / LEN just turned (a lock too): the waveform zoomed on 1 START, 2 the end */
+    uint32_t za, zb;                         /* .. the window's first and last sample */
     char title[12], lab[4][8], val[4][12];
 } gb_view_t;
 static gb_view_t gb_v, gb_last;
@@ -43,6 +47,7 @@ static int gbk_load(uint32_t k);
 static void gb_store_poll(void);
 static uint64_t lock_held(void);                   /* (ui_input.c) .. on a sound page: its knobs lock */
 static const uint8_t *smp_peaks(uint32_t sl);      /* (gb_store.c) SAMPLER: a chunk's waveform */
+static const uint8_t *smp_zpeaks(uint32_t sl, int32_t x0, uint32_t w);   /* .. zoomed */
 /* the SEQ page (ui_input.c gbseq_knob) */
 static const uint8_t GB_SPEED[5] = {0, 1, 2, 3, 10};
 static uint32_t gb_speed(int32_t div)                    /* SPEED 0..4 of a DIV (another DIV: x1) */
@@ -150,7 +155,10 @@ static void gb_fill(gb_view_t *v)
     v->sel = (uint8_t)song.sel;
     v->bpm = song.g[G_BPM];
     v->bpm_alt = (uint8_t)(pm_altered(TSEL, &song.g[G_BPM]) != 0);
-    v->rec = (uint8_t)((song.rec >> song.sel) & 1u);
+    if ((song.rec >> song.sel) & 1u) {           /* REC: playing, it breathes twice a bar (one breath = 2 beats) */
+        uint32_t bs = beat_samples(), ph = ((beat_n & 1u) * bs + (beat_pos < bs ? beat_pos : bs)) * 32u / (2u * bs + 1u);
+        v->rec = (uint8_t)(1u + (song.playing ? (ph < 16u ? 15u - ph : ph - 16u) : 15u));
+    }
     str_cpy(v->title, pg->title, sizeof v->title);
     v->kmode = (uint8_t)(ui.sgrid == 1u ? 1u : ui.sgrid == 2u ? 2u : 3u);
     v->pk = (uint8_t)(par_on() && par_id != 0xFFu ? par_k + 1u : 0u);
@@ -161,6 +169,21 @@ static void gb_fill(gb_view_t *v)
     v->picon = v->fx ? IC_NONE : MACHINES[v->mach % NMACH].icon;
     v->an = (uint8_t)(!v->fx && MACHINES[v->mach % NMACH].engine == ENGI_ANALOG);
     v->icon = (uint8_t)gb_page_icon(pg, v->mach);
+    for (k = 0; k < NTRK; k++) {                  /* the track squares: a hit (~90 ms), a mute */
+        uint32_t h = trk_hit_ms[k];
+        if (h && fm1_ms - h < 90u)
+            v->thit |= (uint8_t)(1u << k);
+        if (trk[k].p[P_MUTE])
+            v->tmute |= (uint8_t)(1u << k);
+    }
+    if (song.playing) {                           /* the loop border: the selected track's place in its loop */
+        const track_t *t = &trk[song.sel % NTRK];
+        uint32_t len = t->p[P_SLEN] ? (uint32_t)t->p[P_SLEN] : 1u, idx = t->seq_idx % len;
+        uint32_t cl = step_samples(t, div_samples((uint32_t)t->p[P_SDIV]), idx), fs = 0;
+        if (t->seq_pos < cl)
+            fs = t->seq_pos / (cl / 256u + 1u);
+        v->brd = (uint16_t)(1u + (idx * 256u + fs) * 960u / (len * 256u));
+    }
     {                                             /* a drum's hit: the header icon flashes ~90 ms */
         uint32_t h = trk_hit_ms[song.sel % NTRK];
         v->hit = (uint8_t)(MACHINES[v->mach % NMACH].drum && h && fm1_ms - h < 90u);
@@ -277,8 +300,24 @@ static void gb_fill(gb_view_t *v)
         str_cpy(v->title, "GATE", sizeof v->title);
     else if (smp) {                                   /* the chunk's waveform, START .. START + LEN bright */
         const track_t *t = TSEL;
-        uint32_t sl = (uint32_t)t->p[P_E5], a = (uint32_t)(t->p[P_E2] & 127) * (GB_WAVE - 1u) / 127u;
-        uint32_t b = a + (uint32_t)(t->p[P_E3] & 127) * (GB_WAVE - 1u) / 127u;
+        int16_t st = t->p[P_E2], ln = t->p[P_E3];
+        uint32_t sl = (uint32_t)t->p[P_E5], a, b, s0 = 0;
+        if (lk) {                                     /* a step held: its START / LEN locks */
+            while (!((lk >> s0) & 1u))
+                s0++;
+            (void)motion_lock_get(t, s0, P_E2, &st);
+            (void)motion_lock_get(t, s0, P_E3, &ln);
+        }
+        a = (uint32_t)(st & 127) * (GB_WAVE - 1u) / 127u;
+        b = a + (uint32_t)(ln & 127) * (GB_WAVE - 1u) / 127u;
+        if (sl < smp_n && ui.hot_t && pg->id[ui.hot_col & 3u] == P_E2 + (ui.hot_col == 3u)
+            && (ui.hot_col == 2u || ui.hot_col == 3u)) {
+            uint32_t n = smp_tab[sl].len;             /* the window in samples (eng_sampler.c sampler_note_on) */
+            v->zoom = (uint8_t)(ui.hot_col - 1u);
+            v->za = (uint32_t)(st & 127) * (n - 1u) / 127u;
+            v->zb = v->za + (uint32_t)(ln & 127) * (n - 1u) / 127u;
+            v->zb = v->zb > n - 1u ? n - 1u : v->zb;
+        }
         v->wv = smp_peaks(sl) ? 2u : 1u;
         v->wa = (uint8_t)a;
         v->wb = (uint8_t)(b > GB_WAVE - 1u ? GB_WAVE - 1u : b);
@@ -426,8 +465,9 @@ static void gb_header(const gb_view_t *v, const char *title, uint16_t bgc)
     if (v->rec) {                                                 /* armed: a red REC left of the BPM */
         int32_t rw = text_w(&AF_S, "REC") + 12, rx = 232 - bw - 6 - rw;
         cv_rrect(rx - 1, 8, rw + 2, 24, 7, GB_W, bgc);
-        cv_rrect(rx, 9, rw, 22, 6, 0xF800u, GB_W);
-        cv_text_on(rx + 6, 14, &AF_S, "REC", GB_W, 0xF800u);
+        uint16_t rc = (uint16_t)((8u + 23u * (v->rec - 1u) / 15u) << 11);   /* dark red .. red */
+        cv_rrect(rx, 9, rw, 22, 6, rc, GB_W);
+        cv_text_on(rx + 6, 14, &AF_S, "REC", GB_W, rc);
         bw += rw + 6;
     }
     room = 232 - bw - 8 - tx;
@@ -570,6 +610,8 @@ static void gb_scene(const gb_view_t *v, uint16_t bgc)
         int32_t cx = 8 + (int32_t)k * 56 + 28, cy = 108, a, px, py, on;
         uint16_t dc = GB_W, lc = GB_W, bk = bgc;
         const aafont_t *vf = &AF_L;
+        if (v->zoom)                                              /* (the zoomed waveform in their place) */
+            break;
         if (!(v->mask & (1u << k)))
             continue;
         if (v->alt[k]) {                                          /* held by a macro: a white block, the ink in the track's colour */
@@ -603,7 +645,40 @@ static void gb_scene(const gb_view_t *v, uint16_t bgc)
     }
     if (v->wv == 1u)                                              /* SAMPLER: the chunk's waveform, or none */
         cv_text_in(0, 172, 240, &AF_M, "NO SAMPLE", c, bgc);
-    else if (v->wv == 2u) {
+    else if (v->wv == 2u && v->zoom) {                           /* zoomed: ~1/6 of the chunk round START or the end */
+        uint32_t sl = v->wkey & 63u, n = sl < smp_n ? smp_tab[sl].len : 0u, w = n / 6u, f = v->zoom == 1u ? v->za : v->zb;
+        int32_t x, y0 = 64, hh = 104, x0, ma, mb, wa;
+        const uint8_t *pk;
+        uint16_t dim = gb_mix(bgc, 90);
+        char zb[20];
+        w = w < GB_WAVE ? GB_WAVE : w;
+        x0 = (int32_t)f - (int32_t)(w / 2u);
+        pk = smp_zpeaks(sl, x0, w);
+        ma = ((int32_t)v->za - x0) * (int32_t)GB_WAVE / (int32_t)w;   /* START, the end: x (< 2^26: 32 bits) */
+        mb = ((int32_t)v->zb - x0) * (int32_t)GB_WAVE / (int32_t)w;
+        for (x = 0; pk && x < (int32_t)GB_WAVE; x++) {
+            int32_t h2 = (int32_t)pk[x] * hh / 512;
+            h2 = h2 < 1 ? 1 : h2;
+            cv_rect(8 + x, y0 + hh / 2 - h2, 1, h2 * 2, x >= ma && x <= mb ? c : dim);
+        }
+        for (wa = 0; wa < 2; wa++) {                              /* the brackets: START [ and the end ] (the one turned: bold) */
+            int32_t mx = wa ? mb : ma, dx = wa ? -4 : 1, bw = wa + 1 == v->zoom ? 3 : 1;
+            if (mx < 0 || mx >= (int32_t)GB_WAVE)
+                continue;
+            cv_rect(8 + mx - bw / 2, y0 - 4, bw, hh + 8, c);
+            cv_rect(8 + mx + dx, y0 - 4, 4, 2, c);
+            cv_rect(8 + mx + dx, y0 + hh + 2, 4, 2, c);
+        }
+        str_cpy(zb, v->lab[v->zoom == 1u ? 2 : 3], sizeof zb);
+        {
+            uint32_t q = 0;
+            while (zb[q])
+                q++;
+            zb[q++] = ' ';
+            str_cpy(zb + q, v->val[v->zoom == 1u ? 2 : 3], sizeof zb - q);
+        }
+        cv_text_in(0, 178, 240, &AF_M, zb, c, bgc);
+    } else if (v->wv == 2u) {
         const uint8_t *pk = smp_peaks(v->wkey & 63u);
         uint16_t dim = gb_mix(bgc, 90);                           /* outside the window: the ink at ~35 % */
         int32_t x, y0 = 172, hh = 24;
@@ -639,6 +714,44 @@ static void gb_scene(const gb_view_t *v, uint16_t bgc)
     cv_text_on(232 - pw + 8 + (v->picon ? 20 : 0), 201, &AF_M, nm, v->an ? bgc : c, v->an ? c : bgc);
 }
 
+/* the overlay, over every page: the loop border (3 px round the edge, clockwise from the top left, white as far as the
+ * loop has got) and the six track squares at the bottom (the track's colour; white on a hit; muted: dark with an X; the
+ * selected one: a thicker edge). direct: straight onto the panel (only these changed), else into the canvas strip */
+static void gb_ovr(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint16_t c, int direct)
+{
+    if (!w || !h)
+        return;
+    if (direct)
+        lcd_fill(x, y, w, h, c);
+    else
+        cv_rect((int32_t)x, (int32_t)y, (int32_t)w, (int32_t)h, c);
+}
+static void gb_overlay(const gb_view_t *v, uint16_t bgc, int direct)
+{
+    uint32_t f[4], i, k, q = v->brd;
+    for (i = 0; i < 4u; i++)
+        f[i] = q > i * 240u ? (q - i * 240u < 240u ? q - i * 240u : 240u) : 0u;
+    gb_ovr(f[0], 0, 240 - f[0], 3, bgc, direct);  /* the rest of the way first, then the white (the corners) */
+    gb_ovr(237, f[1], 3, 240 - f[1], bgc, direct);
+    gb_ovr(0, 237, 240 - f[2], 3, bgc, direct);
+    gb_ovr(0, 0, 3, 240 - f[3], bgc, direct);
+    gb_ovr(0, 0, f[0], 3, GB_W, direct);
+    gb_ovr(237, 0, 3, f[1], GB_W, direct);
+    gb_ovr(240 - f[2], 237, f[2], 3, GB_W, direct);
+    gb_ovr(0, 240 - f[3], 3, f[3], GB_W, direct);
+    for (k = 0; k < NTRK; k++) {
+        uint32_t x = 70u + k * 18u, y = 226u, e = k == v->sel ? 2u : 1u, m = (v->tmute >> k) & 1u;
+        uint16_t in = (v->thit >> k) & 1u ? GB_W : m ? 0u : gb_col[k];
+        gb_ovr(x, y, 10, 10, GB_W, direct);
+        gb_ovr(x + e, y + e, 10 - 2u * e, 10 - 2u * e, in, direct);
+        if (m)
+            for (i = 2; i < 8u; i++) {            /* the X */
+                gb_ovr(x + i, y + i, 1, 1, GB_W, direct);
+                gb_ovr(x + 9u - i, y + i, 1, 1, GB_W, direct);
+            }
+    }
+}
+
 static void gb_draw(void)
 {
     uint32_t i, s, mono, light, nstrip;
@@ -652,9 +765,23 @@ static void gb_draw(void)
         ;
     if (!ui.force && gb_have && i == sizeof gb_v)
         return;
-    {                                             /* only the drum flash changed: just the header's strip */
+    {                                             /* only the border or a square's hit changed: those, straight on */
+        gb_view_t t = gb_v;
+        t.thit = gb_last.thit;
+        t.brd = gb_last.brd;
+        if (!ui.force && gb_have && !memcmp(&t, &gb_last, sizeof t)) {
+            gb_last = gb_v;
+            gb_overlay(&gb_v, c, 1);
+            return;
+        }
+    }
+    {                                             /* only the drum flash or REC's glow changed: just the header's strip */
         gb_view_t t = gb_v;
         t.hit = gb_last.hit;
+        t.thit = gb_last.thit;
+        t.brd = gb_last.brd;
+        if (t.rec && gb_last.rec)
+            t.rec = gb_last.rec;
         nstrip = !ui.force && gb_have && !memcmp(&t, &gb_last, sizeof t) ? 1u : 240u / GB_STRIP;
     }
     gb_last = gb_v;
@@ -670,9 +797,12 @@ static void gb_draw(void)
         cv_begin(240, GB_STRIP, c);
         cv_oy = -(int32_t)(s * GB_STRIP);
         gb_scene(&gb_v, c);
+        gb_overlay(&gb_v, c, 0);
         cv_oy = 0;
         cv_blit(0, s * GB_STRIP);
     }
+    if (nstrip == 1u)                             /* (the header's strip only: the rest of the overlay may have moved) */
+        gb_overlay(&gb_v, c, 1);
     if (mono || light) {
         ux.mono = (typeof(ux.mono))mono;
         ux.light = (typeof(ux.light))light;

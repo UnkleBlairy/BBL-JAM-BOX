@@ -300,6 +300,31 @@ static void smp_scan(void)                         /* at boot (persist_boot) and
 /* the screen's waveform of a chunk: GB_WAVE columns of its loudest sample (0..255), kept for the chunk last asked */
 static uint8_t smp_pk[GB_WAVE];
 static uint32_t smp_pk_of = 0xFFFFFFFFu;          /* (slot | gen << 8) */
+/* the zoomed waveform (ui_gb.c, START / LEN turned): GB_WAVE peaks of chunk sl's samples x0 .. x0 + w (x0 may be < 0:
+ * before the chunk, none), in a buffer of its own */
+static uint8_t smp_zpk[GB_WAVE];
+static const uint8_t *smp_zpeaks(uint32_t sl, int32_t x0, uint32_t w)
+{
+    uint32_t x, i;
+    const smp_chunk_t *c;
+    const uint8_t *d;
+    if (sl >= smp_n)
+        return 0;
+    c = &smp_tab[sl];
+    d = SMP_XIP(c->off);
+    for (x = 0; x < GB_WAVE; x++) {
+        int32_t a = x0 + (int32_t)(x * w / GB_WAVE), b = x0 + (int32_t)((x + 1u) * w / GB_WAVE), m = 0;
+        b = b > a ? b : a + 1;
+        for (i = (uint32_t)(a < 0 ? 0 : a); (int32_t)i < b && i < c->len; i++) {
+            int32_t s = SMP_ULAW[d[i]];
+            s = s < 0 ? -s : s;
+            m = s > m ? s : m;
+        }
+        smp_zpk[x] = (uint8_t)(m >> 7);
+    }
+    return smp_zpk;
+}
+
 static const uint8_t *smp_peaks(uint32_t sl)
 {
     uint32_t key = sl | smp_gen << 8, x, i;

@@ -1391,6 +1391,8 @@ static void track_select(uint32_t i)
     if (i >= NTRK || i == song.sel)
         return;
     song.sel = (uint8_t)i;
+    if (FELUCCA_SIMPLE && song.rec)                  /* recording follows the track: change tracks, keep recording */
+        song.rec = (uint8_t)(1u << i);
     ui.entry_open = 0;
     ui.hot_t = 0;
     ui.ev_keep = 0;                              /* (AUTOMATION: a row kept at its default was the other track's) */
