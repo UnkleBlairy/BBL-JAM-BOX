@@ -233,6 +233,9 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   REV) SLOT (S01..S32) LOFI LEVEL, page 3 = GATE (P_LN2: KEY = the note's
   length, 1/16..BAR = loops play that long; one-shots always play to the end).
   Track n starts on slot n. ENV and FILTER work (DIGITAL's filter).
+- STRCH and LOFI follow the knob live while a sound plays (knob, macros, LFOs
+  sweep them): grains always run (Hann pairs half a grain apart; at 1.00x they
+  add back to the sample exactly), each new grain starts STRCH further on.
 - Sample memory: flash 0xA0000..0xDBFFF (240 KB), survives power-off and
   firmware updates. 8-bit mu-law (the user chose twice the time over 16 bits):
   ~11 s at 22 kHz in all. Table "FSM2" + CRCs; a bad table = no samples.
