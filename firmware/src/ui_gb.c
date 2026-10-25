@@ -5,6 +5,7 @@
  * described (gb_view_t), drawn from that, and only when the description changed. Pages: EDIT, FILTER, ENV, LFO, FX,
  * PERF, MIXER, CLOCK; the rest keep the old look. */
 #define GB_STRIP 60                           /* canvas rows a strip */
+#define GB_W 0xFFFFu                                  /* the ink: white */
 #define GB_RGB(r, g, b) ((uint16_t)((((r) >> 3) << 11) | (((g) >> 2) << 5) | ((b) >> 3)))
 static uint16_t gb_col[NTRK] = {GB_RGB(255, 90, 54), GB_RGB(255, 214, 10), GB_RGB(46, 196, 255), GB_RGB(179, 136, 255),
                                 GB_RGB(64, 214, 120), GB_RGB(255, 112, 196)};   /* a colour a TRACK */
@@ -20,6 +21,7 @@ typedef struct {
     int16_t dj, cmix, ctune;                 /* PERF: the master DJ filter and comb */
     uint8_t fill[8], rel, bpm_alt;           /* PERF: each held macro's tile filled 0..26 rows; the release fade; the tempo is held by a macro */                           /* a macro holds this value: its dial is drawn inverted */
     uint8_t kmode, pk, fx;                   /* the keys: 1 SEQ 2 PARAM 3 KEY; PARAM's knob + 1 (0: the keys play); the FX lane */
+    uint8_t icon, picon, hit;                /* the header's icon and the machine pill's (IC_*, engines.c); a drum just hit */
     char title[12], lab[4][8], val[4][12];
 } gb_view_t;
 static gb_view_t gb_v, gb_last;
@@ -57,6 +59,27 @@ static uint32_t gb_trig(const step_t *s)                 /* a step's TRIG 0..4 (
 }
 static uint32_t gb_mach(uint32_t k) { return trk_mach(&trk[k % NTRK]); }
 
+/* the page's header icon: the machine's on its sound pages, the filter's type, the LFO's wave, the effect's (0: none) */
+static uint32_t gb_page_icon(const page_t *pg, uint32_t mach)
+{
+    const track_t *t = TSEL;
+    if (pg->graph == GR_PERF)
+        return IC_MACRO;
+    if (str_eq(pg->title, "COMB"))
+        return alt_mode ? IC_DJ : IC_COMB;
+    if (str_eq(pg->title, "DELAY"))
+        return IC_DELAY;
+    if (str_eq(pg->title, "VERB"))
+        return IC_VERB;
+    if (pg->fam == FAM_FLT)
+        return IC_LP + (uint32_t)t->p[P_FTYPE] % 3u;
+    if (pg->fam == FAM_LFO)
+        return IC_SINE + (uint32_t)t->p[P_LWAVE] % 5u;
+    if (pg->fam == FAM_TRK)                             /* VOLUME, CLOCK: all the tracks', none */
+        return IC_NONE;
+    return MACHINES[mach % NMACH].icon;
+}
+
 static void gb_fill(gb_view_t *v)
 {
     const page_t *pg = cur_page();
@@ -77,6 +100,12 @@ static void gb_fill(gb_view_t *v)
     for (k = 0; k < NTRK; k++)
         v->tm[k] = (uint8_t)gb_mach(k);
     v->mach = v->tm[song.sel % NTRK];
+    v->picon = v->fx ? IC_NONE : MACHINES[v->mach % NMACH].icon;
+    v->icon = (uint8_t)gb_page_icon(pg, v->mach);
+    {                                             /* a drum's hit: the header icon flashes ~90 ms */
+        uint32_t h = trk_hit_ms[song.sel % NTRK];
+        v->hit = (uint8_t)(MACHINES[v->mach % NMACH].drum && h && fm1_ms - h < 90u);
+    }
     for (i = 0; i < NPAGES; i++)
         if (PAGES[i].fam == pg->fam && page_visible(i)) {
             if (i == ui.page)
@@ -267,12 +296,71 @@ static void gb_clip(int32_t y0, int32_t y1)                  /* text only in the
 }
 static void gb_unclip(void) { cv_cy0 = 0; cv_cy1 = GB_STRIP; }
 
-#define GB_W 0xFFFFu                                  /* the middle of a screen: white */
+/* a 16 x 16 icon (IC_*) at x, y, each pixel s x s, in col: a run of lit pixels a rectangle (cv_rect keeps to the strip) */
+static void gb_icon(int32_t x, int32_t y, int32_t s, uint32_t icon, uint16_t col)
+{
+    const uint16_t *ic = icon < IC_COUNT ? GB_ICONS[icon] : 0;
+    int32_t j, i, r;
+    if (!ic)
+        return;
+    for (j = 0; j < 16; j++) {
+        if (y + (j + 1) * s + cv_oy <= 0 || y + j * s + cv_oy >= GB_STRIP)
+            continue;
+        for (i = 0; i < 16; i = r) {
+            for (r = i; r < 16 && ((ic[j] << r) & 0x8000u); r++)
+                ;
+            if (r > i)
+                cv_rect(x + i * s, y + j * s, (r - i) * s, s, col);
+            else
+                r++;
+        }
+    }
+}
+
+/* the header: the page's icon at 2x (inverted while a drum hits), the title beside it and the page's n/N, the BPM at
+ * the right. The title loses the n/N, then steps down a size, so it never runs into the BPM */
+static void gb_header(const gb_view_t *v, const char *title, uint16_t bgc)
+{
+    char bb[8], tg[8];
+    int32_t tx = v->icon ? 48 : 8, bw, room, tw, gw = 0;
+    const aafont_t *tf = &AF_L;
+    if (v->icon) {
+        if (v->hit) {
+            cv_rrect(4, 4, 40, 36, 6, GB_W, bgc);
+            gb_icon(8, 6, 2, v->icon, bgc);
+        } else
+            gb_icon(8, 6, 2, v->icon, GB_W);
+    }
+    fmt_int(bb, v->bpm);
+    bw = text_w(&AF_M, bb) + (v->bpm_alt ? 12 : 0);
+    if (v->bpm_alt) {                                             /* the tempo held by a macro: inverted */
+        cv_rrect(232 - bw + 6, 8, bw, 22, 6, GB_W, bgc);
+        cv_text_r(232, 12, &AF_M, bb, bgc, GB_W);
+    } else
+        cv_text_r(232, 12, &AF_M, bb, GB_W, bgc);
+    room = 232 - bw - 8 - tx;
+    tg[0] = 0;
+    if (v->npages > 1u) {
+        tg[0] = (char)('1' + v->page);
+        tg[1] = '/';
+        tg[2] = (char)('0' + v->npages);
+        tg[3] = 0;
+        gw = text_w(&AF_S, tg) + 8;
+    }
+    if (!large_face_has(title) || text_w(tf, title) > room)    /* big with its n/N, else big alone, else smaller */
+        tf = &AF_M;
+    tw = text_w(tf, title);
+    if (tw + gw > room)
+        tg[0] = 0;
+    cv_text_on(tx, tf == &AF_L ? 6 : 13, tf, title, GB_W, bgc);
+    if (tg[0])
+        cv_text_on(tx + tw + 8, tf == &AF_L ? 20 : 16, &AF_S, tg, GB_W, bgc);
+}
+
 static void gb_scene(const gb_view_t *v, uint16_t bgc)
 {
     const uint16_t c = GB_W;                      /* all ink white, the track's colour behind it */
     uint32_t k;
-    char bb[8];
     cv_bg = bgc;
     gb_bg = bgc;
     if (v->sv) {                                              /* SAVE? / LOAD?: what the keys do; done: it flashes */
@@ -296,7 +384,7 @@ static void gb_scene(const gb_view_t *v, uint16_t bgc)
         static const char *const RN[4] = {"1/8", "1/16", "1/32", "REV"};
         char fb[24];
         uint32_t o = 0;
-        cv_text_on(8, 4, &AF_L, v->hn > 2u ? "ARP" : "PERF", c, bgc);
+        gb_header(v, v->hn > 2u ? "ARP" : "PERF", bgc);
         for (k = 0; k < 8u; k++) {
             int32_t tx = 8 + (int32_t)(k & 3u) * 56, ty = 44 + (int32_t)(k >> 2) * 38;
             int on = v->mac_held[k];
@@ -327,7 +415,10 @@ static void gb_scene(const gb_view_t *v, uint16_t bgc)
             gb_pill(tx, 124, 52, 28, GB_W, on);
             cv_text_in(tx, 130, 52, &AF_M, FN[k], on ? bgc : GB_W, on ? GB_W : bgc);
             gb_pill(tx, 158, 52, 28, GB_W, rp);
-            cv_text_in(tx, 164, 52, &AF_M, RN[k], rp ? bgc : GB_W, rp ? GB_W : bgc);
+            if (k == 3u)                                      /* REV: its icon */
+                gb_icon(tx + 18, 164, 1, IC_REVERSE, rp ? bgc : GB_W);
+            else
+                cv_text_in(tx, 164, 52, &AF_M, RN[k], rp ? bgc : GB_W, rp ? GB_W : bgc);
         }
         {                                                 /* the four knobs: FADE  FILT / COMB  TUNE */
             char nn[8];
@@ -372,14 +463,7 @@ static void gb_scene(const gb_view_t *v, uint16_t bgc)
         }
         return;
     }
-    cv_text_on(8, 6, &AF_L, v->title, c, bgc);                      /* the title, the BPM at the right */
-    fmt_int(bb, v->bpm);
-    if (v->bpm_alt) {                                             /* the tempo held by a macro: inverted */
-        int32_t w = text_w(&AF_M, bb) + 12;
-        cv_rrect(232 - w + 6, 8, w, 22, 6, GB_W, bgc);
-        cv_text_r(232, 12, &AF_M, bb, bgc, GB_W);
-    } else
-        cv_text_r(232, 12, &AF_M, bb, c, bgc);
+    gb_header(v, v->title, bgc);
     for (k = 0; k < 4u; k++) {                                    /* the dials */
         int32_t cx = 8 + (int32_t)k * 56 + 28, cy = 108, a, px, py, on;
         uint16_t dc = GB_W, lc = GB_W, bk = bgc;
@@ -412,9 +496,14 @@ static void gb_scene(const gb_view_t *v, uint16_t bgc)
         if (v->pk == k + 1u)                                      /* PARAM: the knob the white keys set, underlined */
             cv_rrect(cx - 18, 182, 36, 5, 2, GB_W, bgc);
     }
-    {                                                             /* what the keys are, bottom middle */
+    const char *nm = v->fx ? "FX" : MACHINES[v->mach % NMACH].pill;
+    int32_t pw = (text_w(&AF_M, nm) + 17 + (v->picon ? 20 : 0)) & ~1;
+    {                                                             /* what the keys are: between the dots and the pill */
         static const char *const KM[4] = {"", "SEQ", "PARAM", "KEY"};
-        cv_text_in(70, 201, 90, &AF_M, KM[v->kmode & 3u], c, bgc);
+        const char *km = KM[v->kmode & 3u];
+        int32_t x0 = 8 + (int32_t)v->npages * 20, x1 = 232 - pw - 4;
+        const aafont_t *kf = text_w(&AF_M, km) <= x1 - x0 ? &AF_M : &AF_S;
+        cv_text_in(x0, kf == &AF_M ? 201 : 203, x1 - x0, kf, km, c, bgc);
     }
     for (k = 0; k < v->npages; k++)                               /* the page dots */
         if (k == v->page)
@@ -423,17 +512,15 @@ static void gb_scene(const gb_view_t *v, uint16_t bgc)
             cv_rrect(8 + (int32_t)k * 20, 206, 8, 8, 4, c, bgc);
             cv_rrect(10 + (int32_t)k * 20, 208, 4, 4, 2, bgc, c);
         }
-    {                                                             /* the machine's name, bottom right: an oval */
-        const char *nm = v->fx ? "FX" : MACHINES[v->mach % NMACH].pill;
-        int32_t w = (text_w(&AF_M, nm) + 17) & ~1;
-        gb_pill(232 - w, 198, w, 24, c, 0);
-        cv_text_on(232 - w + 8, 201, &AF_M, nm, c, bgc);
-    }
+    gb_pill(232 - pw, 198, pw, 24, c, 0);                          /* the machine, bottom right: an oval, its icon, its name */
+    if (v->picon)
+        gb_icon(232 - pw + 8, 202, 1, v->picon, c);
+    cv_text_on(232 - pw + 8 + (v->picon ? 20 : 0), 201, &AF_M, nm, c, bgc);
 }
 
 static void gb_draw(void)
 {
-    uint32_t i, s, mono, light;
+    uint32_t i, s, mono, light, nstrip;
     uint16_t c;
     const uint8_t *a, *b;
     gb_fill(&gb_v);
@@ -444,6 +531,11 @@ static void gb_draw(void)
         ;
     if (!ui.force && gb_have && i == sizeof gb_v)
         return;
+    {                                             /* only the drum flash changed: just the header's strip */
+        gb_view_t t = gb_v;
+        t.hit = gb_last.hit;
+        nstrip = !ui.force && gb_have && !memcmp(&t, &gb_last, sizeof t) ? 1u : 240u / GB_STRIP;
+    }
     gb_last = gb_v;
     gb_have = 1;
     mono = ux.mono;                               /* the text ramps in colour on black whatever the palette (restored below) */
@@ -453,7 +545,7 @@ static void gb_draw(void)
         ux.light = 0;
         ux.gen++;
     }
-    for (s = 0; s < 240u / GB_STRIP; s++) {
+    for (s = 0; s < nstrip; s++) {
         cv_begin(240, GB_STRIP, c);
         cv_oy = -(int32_t)(s * GB_STRIP);
         gb_scene(&gb_v, c);

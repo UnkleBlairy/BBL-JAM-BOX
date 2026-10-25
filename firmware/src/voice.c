@@ -382,11 +382,13 @@ static void mono_remove(track_t *t, uint32_t note)
     t->nmono = (uint8_t)k;
 }
 
+static uint32_t trk_hit_ms[NTRK];                       /* each track's last note's fm1_ms (the screen's drum flash; 0 none) */
 static void trk_note_on(track_t *t, uint32_t note, uint32_t vel)
 {
     uint32_t any = 0, i, mode = trk_vmode(t);
     if (t->p[P_MUTE])
         return;
+    trk_hit_ms[(uint32_t)(t - trk) % NTRK] = fm1_ms | 1u;
     if (t->xf_on || t->eng_req != t->engine) {          /* engine switch under way: after the fade */
         for (i = 0; i < t->xp_n && t->xp_note[i] != note; i++)
             ;

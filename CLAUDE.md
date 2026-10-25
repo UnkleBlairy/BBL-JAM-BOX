@@ -22,6 +22,11 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
 - `firmware/src/repeat.c` — PERF's beat repeats (1/8 1/16 1/32 REV)
 - `firmware/src/gb_store.c` — sounds and kits; `persist.c` — device settings
 - `firmware/src/ui_buttons.c` — page buttons (a release is a tap)
+- `firmware/src/icons_gb.h` — the screen icons (the user's Pixel Slots drawings,
+  don't edit); `icons_808.h` is generated from `docs/808lab.html` by
+  `tools/gen_icons_808.py`. Icon numbers IC_* and each machine's icon: engines.c
+- `docs/808lab.html` — the browser prototype: the spec for the screen header and
+  the ANALOG (808) machines
 
 ## How we work
 
@@ -175,6 +180,15 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   knob can only switch between machines of one engine until a second engine
   exists (then it needs to switch engines too). 6 machines have save slots
   (gb_store.c GB_MACH); more need more sound storage objects.
+
+- Screen header (ui_gb.c gb_header): the page's icon at 2x top left, then the
+  title and its "n/N" tag, BPM top right. Icon: the machine's on sound/ENV/SEQ/ARP
+  pages, the filter type on FILTER pages, the LFO wave on LFO pages, DELAY / VERB /
+  COMB (DJ with OCT+) / MACRO (PERF); VOLUME and CLOCK have none. The title drops
+  its tag, then shrinks, rather than touch the BPM. Bottom right: the machine pill
+  with its icon. PERF's REV pill is the reverse icon.
+- A drum hit flashes the header icon inverted (white block) for ~90 ms; only the
+  top strip redraws for it (voice.c trk_hit_ms).
 
 ## Workflow (after every change)
 
