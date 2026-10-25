@@ -19,7 +19,7 @@ typedef struct {
     uint8_t alt[4];
     int16_t dj, cmix, ctune;                 /* PERF: the master DJ filter and comb */
     uint8_t fill[8], rel, bpm_alt;           /* PERF: each held macro's tile filled 0..26 rows; the release fade; the tempo is held by a macro */                           /* a macro holds this value: its dial is drawn inverted */
-    uint8_t kmode, pk;                       /* the keys: 1 SEQ 2 PARAM 3 KEY; PARAM's knob + 1 (0: the keys play) */
+    uint8_t kmode, pk, fx;                   /* the keys: 1 SEQ 2 PARAM 3 KEY; PARAM's knob + 1 (0: the keys play); the FX lane */
     char title[12], lab[4][8], val[4][12];
 } gb_view_t;
 static gb_view_t gb_v, gb_last;
@@ -73,6 +73,7 @@ static void gb_fill(gb_view_t *v)
     str_cpy(v->title, pg->title, sizeof v->title);
     v->kmode = (uint8_t)(ui.sgrid == 1u ? 1u : ui.sgrid == 2u ? 2u : 3u);
     v->pk = (uint8_t)(par_on() && par_id != 0xFFu ? par_k + 1u : 0u);
+    v->fx = (uint8_t)fxl_on();
     for (k = 0; k < NTRK; k++)
         v->tm[k] = (uint8_t)gb_mach(k);
     v->mach = v->tm[song.sel % NTRK];
@@ -194,7 +195,16 @@ static void gb_fill(gb_view_t *v)
             v->lab[k][i] = d->label[i];
         cur = *vp;
         v->alt[k] = (uint8_t)(pm_altered(TSEL, vp) != 0);
-        if (lk && ((vp >= TSEL->p && vp < TSEL->p + P_COUNT) ||
+        if (lk && v->fx) {                            /* the FX lane's step held: its lock of a master knob (inverted) */
+            uint32_t g = vp >= song.g && vp < song.g + G_COUNT ? motion_gid((uint32_t)(vp - song.g)) : 0xFFu, st = 0;
+            while (!((lk >> st) & 1u))
+                st++;
+            v->alt[k] = 0;
+            if (g != 0xFFu && ((fxl.lk[st] >> (g - P_COUNT)) & 1u)) {
+                cur = fxl.v[st][g - P_COUNT];
+                v->alt[k] = 1;
+            }
+        } else if (lk && ((vp >= TSEL->p && vp < TSEL->p + P_COUNT) ||
                    (vp >= song.g && vp < song.g + G_COUNT && motion_gid((uint32_t)(vp - song.g)) != 0xFFu))) {
             /* a step held: its lock (inverted), else the sound's own */
             uint32_t id = vp >= TSEL->p && vp < TSEL->p + P_COUNT ? (uint32_t)(vp - TSEL->p) : motion_gid((uint32_t)(vp - song.g)), st = 0;
@@ -414,7 +424,7 @@ static void gb_scene(const gb_view_t *v, uint16_t bgc)
             cv_rrect(10 + (int32_t)k * 20, 208, 4, 4, 2, bgc, c);
         }
     {                                                             /* the machine's name, bottom right: an oval */
-        const char *nm = MACHINES[v->mach % NMACH].pill;
+        const char *nm = v->fx ? "FX" : MACHINES[v->mach % NMACH].pill;
         int32_t w = (text_w(&AF_M, nm) + 17) & ~1;
         gb_pill(232 - w, 198, w, 24, c, 0);
         cv_text_on(232 - w + 8, 201, &AF_M, nm, c, bgc);
@@ -427,7 +437,7 @@ static void gb_draw(void)
     uint16_t c;
     const uint8_t *a, *b;
     gb_fill(&gb_v);
-    c = gb_col[gb_v.sel % NTRK];
+    c = gb_v.fx ? GB_RGB(120, 128, 140) : gb_col[gb_v.sel % NTRK];   /* (the FX lane: grey) */
     a = (const uint8_t *)&gb_v;
     b = (const uint8_t *)&gb_last;
     for (i = 0; i < sizeof gb_v && a[i] == b[i]; i++)

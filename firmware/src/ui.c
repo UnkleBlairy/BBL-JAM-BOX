@@ -506,6 +506,7 @@ static uint8_t gbsv;                                  /* SIMPLE, the SAVE screen
 static char gbsv_msg[2][16];                          /* .. what was saved / loaded, flashing from gbsv_t (fm1_ms | 1, 0 none) */
 static uint32_t gbsv_t;
 static int gbsv_keys_on(void) { return gbsv == 1u || gbsv == 2u; }   /* the keys are the slots' */
+static uint8_t fxl_sel;                               /* SIMPLE: the FX lane is selected (black key 7, SEQ mode) */
 static int sgrid_on(void) { return FELUCCA_SIMPLE && ui.sgrid == 1u && !ui.confirm && !pm_page() && !pm_down() && !gbsv_keys_on(); }   /* (PERF and a macro held: their own keys) */
 
 /* ------------------------------------------------- performance macros --- */
@@ -540,6 +541,7 @@ static uint8_t pm_ui_a = 255, pm_ui_c = 255;             /* what the screen show
 static int16_t pm_ui_u;                                  /* .. how far (0..1024) */                 /* 0 none, 1..4 the fade time; FUNC 0..2; ARP 0..4 */
 static int pm_page(void) { return !ui.home && !ui.confirm && cur_page()->graph == GR_PERF; }
 static int pm_down(void) { return pm_h.n != 0u; }   /* a macro key held (on any page) */
+static int fxl_on(void) { return fxl_sel && sgrid_on(); }   /* the step keys are the FX lane's (seq.c fxl) */
 /* SIMPLE, PARAM keys on: on a page whose knobs lock, the white keys set the chosen knob (par_k) and play (seq.c par_key) */
 static uint8_t par_k;
 static int par_on(void)

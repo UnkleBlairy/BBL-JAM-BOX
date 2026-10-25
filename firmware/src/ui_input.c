@@ -128,10 +128,22 @@ static int gbs_trigless(const track_t *t, uint32_t p)   /* step p: no note, a lo
     return p < NSTEP && !(t->step[p].time == ST_NOTE && t->step[p].n) &&
            (t->step[p].time == ST_LOCK || ((motion_lock_steps(trk_index(t)) >> p) & 1u));
 }
+static uint32_t fxl_leds(void)                           /* the FX lane: its trigs (the play position flips one), key 7 */
+{
+    uint32_t k, m = 0, ph = song.playing ? clk_step & 15u : 0xFFu;
+    for (k = 0; k < 27u; k++) {
+        uint32_t p = key_place(k);
+        if (key_black(k) ? p == NTRK : (((fxl.trig >> p) & 1u) ^ (uint32_t)(p == ph)) != 0u)
+            m |= 1u << k;
+    }
+    return m;
+}
 static uint32_t sgrid_leds(uint32_t *br)                 /* (*br: the trigless steps, breathing) */
 {
     const track_t *t = TSEL;
     uint32_t k, m = 0, len = (uint32_t)t->p[P_SLEN];
+    if (fxl_on())
+        return fxl_leds();
     uint32_t ph = song.playing && t->seq_idx < len && t->seq_idx < 16u ? t->seq_idx : 0xFFu;
     for (k = 0; k < 27u; k++) {
         uint32_t p = key_place(k), on;
@@ -712,7 +724,7 @@ static void gbs_keep(void)                               /* the step keys held s
 /* the steps held (bit p: step p), for the SEQ page's knobs */
 static uint32_t gbs_held(void)
 {
-    uint32_t k, m = 0, len = (uint32_t)TSEL->p[P_SLEN];
+    uint32_t k, m = 0, len = fxl_on() ? 16u : (uint32_t)TSEL->p[P_SLEN];
     if (!sgrid_on())
         return 0;
     for (k = 0; k < 27u; k++) {
@@ -727,7 +739,12 @@ static void sgrid_release(void)                          /* every input pass: th
     uint32_t k, up = (gbs_off | gbs_kept) & ~fm1_in.notes;
     for (k = 0; k < 27u; k++)
         if ((up >> k) & 1u && ((gbs_off & ~gbs_kept) >> k) & 1u && key_place(k) < GB_TRIG) {
-            gbs_step_off(&TSEL->step[key_place(k)]);
+            if (fxl_on()) {
+                fxl.trig &= (uint16_t)~(1u << key_place(k));
+                fxl.lk[key_place(k)] = 0;
+            } else {
+                gbs_step_off(&TSEL->step[key_place(k)]);
+            }
             ui.force = 1;
         }
     gbs_off &= ~up;
@@ -792,9 +809,24 @@ static void sgrid_keys(uint32_t pressed)
         if (!((pressed >> k) & 1u))
             continue;
         if (key_black(k)) {
-            if (p < NTRK && !kb_octup) {                /* (OCT+ held: the track keys are the mutes, seq.c) */
+            if (p <= NTRK && !kb_octup) {               /* (OCT+ held: the track keys are the mutes, seq.c) */
                 gbs_off = gbs_kept = 0;                 /* (the steps held were the other track's) */
-                track_select(p);
+                fxl_sel = (uint8_t)(p == NTRK);         /* black key 7: the FX lane */
+                if (p < NTRK)
+                    track_select(p);
+                ui.force = 1;
+            }
+            continue;
+        }
+        if (fxl_on()) {                                 /* the FX lane: a trig on at press, off when let go */
+            if (p < 16u) {
+                if ((fxl.trig >> p) & 1u) {
+                    gbs_off |= 1u << k;
+                } else {
+                    fxl.lk[p] = 0;
+                    fxl.trig |= (uint16_t)(1u << p);
+                }
+                ui.force = 1;
             }
             continue;
         }
@@ -881,6 +913,8 @@ static uint64_t lock_held(void)
         if (ui.home || !keys || !lock_page_ok(ui.page))
             return 0;
         ui.plk_src = (uint8_t)(ui.page + 1u);           /* (the page shown: lock_id) */
+        if (fxl_on())
+            len = 16u;                                  /* (the FX lane's 16) */
         for (k = 0; k < 27u; k++)
             if (((keys >> k) & 1u) && !key_black(k) && key_place(k) < len && key_place(k) < GB_TRIG)
                 m |= (uint64_t)1 << key_place(k);
@@ -900,11 +934,37 @@ static uint64_t lock_held(void)
 
 /* KNOB k turned s with the steps `held` held: each gets (or changes) its lock of lock_id(k), from its lock or the
  * sound's own value */
+/* the FX lane's steps `held`: KNOB k's lock, the master's knobs only (from the lock, or the knob's own value) */
+static void fxl_turn(uint32_t k, int32_t s, uint64_t held)
+{
+    uint32_t id = lock_id(k), j, i;
+    const param_desc_t *d;
+    if (id == 0xFFu || id < P_COUNT) {
+        ui_message("FX: MASTER ONLY");
+        return;
+    }
+    j = id - P_COUNT;
+    d = &GP[MOTION_G[j]];
+    s = accel(EN_K1 + k, s, d->max - d->min);
+    for (i = 0; i < 16u; i++) {
+        int32_t v;
+        if (!((held >> i) & 1u))
+            continue;
+        v = (fxl.lk[i] >> j) & 1u ? fxl.v[i][j] : song.g[MOTION_G[j]];
+        fxl.v[i][j] = (int8_t)param_turn(d, v, s);
+        fxl.lk[i] |= (uint16_t)(1u << j);
+        fxl.trig |= (uint16_t)(1u << i);
+    }
+}
 static void lock_turn(uint32_t k, int32_t s, uint64_t held)
 {
     track_t *t = TSEL;
     uint32_t id = lock_id(k), i;
     const param_desc_t *d;
+    if (fxl_on()) {
+        fxl_turn(k, s, held);
+        return;
+    }
     if (id == 0xFFu)
         return;                                         /* (an empty card: nothing to lock) */
     ui.plk_rm &= ~held;                                 /* (held for a lock: its hit stays) */
@@ -927,6 +987,15 @@ static void lock_turn(uint32_t k, int32_t s, uint64_t held)
 static void lock_clear(uint64_t held)
 {
     uint32_t i, n = 0;
+    if (fxl_on()) {                                     /* the FX lane's held steps: their locks go (the trigs stay) */
+        for (i = 0; i < 16u; i++)
+            if ((held >> i) & 1u) {
+                n += fxl.lk[i] != 0u;
+                fxl.lk[i] = 0;
+            }
+        ui_message(n ? "LOCKS CLEARED" : "NO LOCKS");
+        return;
+    }
     ui.plk_rm &= ~held;
     if (!(motion_lock_steps(song.sel) & held)) {
         ui_message("NO LOCKS");
@@ -1256,6 +1325,13 @@ static void ui_input(void)
                     gbs_keep();
                     lock_clear(gbs_held());
                     break;
+                }
+                if ((b == B_OCTDN || all) && (all || fxl_on())) {   /* (the FX lane: OCT- clears it; with OCT+ it too) */
+                    memset(&fxl, 0, sizeof fxl);
+                    if (!all) {
+                        ui_message("FX CLEARED");
+                        break;
+                    }
                 }
                 if (b == B_OCTDN || all) {
                     for (a = all ? 0u : song.sel; a < (all ? NTRK : song.sel + 1u); a++) {

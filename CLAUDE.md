@@ -159,6 +159,13 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   whole step (a chord step arps). Recording stores the key's note, not each
   arp note. Stored in the old arp ids (ARP = P_AHOLD, FADE = P_ASWING); no
   latch, swing or arp chance in this build.
+- FX track = the FX lane (seq.c fxl, not a 7th track): in SEQ mode black key 7
+  selects it (screen grey, oval "FX"; black keys 1-6 go back to a track). 16
+  straight 1/16 steps that make no sound: tap a step = a trig, hold it + turn a
+  delay/reverb/comb/DJ knob = a lock (other knobs: "FX: MASTER ONLY"). A trig's
+  locks lay over those knobs until the lane's next trig (mod.c mg_ov; the knob
+  keeps its own value, LFOs wobble on top). Hold step + OCT- clears its locks,
+  OCT- clears the lane. Not saved. No LEN/SPEED/CHANCE of its own yet.
 - Parameter ids (core.h P_*) never move: saved sounds map by count. New
   parameters go just before P_E0.
 - Machines (engines.c MACHINES): each is an engine + that engine's machine

@@ -905,6 +905,7 @@ static void seq_start(void)
     song.tick = 0;
     beat_pos = 0; beat_n = 0;                      /* the ARP LED's beat from the top too */
     clk_pos = CLK_START;                           /* the metronome's first beat with step 0 */
+    mg_ov_n = 0;                                   /* (SIMPLE: the FX lane's locks off) */
     song.playing = 1;
     perf_start();                                  /* perform.c: its 1/16 grid too */
 }
@@ -937,6 +938,7 @@ static void seq_stop(void)
 {
     uint32_t i;
     song.playing = 0;
+    mg_ov_n = 0;                                   /* (SIMPLE: the FX lane's locks off) */
     cin_left = 0;                                  /* (a count-in: cancelled, nothing recorded) */
     cin_flush = 0;
     memset(cin_n, 0, sizeof cin_n);
@@ -1330,6 +1332,25 @@ static __attribute__((noinline)) void cin_record(void)
         cin_n[i] = 0;
     }
 }
+/* SIMPLE, the FX lane (black key 7 in SEQ mode, ui_input.c fxl_*): 16 straight 1/16 steps (the metronome's count) that
+ * make no sound. A trig's locks (the master's: delay, reverb, comb, DJ filter: motion.c MOTION_G) lay over those knobs
+ * from it to the lane's next trig (mod.c mg_ov: over the knob's own value, which the knob still sets); a trig with none
+ * puts them back. Stopping puts them back. Not saved (patterns never are) */
+static struct { uint16_t trig, lk[16]; int8_t v[16][MOTION_NG]; } fxl;
+static void fxl_step(uint32_t s)
+{
+    uint32_t j, n = 0;
+    s &= 15u;
+    if (!((fxl.trig >> s) & 1u))
+        return;
+    for (j = 0; j < MOTION_NG; j++)
+        if ((fxl.lk[s] >> j) & 1u) {
+            mg_ov_g[n] = MOTION_G[j];
+            mg_ov_v[n++] = fxl.v[s][j];
+        }
+    mg_ov_n = (uint8_t)n;
+}
+
 /* the metronome's beat: adv samples on while the transport runs (click.c sounds it in this block) */
 static void click_tick(uint32_t adv)
 {
@@ -1338,11 +1359,13 @@ static void click_tick(uint32_t adv)
         clk_pos = 0;
         clk_step = 0;
         beat = 2;
+        fxl_step(0);
     } else {
         clk_pos += adv;
         while (clk_pos >= p) {                      /* (as seq_tick: the remainder kept) */
             clk_pos -= p;
             clk_step = (clk_step + 1u) & 15u;
+            fxl_step(clk_step);
             if (!(clk_step & 3u))
                 beat = clk_step ? 1u : 2u;
         }

@@ -241,14 +241,23 @@ static __attribute__((noinline)) int mod_begin(track_t *t)
 /* SIMPLE: the globals the tracks' slots move (MD_GLOBAL), around the master's block (fx.c mix_block): each track's
  * offset of its own sources (as mod_begin), added up; the values as they were go back after (mod_g_end), so nothing
  * outside the audio ISR sees them. TIME (reverb) stays short of FREEZE unless it is there */
-#define MG_N 8u
+#define MG_N 16u
 static uint8_t mg_n, mg_id[MG_N];
-static int16_t mg_keep[MG_N];
+static int16_t mg_keep[MG_N], mg_base[MG_N];
+static uint8_t mg_ov_n, mg_ov_g[MG_N];                  /* SIMPLE: values laid over globals (seq.c, the FX lane's locks) */
+static int16_t mg_ov_v[MG_N];
 static __attribute__((noinline)) void mod_g_begin(void)
 {
     int32_t off[MG_N];
     uint32_t i, k, j;
     mg_n = 0;
+    for (j = 0; j < mg_ov_n && j < MG_N; j++) {         /* the overlay first: the LFOs move from it */
+        mg_id[j] = mg_ov_g[j];
+        mg_keep[j] = song.g[mg_ov_g[j]];
+        mg_base[j] = mg_ov_v[j];
+        off[j] = 0;
+        mg_n++;
+    }
     for (i = 0; i < NTRK; i++) {
         const track_t *t = &trk[i];
         const int16_t *p = t->p;
@@ -273,7 +282,7 @@ static __attribute__((noinline)) void mod_g_begin(void)
                 if (mg_n == MG_N)
                     continue;
                 mg_id[j] = (uint8_t)g;
-                mg_keep[j] = song.g[g];
+                mg_keep[j] = mg_base[j] = song.g[g];
                 off[j] = 0;
                 mg_n++;
             }
@@ -282,8 +291,8 @@ static __attribute__((noinline)) void mod_g_begin(void)
     }
     for (j = 0; j < mg_n; j++) {
         uint32_t g = mg_id[j];
-        int32_t mx = g == G_RSIZE && mg_keep[j] < GP[g].max ? GP[g].max - 1 : GP[g].max;
-        song.g[g] = (int16_t)clamp(mg_keep[j] + off[j], GP[g].min, mx);
+        int32_t mx = g == G_RSIZE && mg_base[j] < GP[g].max && off[j] ? GP[g].max - 1 : GP[g].max;
+        song.g[g] = (int16_t)clamp(mg_base[j] + off[j], GP[g].min, mx);
     }
 }
 static void mod_g_end(void)
