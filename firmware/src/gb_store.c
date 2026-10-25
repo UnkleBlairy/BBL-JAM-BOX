@@ -261,6 +261,7 @@ static int gbk_load(uint32_t k)
 /* ---- the sample memory (eng_sampler.c has the layout): its table, checked whole (a bad table or data: no chunks) */
 static inline uint32_t smp_u32(const uint8_t *p) { return p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24; }
 static inline uint32_t smp_u16(const uint8_t *p) { return p[0] | (uint32_t)p[1] << 8; }
+static int smp_scan_ok;                            /* the last scan found a good table (smp_usb.c END) */
 static void smp_scan(void)                         /* at boot (persist_boot) and after an upload */
 {
     static smp_chunk_t tb[SMP_MAX];
@@ -290,6 +291,7 @@ static void smp_scan(void)                         /* at boot (persist_boot) and
     for (i = 0; ok && i < cnt; i++)
         smp_tab[i] = tb[i];
     smp_n = (uint8_t)(ok ? cnt : 0u);
+    smp_scan_ok = (int)ok;
     smp_gen++;
     fm1_irq_on();
     ui.force = 1;

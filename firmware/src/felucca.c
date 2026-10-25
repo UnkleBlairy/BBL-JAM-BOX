@@ -105,8 +105,10 @@
 #include "persist.c"            /* the device's settings */
 #include "gb_store.c"            /* the groovebox's sounds and kits (SAVE) */
 #if FELUCCA_OTA
+#define FELUCCA_SMP_USB 1        /* ota.c: the sample uploader's BEGIN starts smp_usb.c's session */
 #include "ota.c"
 #include "ota_hw.c"
+#include "smp_usb.c"             /* the sample uploader's transfer (ota.c's SysEx frames) */
 #endif
 #if FELUCCA_CDC
 /* the serial port is still presented (the USB layout stays as the installer knows it); what comes in is dropped */

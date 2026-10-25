@@ -24,8 +24,9 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
 - `firmware/src/eng_analog.c` — the 808 engine (AGE weights, level trims)
 - `firmware/src/eng_sampler.c` — the sampler (sample memory layout at the top);
   `gb_store.c` smp_scan / smp_peaks read the table and the waveform
-- `web/smpimg.js` — builds the sample memory image (shared by the uploaders);
-  the emulator page's "Samples" panel is the uploader for now
+- `web/smpimg.js` — builds the sample memory image; `web/smpui.js` the uploader
+  panel; `web/samples.html` + `web/fm1smp.js` the FM-1 Samples page and its USB
+  transfer; `firmware/src/smp_usb.c` the FM-1's side
 - `firmware/src/engines.c` — the engine table and the tracks' power-on sounds
 - `firmware/src/repeat.c` — PERF's beat repeats (1/8 1/16 1/32 REV)
 - `firmware/src/gb_store.c` — sounds and kits; `persist.c` — device settings
@@ -236,4 +237,8 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   firmware updates. 8-bit mu-law (the user chose twice the time over 16 bits):
   ~11 s at 22 kHz in all. Table "FSM2" + CRCs; a bad table = no samples.
 - The uploader replaces the whole sample memory each Upload (up to 32 chunks).
-  Step 2 (to do): send it to the real FM-1 over USB SysEx from the installer site.
+  On the real FM-1: the installer site's Samples page (web/samples.html,
+  webapp/samples/; web/fm1smp.js) over USB SysEx (firmware/src/smp_usb.c, the
+  update's frames: BEGIN / SUM / WRITE / END). Only changed 4 KB sectors are
+  sent, the table last; an Upload cut short resumes. The page keeps its list in
+  the browser. The panel itself is web/smpui.js (emulator and page share it).

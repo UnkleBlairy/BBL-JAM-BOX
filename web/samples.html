@@ -1,0 +1,82 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-only
+     The sample uploader: sounds into the FM-1's sample memory for the SAMPLE machine (web/make_site.py inlines
+     smpimg.js, fm1ota.js, fm1smp.js and smpui.js at LIB). -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Felucca Samples</title>
+<style>
+  :root { --bg: #8e8e93; --body: #1d1d1f; --tray: #141415; --part: #2a2a2d; --edge: #3a3a3e; --label: #d6d6d8; --green: #5fe08a; }
+  body { margin: 0; background: var(--bg); color: #111; font: 14px/1.6 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 32px 16px; }
+  .smp { background: var(--body); color: var(--label); border-radius: 12px; padding: 16px; }
+  .smp h1 { margin: 0 0 4px; font-size: 20px; color: #fff; }
+  .smp p { margin: 0 0 10px; }
+  .smp .row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 8px 0; }
+  .smp button, .smp select { font: inherit; padding: 4px 12px; border-radius: 6px; border: 1px solid var(--edge); background: var(--part); color: #fff; cursor: pointer; }
+  .smp button:disabled { opacity: .4; cursor: default; }
+  .smp button.go { background: #fff; color: #000; border-color: #fff; }
+  .smp canvas { display: block; width: 100%; height: 96px; background: var(--tray); border-radius: 6px; }
+  .smp input[type=range] { flex: 1; min-width: 120px; }
+  .smp .msg { color: #aaa; }
+  .smp .msg.bad { color: #ff8a80; }
+  .smp .msg.ok { color: var(--green); }
+  .smp .meter { height: 8px; background: var(--tray); border-radius: 4px; overflow: hidden; flex: 1; min-width: 160px; }
+  .smp .meter div { height: 100%; width: 0; background: var(--green); }
+  .smp ol { margin: 8px 0; padding: 0; list-style: none; }
+  .smp li { display: grid; grid-template-columns: 40px 1fr auto auto auto; gap: 10px; align-items: center; padding: 4px 0; border-top: 1px solid var(--part); }
+  .smp li .n { font-family: ui-monospace, Menlo, monospace; color: #fff; }
+  .smp li .sz { color: #aaa; font-size: 12px; }
+  .smp li button { padding: 2px 10px; }
+  .smp .small { font-size: 12px; color: #999; }
+  footer { margin-top: 12px; font-size: 12px; text-align: center; }
+  footer a { color: inherit; margin: 0 6px; }
+  @media (max-width: 520px) { .smp li { grid-template-columns: 34px 1fr auto auto; } .smp li .sz { display: none; } }
+</style>
+</head>
+<body>
+<main>
+<section class="smp">
+  <h1>Samples</h1>
+  <p>Pick a sound file, choose the part you want and press <b>Write</b> to add it to the list. Then connect the FM-1 by
+  USB and press <b>Upload</b>: the list replaces everything in the FM-1's sample memory. A SAMPLE track plays slot S01
+  to S32 (its SLOT knob). The FM-1 keeps them when it's switched off.</p>
+  <p class="small">Chrome or Edge (Web MIDI). Close other apps that use the FM-1 first. The sound stops while it loads.
+  This browser keeps your list, so next time you can add to it.</p>
+  <div class="row"><input type="file" id="sfile" accept="audio/*,.wav,.mp3,.ogg,.flac,.aif,.aiff" aria-label="Sound file"> <span class="msg" id="sfinfo">WAV, MP3, OGG or FLAC.</span></div>
+  <canvas id="swave" width="1400" height="192" aria-label="The sound's waveform with the chosen part"></canvas>
+  <div class="row"><label for="sA">Start</label><input type="range" id="sA" min="0" max="1000" value="0">
+    <label for="sB">End</label><input type="range" id="sB" min="0" max="1000" value="1000"></div>
+  <div class="row"><button type="button" id="spv" disabled>Play</button>
+    <label>Rate <select id="srate"><option value="11025">11 kHz</option><option value="22050" selected>22 kHz</option><option value="32000">32 kHz</option></select></label>
+    <label><input type="checkbox" id="snorm" checked> Normalise</label>
+    <button type="button" id="swr" disabled>Write</button> <span class="msg" id="swmsg"></span></div>
+  <div class="row"><span>Memory</span><div class="meter"><div id="smbar"></div></div><span class="msg" id="smtxt"></span></div>
+  <ol id="slist"></ol>
+  <div class="row"><button type="button" class="go" id="sup">Upload to the FM-1</button> <button type="button" id="sclr">Clear memory</button> <span class="msg" id="sumsg"></span></div>
+</section>
+<footer><a href="../installer/">Install Felucca</a><a href="https://github.com/hugelton/Felucca">Source</a></footer>
+</main>
+<script type="module">
+/*LIB*/
+const KEEP = "felucca-samples";                       // the list, as its region image (base64)
+function loadList() {
+  try {
+    const b64 = localStorage.getItem(KEEP);
+    return b64 ? parseImage(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))) : [];
+  } catch { return []; }
+}
+function keepList(list) {
+  try {
+    const img = buildImage(list);
+    let s = "";
+    for (let i = 0; i < img.length; i += 4096) s += String.fromCharCode.apply(null, img.subarray(i, i + 4096));
+    localStorage.setItem(KEEP, btoa(s));
+  } catch {}
+}
+mountUploader({ initial: loadList(), changed: keepList, upload: uploadSamples });
+</script>
+</body>
+</html>

@@ -60,6 +60,13 @@ def main(pkg, version, out):
     for old in fw.glob("felucca-*.fwsc"):          # one package: the current one
         old.unlink()
     (inst / "index.html").write_text(html, encoding="utf-8")
+    smp = (HERE / "samples.html").read_text(encoding="utf-8")   # the sample uploader (webapp/samples/)
+    if smp.count("/*LIB*/") != 1:
+        raise SystemExit("samples.html must contain /*LIB*/ once; update make_site.py")
+    smp = smp.replace("/*LIB*/", "\n".join(strip_module((HERE / f).read_text(encoding="utf-8"))
+                                           for f in ("smpimg.js", "fm1ota.js", "fm1smp.js", "smpui.js")))
+    (out / "webapp" / "samples").mkdir(parents=True, exist_ok=True)
+    (out / "webapp" / "samples" / "index.html").write_text(smp, encoding="utf-8")
     shutil.copy(pkg, fw / name)
     lic = HERE.parent / "LICENSES"                  # the package holds JieLi SDK files (Apache-2.0): their
     (fw / "LICENSES").mkdir(exist_ok=True)          # licence travels next to it, with Felucca's own

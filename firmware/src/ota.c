@@ -158,12 +158,19 @@ static uint32_t ota_take(void)
     return d;
 }
 
-/* main loop, outside a session: answer handshakes */
+/* main loop, outside a session: answer handshakes; the sample uploader's BEGIN starts its session (smp_usb.c) */
+#if FELUCCA_SMP_USB                              /* (the firmware: felucca.c; not the update loader) */
+static void smp_session(uint32_t d);
+#endif
 static void ota_service(void)
 {
     uint32_t d = ota_take();
     if (d == 7u && ota_dec[2] == 0x11)
         ota_reply_identity();
+#if FELUCCA_SMP_USB
+    else if (d == 7u && ota_dec[2] == 0x60)
+        smp_session(d);
+#endif
 }
 
 /* one read request (3 tries x 5 s); data -> dst */
