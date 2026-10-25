@@ -145,6 +145,12 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   switch (TYPE WAVE DEST MACH SYNC TRIG). The delay, reverb, comb and DJ are
   shared: every track's LFO on one adds up (fx.c mod_g_begin). The reverb never
   wobbles into FREEZE. Names are 5 letters at most (that's what fits).
+- Drum tracks (BD SD HH CYM PERC) play one voice: a new hit takes over the
+  sounding one (in place, no click) and any other fades (voice.c trk_note_on).
+- Kick knobs: TUNE PNCH CLIK FM | RATIO FOLD CRSH. PNCH is the pitch drop's
+  depth AND length (old PNCH + SWPT in one). FM is a second sine on the kick's
+  sine at RATIO (.5 1 2 .. 16), not feedback. Kicks saved before this load with
+  their knobs one place off.
 - Parameter ids (core.h P_*) never move: saved sounds map by count. New
   parameters go just before P_E0.
 - Machines (engines.c MACHINES): each is an engine + that engine's machine

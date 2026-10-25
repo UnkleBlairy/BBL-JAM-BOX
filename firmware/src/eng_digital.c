@@ -21,7 +21,7 @@ static const preset_t DIGITAL_PRESETS[] = {
     {"MARIMBA", {8, 32, 8, 8, 60, 30, 0, 0}, {0, 80, 0, 60}, 0, 0, FX(0, 0, 0, 0), PAT(3)},
     {"FUNK KEY", {-8, 8, 24, 40, 90, 25, 20, 0}, {0, 45, 30, 30}, 0, 0, FX(0, 0, 0, 0), PAT(6)},
     /* the FM drum machines (E7 = MACH): E4..E6 are their macros (eng_digital.c MACH_D) */
-    {"BD", {0, 64, 60, 0, 0, 0, 0, 1}, {0, 100, 0, 40}, 0, 0, FX(0, 0, 0, 0), PAT(0)},
+    {"BD", {0, 64, 0, 0, 1, 0, 0, 1}, {0, 100, 0, 40}, 0, 0, FX(0, 0, 0, 0), PAT(0)},   /* TUNE PNCH CLIK FM RATIO FOLD CRSH */
     {"SD", {-24, 70, 71, 16, 35, 0, 0, 2}, {0, 84, 0, 40}, 0, 0, FX(0, 0, 0, 0), PAT(0)},
     {"CH", {-44, 95, 90, 29, 103, 0, 0, 3}, {0, 58, 0, 30}, 0, 0, FX(0, 0, 0, 0), PAT(0)},
     {"OH", {-44, 95, 90, 29, 103, 0, 0, 3}, {0, 95, 0, 60}, 0, 0, FX(0, 0, 0, 0), PAT(0)},
@@ -177,7 +177,7 @@ static __attribute__((noinline)) void digital_render_legacy(track_t *t, voice_t 
         int32_t en = v->s[4], sw = (int32_t)ph4, a1 = p[P_E1], a2 = p[P_E2], a3 = p[P_E3], e4 = p[P_E4];
         int32_t a4s = e4;
         uint32_t bi = fm_ratio_inc(m->inc, tune_q8(p[P_E0]));    /* TUNE */
-        en -= mulq16(en, ENV_EXP[(mach == 5u ? a3 : a2) & 127]);
+        en -= mulq16(en, ENV_EXP[(mach == 5u ? a3 : mach == 1u ? 28 + (a1 >> 1) : a2) & 127]);   /* (BD: PNCH is its fall's length too) */
         sw -= mulq16(sw, ENV_EXP[mach == 2u ? clamp(LAB(11, 44) + ((a4s * LAB(26, 98)) >> 8), 0, 127) : mach == 1u ? LAB(8, 86) : 44]);   /* (SD: its pitch drop lasts ~17 ms, long enough to hear) */
         v->s[4] = en;
         ph4 = (uint32_t)sw;
@@ -187,10 +187,11 @@ static __attribute__((noinline)) void digital_render_legacy(track_t *t, voice_t 
         mF = p[P_E5] ? 32 + p[P_E5] * 2 : 0;                         /* FOLD: a wavefolder after the voice */
         mG = clamp((p[P_E6] * 13 + 63) / 127, 0, 13);                /* CRSH: bits dropped, from the first notch */
         mR = 1 + (p[P_E6] >> (mach == 3u || mach == 4u ? 3 : 4));                                     /* .. and the sample rate held (1..8 samples) */
-        if (mach == 1) {                                             /* BD: TUNE PNCH SWPT CLIK | FM FOLD CRSH */
-            mi0 = fm_ratio_inc(bi, 256 + ((lab_pow(mA, LAB(4, 0)) * a1 * LAB(3, 16)) >> 15));   /* PNCH: the pitch starts up to 8x high, falls with SWPT */
-            mC = mulq15(lab_pow(LAB(9, 0) ? mB : mA, LAB(2, 1)), a3 * LAB(1, 199));   /* CLIK: noise, gain follows the envelope squared */
-            mD = (e4 * LAB(5, 8)) >> 5;                                 /* FM: the sine's feedback index */
+        if (mach == 1) {                                             /* BD: TUNE PNCH CLIK FM | RATIO FOLD CRSH */
+            mi0 = fm_ratio_inc(bi, 256 + ((lab_pow(mA, LAB(4, 0)) * a1 * LAB(3, 16)) >> 15));   /* PNCH: the pitch starts up to 8x high; the more, the longer it falls */
+            mC = mulq15(lab_pow(LAB(9, 0) ? mB : mA, LAB(2, 1)), a2 * LAB(1, 199));   /* CLIK: noise, gain follows the envelope squared */
+            mD = (a3 * LAB(5, 8)) >> 5;                                 /* FM: the index of a second sine on the first */
+            mi1 = fm_ratio_inc(mi0, RATIO_Q8[clamp(e4, 0, 14)]);       /* RATIO: that sine's, of the first (it falls with it) */
         } else if (mach == 2) {                                      /* SD: TUNE NOIS NDEC O2 | SWP FOLD CRSH */
             mi0 = fm_ratio_inc(bi, 256 + ((mB * e4 * LAB(12, 29)) >> 17));          /* SWP: up to 3x at the hit, falling to TUNE */
             mi1 = fm_ratio_inc(mi0, fm_rq(a3));                         /* O2: the second sine, a ratio of the first (1/8 steps) */
@@ -217,8 +218,8 @@ static __attribute__((noinline)) void digital_render_legacy(track_t *t, voice_t 
         if (mach) {
             int32_t nz = ((int32_t)(noise32(&fb2) >> 17) - 16384) * 2;
             if (mach == 1) {
-                o1 = sine_i(ph0 + digital_mod(fb1, mD));
-                fb1 = o1;
+                o1 = sine_i(ph0 + digital_mod(sine_i(ph1), mD));
+                ph1 += mi1;
                 s = mulq15(LAB(10, 53) ? softclip((o1 * (32 + LAB(10, 53))) >> 5) : o1, LAB(0, 28921)) + mulq15(nz, mC);
                 ph0 += mi0;
             } else if (mach == 2) {
@@ -464,7 +465,7 @@ static void digital_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, con
 #define MD_T MD("TUNE", F_INT, -64, 63, 0)
 #define MD_X(l) MD(l, F_PCT, 0, 127, 8)
 static const param_desc_t MACH_D[5][7] = {
-    {MD_T, MD_X("PNCH"), MD_X("SWPT"), MD_X("CLIK"), MD("FM", F_PCT, 0, 127, 60), MD("FOLD", F_PCT, 0, 127, 60), MD("CRSH", F_PCT, 0, 127, 0)},
+    {MD_T, MD_X("PNCH"), MD_X("CLIK"), MD("FM", F_PCT, 0, 127, 60), {"RATIO", F_ENUM, 0, 14, 1, N_RATIO, 0}, MD("FOLD", F_PCT, 0, 127, 60), MD("CRSH", F_PCT, 0, 127, 0)},
     {MD_T, MD_X("NOIS"), MD_X("NDEC"), MD("O2", F_INT, 0, 127, 16), MD("SWP", F_PCT, 0, 127, 35), MD("FOLD", F_PCT, 0, 127, 0), MD("CRSH", F_PCT, 0, 127, 0)},
     {MD_T, MD_X("METL"), MD_X("TONE"), MD("R2", F_INT, 0, 127, 29), MD("R3", F_INT, 0, 127, 103), MD("FOLD", F_PCT, 0, 127, 0), MD("CRSH", F_PCT, 0, 127, 0)},
     {MD_T, MD_X("METL"), MD_X("TONE"), MD("R2", F_INT, 0, 127, 42), MD("R3", F_INT, 0, 127, 47), MD("FOLD", F_PCT, 0, 127, 0), MD("CRSH", F_PCT, 0, 127, 0)},

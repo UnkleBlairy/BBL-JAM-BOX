@@ -405,6 +405,22 @@ static void trk_note_on(track_t *t, uint32_t note, uint32_t vel)
             t->lfo_ph = (uint32_t)t->p[P_LPHASE] << 25;
         t->lfo_fade = 0;
     }
+    if (mode == V_POLY && FELUCCA_SIMPLE && trk_machine(t)->drum) {   /* SIMPLE: a drum track is one voice: a hit takes */
+        voice_t *v = 0;                                 /* over the one sounding (in place: no click), the rest fade */
+        for (i = 0; i < NVOICE; i++)
+            if (t->v[i].active && t->v[i].stage != 4u && (!v || t->v[i].note == note || (v->note != note && t->v[i].age > v->age)))
+                v = &t->v[i];
+        if (!v)
+            v = voice_alloc(t, note);
+        for (i = 0; i < NVOICE; i++)
+            if (&t->v[i] != v && t->v[i].active && t->v[i].stage != 4u)
+                voice_kill(&t->v[i]);
+        t->nmono = 0;
+        t->mono_note = 0;
+        v->fine = 0;
+        voice_start(t, v, note, vel, 0);
+        return;
+    }
     if (mode == V_POLY) {
         voice_t *v = voice_alloc(t, note);
         t->nmono = 0;                                   /* no stale mono stack after a mode change */
