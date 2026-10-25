@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* gb_store.c - the groovebox's sounds and kits (FELUCCA_SIMPLE). Patterns are never saved: it is for jamming.
- *   SOUND  16 slots a machine (SYN BD SD HH CYM PERC: 96): a track's sound, its sequencer and mixer settings left out
+ *   SOUND  16 slots a track (96): a track's sound (any machine, FM or 808), its sequencer and mixer settings left out.
+ *          (Up to the 808s the slots were a machine's: SYN BD SD HH CYM PERC's are now tracks 1..6's)
  *   KIT    11 slots: the six tracks' sounds, the macros, the PERF fade, the FX and COMB globals (not the tempo,
  *          the DJ filter, MIDI or the clock)
  * Seven storage objects (storage.c OBJ_GB0..): three of 32 sounds (two machines each), four of 3 kits. They live in
@@ -9,8 +10,8 @@
  * (.pool) is what loads read; a save changes the mirror at once and goes to flash when nothing plays (an erase
  * stops the audio: project.c autosave_quiet), one object a pass. A slot keeps P_COUNT with it, so a later build
  * with other parameters maps the values by count (core.h params_by_count). */
-#define GB_MACH 6u                                       /* machines with sound slots (two to a storage object) */
-_Static_assert(NMACH <= GB_MACH, "more machines: more sound objects (GB_SOBJ, storage.c)");
+#define GB_MACH 6u                                       /* tracks with sound slots (two to a storage object) */
+_Static_assert(NTRK <= GB_MACH, "more tracks: more sound objects (GB_SOBJ, storage.c)");
 #define GB_SLOTS 16u
 #define GB_KITS 11u
 #define GB_SOBJ 3u                                       /* sound objects (two machines each) */
@@ -18,7 +19,8 @@ _Static_assert(NMACH <= GB_MACH, "more machines: more sound objects (GB_SOBJ, st
 #define GB_KPER 3u
 #define GB_MAGIC 0x31534247u                             /* "GBS1": the sounds; the four-track build's kits */
 #define GB_KMAGIC 0x324B4247u                            /* "GBK2": the six-track kits */
-typedef struct { uint8_t used, np; int8_t p[P_COUNT]; } gb_snd_t;   /* values - 64 (all of them fit in -64..127: project.c) */
+typedef struct { uint8_t used, np; int8_t p[P_COUNT]; } gb_snd_t;   /* values - 64 (all of them fit in -64..127: project.c);
+                                                                    * used: 1 a DIGITAL sound (all before the 808s), 2 ANALOG */
 typedef struct { uint32_t magic; uint16_t np, kind; gb_snd_t s[2u * GB_SLOTS]; } gb_sobj_t;
 typedef struct {
     uint8_t used, rel, fade, rsv;
@@ -142,7 +144,7 @@ static void gb_store_poll(void)
 static void gb_snd_take(gb_snd_t *s, const track_t *t)
 {
     uint32_t i;
-    s->used = 1;
+    s->used = eng_idx(t->eng_req) == ENGI_ANALOG ? 2u : 1u;
     s->np = (uint8_t)P_COUNT;
     for (i = 0; i < P_COUNT; i++)
         s->p[i] = (int8_t)(clamp(motion_base_value(t, i), -64, 127) - 64);   /* (the sound's own, not a lock playing) */
@@ -158,13 +160,17 @@ static void gb_snd_put(const gb_snd_t *s, track_t *t)
         in[i] = (int16_t)(s->p[i] + 64);
     params_by_count(out, in, np, def);
     motion_restore(t);                                   /* (the locks playing put back first: motion_rebase) */
+    fm1_irq_off();                                       /* (the ISR sees the old engine or the new one, never a mix) */
+    t->eng_req = s->used == 2u ? ENGI_ANALOG : ENGI_DIGITAL;   /* its engine first: the values fit its knobs */
+    t->p[P_E7] = out[P_E7];
     for (i = 0; i < P_COUNT; i++)
         if (gb_sound_id(i))
             t->p[i] = (int16_t)param_fit(track_desc(t, i), out[i]);
+    fm1_irq_on();
     motion_rebase(t);
 }
 
-static uint32_t gb_mach_of(const track_t *t) { return trk_mach(t) % GB_MACH; }
+static uint32_t gb_mach_of(const track_t *t) { return (uint32_t)(t - trk) % GB_MACH; }   /* (its track's slots) */
 static gb_snd_t *gb_slot(uint32_t mach, uint32_t slot)
 {
     mach %= GB_MACH;

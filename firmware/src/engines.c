@@ -3,6 +3,7 @@
 /* The engine table and the tracks' sounds at power-on. The groovebox has one engine, DIGITAL (eng_digital.c). */
 #include "dsp.c"                /* the shared DSP blocks (MIT, from Felucca-Engines) */
 #include "eng_digital.c"        /* DIGITAL: four-operator FM */
+#include "eng_analog.c"         /* ANALOG: the 808 machines (docs/808lab.html) */
 #define ICON_MUTE GBI_MUTE        /* (ui_icons.h, Felucca's parameter icons, has these three names) */
 #define ICON_DELAY GBI_DELAY
 #define ICON_FADE GBI_FADE
@@ -21,8 +22,8 @@ static const uint16_t *const GB_ICONS[IC_COUNT] = {
     ICON_AGE, ICON_LOW_PASS, ICON_BAND_PASS, ICON_HIGH_PASS, ICON_DJ_FILTER, ICON_COMB, ICON_SINE, ICON_TRI, ICON_SAW,
     ICON_SQUARE, ICON_RANDOM, GBI_DELAY, ICON_VERB, GBI_MUTE, GBI_FADE, ICON_REPEAT, ICON_REVERSE, ICON_MACRO};
 
-/* the stores hold engine numbers: DIGITAL is 1 (ENGI_DIGITAL); any other number plays DIGITAL too */
-static const engine_t *const ENGINES[NENGINES] = {&ENG_DIGITAL, &ENG_DIGITAL};
+/* the stores hold engine numbers: DIGITAL is 1 (ENGI_DIGITAL), ANALOG 2 (ENGI_ANALOG); 0 plays DIGITAL too */
+static const engine_t *const ENGINES[NENGINES] = {&ENG_DIGITAL, &ENG_DIGITAL, &ENG_ANALOG};
 
 /* a track's engine number as an index (a bad number: 0) */
 static inline uint32_t eng_idx(uint32_t e) { return e < NENGINES ? e : 0u; }
@@ -45,6 +46,14 @@ static const machine_t MACHINES[] = {
     {"HATS", ENGI_DIGITAL, 3, 1, 84, 10, IC_HATS},
     {"CYMBAL", ENGI_DIGITAL, 4, 1, 72, 12, IC_CYMBAL},
     {"PERC", ENGI_DIGITAL, 5, 1, 48, 13, IC_PERC},
+    {"KICK", ENGI_ANALOG, AN_KICK, 1, AN_NOTE, AN_KICK, IC_KICK},        /* ANALOG: the 808s (their pills drawn filled) */
+    {"SNARE", ENGI_ANALOG, AN_SNARE, 1, AN_NOTE, AN_SNARE, IC_SNARE},
+    {"TOM", ENGI_ANALOG, AN_TOM, 1, AN_NOTE, AN_TOM, IC_TOM},
+    {"RIM", ENGI_ANALOG, AN_RIM, 1, AN_NOTE, AN_RIM, IC_RIM},
+    {"CLAP", ENGI_ANALOG, AN_CLAP, 1, AN_NOTE, AN_CLAP, IC_CLAP},
+    {"COWBELL", ENGI_ANALOG, AN_COW, 1, AN_NOTE, AN_COW, IC_COWBELL},
+    {"HAT", ENGI_ANALOG, AN_HAT, 1, AN_NOTE, AN_HAT, IC_HATS},
+    {"CYMBAL", ENGI_ANALOG, AN_CYM, 1, AN_NOTE, AN_CYM, IC_CYMBAL},
 };
 #define NMACH (sizeof MACHINES / sizeof MACHINES[0])
 /* the machine track t is (its engine and machine number; none of them: the first) */

@@ -369,9 +369,8 @@ enum { LAYER_NONE, LAYER_FX, LAYER_GLO, LAYER_SCL, LAYER_EDIT, LAYER_SEQ, LAYER_
  * track's (its patch's operators, ui_fm6op.c) */
 static int page_visible(uint32_t i)
 {
-    (void)i;
-    return 1;                                         /* (the groovebox's PAGES are all its own: params.c) */
-}
+    return i < NPAGES && (PAGES[i].scope != SC_ENGINE || page_id_an(&PAGES[i], PAGES[i].id[0]) != 0xFFu);
+}                                                     /* (SIMPLE: AGE only on an ANALOG track) */
 
 static uint32_t page_first(uint32_t fam)
 {
@@ -417,7 +416,7 @@ static int transport_busy(void)
 /* page pg's KNOB k as a lock's id (OCT+'s other four on LFO, COMB; SIMPLE: a global as motion.c's), 0xFF none */
 static uint32_t lock_pid(const page_t *pg, uint32_t k)
 {
-    uint32_t id = pg->id[k & 3u];
+    uint32_t id = page_id_an(pg, pg->id[k & 3u]);
     if (FELUCCA_SIMPLE && alt_mode && alt_ids(pg))
         id = alt_ids(pg)[k & 3u];
     if (id == 0xFFu)
@@ -1240,6 +1239,22 @@ static void machine_defaults(track_t *t)
     t->p[P_DEC] = pr->env[1];
     t->p[P_SUS] = pr->env[2];
     t->p[P_REL] = pr->env[3];
+    if (m->engine == ENGI_ANALOG) {                   /* an 808: its LEVEL (the eighth knob), AGE */
+        t->p[P_LN0] = AN_DEF[m->sub % AN_N][7];
+        t->p[P_LN1] = AN_AGE_DEF;
+    }
+}
+/* SIMPLE: track t becomes machine mach (the PRESETS knob): its engine (the old one's voices fade, voice.c
+ * engine_block) and its starting sound; the rest of the track (filter, sends, LFO, sequence) stays */
+static void machine_set(track_t *t, uint32_t mach)
+{
+    const machine_t *m = &MACHINES[mach % NMACH];
+    fm1_irq_off();                                    /* (the ISR sees the old engine or the new one, never a mix) */
+    t->eng_req = m->engine;
+    t->p[P_E7] = m->sub;
+    machine_defaults(t);
+    fm1_irq_on();
+    ui.force = 1;
 }
 static void apply_preset_to(track_t *t, uint32_t pi)
 {

@@ -7,6 +7,8 @@ Digitone / Model:Cycles, started from Felucca (everything else of Felucca has
 been taken out):
 
 - One 4-op FM DIGITAL engine with machines: SYN, BD, SD, HH, CYM, PERC
+- One ANALOG 808 engine (ported from docs/808lab.html) with machines: KICK
+  SNARE TOM RIM CLAP COWBELL HAT CYMBAL
 - 6 tracks
 - Minimal menus
 
@@ -18,6 +20,7 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
 - `firmware/src/mfx.c` — master DJ filter and comb
 - `firmware/src/ui.c` — macro system (PERF page), `pm_*` functions
 - `firmware/src/eng_digital.c` — the FM engine (its presets and filter too)
+- `firmware/src/eng_analog.c` — the 808 engine (AGE weights, level trims)
 - `firmware/src/engines.c` — the engine table and the tracks' power-on sounds
 - `firmware/src/repeat.c` — PERF's beat repeats (1/8 1/16 1/32 REV)
 - `firmware/src/gb_store.c` — sounds and kits; `persist.c` — device settings
@@ -141,7 +144,6 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
 - A PERF macro's global (BPM, DJ, COMB..) has track number PM_G (255), not
   NTRK, so adding tracks never turns a global into a track.
 - The FM-1 starts fresh at power-on (no Felucca autosave / "RESTORED").
-- The PRESETS knob does nothing for now (it browsed Felucca's sounds).
 - LFO DEST skips DIST and CHO (their effects are gone; ids kept for old saves).
 - LFO DEST reaches every knob that moves smoothly (mod.c MDX, appended after
   TIME): ATK DEC SUS REL, the ENV DEST and LFO DEST amounts (E.x, L.x), the
@@ -176,10 +178,8 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
 - Machines (engines.c MACHINES): each is an engine + that engine's machine
   number, its screen oval, drum or synth, its step-key note and starting
   preset. Adding an engine: a new eng_*.c (engine.h's engine_t), include it
-  and add it to ENGINES in engines.c, then add its rows to MACHINES. The MACH
-  knob can only switch between machines of one engine until a second engine
-  exists (then it needs to switch engines too). 6 machines have save slots
-  (gb_store.c GB_MACH); more need more sound storage objects.
+  and add it to ENGINES in engines.c, then add its rows to MACHINES. The
+  PRESETS knob (ui.c machine_set) switches machines across engines.
 
 - Screen header (ui_gb.c gb_header): the page's icon at 2x top left, then the
   title and its "n/N" tag, BPM top right. Icon: the machine's on sound/ENV/SEQ/ARP
@@ -205,3 +205,19 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
 2. Serve `/tmp/felucca-site` on port 8000 (in the background):
    `cd /tmp/felucca-site && python3 -m http.server 8000`
 3. Open http://localhost:8000/webapp/installer/
+- PRESETS knob = machine selector (FM machines, then the 808s; switching
+  engine fades over). ALGORITHM knob = the selected track's volume.
+- Sound save slots are per TRACK (16 each), not per machine; a saved sound
+  remembers its engine (gb_snd_t used: 1 = DIGITAL, 2 = ANALOG). Old machine
+  slots became track slots.
+- 808 pages: OSC 1 (4 knobs), OSC 2 (3 knobs + LEVEL), AGE (one knob). LEVEL
+  lives in P_LN0, AGE in P_LN1 (old drum-lane ids, so saved, lockable,
+  macroable, LFO-able). FM tracks skip the AGE page and hide LEVEL. 18 pages.
+- AGE = DRIFT/HISS/GRIT, weights in one block at the top of eng_analog.c
+  (all 64 until the user sends the final ones).
+- 808s run their own envelopes and filters: the ENV and FILTER pages do
+  nothing on an 808 track.
+- 808 HAT/CLAP/CYMBAL/RIM/COW get a level trim (eng_analog.c AN_TRIM) so they
+  sit with the FM drums (the prototype evened them with a compressor).
+- The 808 machine pill is drawn filled (inverted) so you can tell it from FM.
+- CLOCK page 4th dial = CPU % (audio load, read-only; 0 in the emulator).

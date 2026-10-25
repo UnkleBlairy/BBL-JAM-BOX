@@ -633,6 +633,8 @@ static void ui_draw_page(uint32_t counting)
         ui.force = 1;
     }
     cursor_fix();
+    if (!page_visible(ui.page))                          /* (another track: AGE is ANALOG's) */
+        ui.page = (uint8_t)page_first(PAGES[ui.page % NPAGES].fam);
     gb_draw();                                           /* ui_gb.c: the whole screen, in one colour */
     if (ui.hot_t)
         ui.hot_t--;

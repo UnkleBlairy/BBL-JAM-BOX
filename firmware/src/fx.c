@@ -543,7 +543,7 @@ static __attribute__((noinline)) void mix_spread(track_t *t, int32_t *b, uint32_
  * when built, nothing when retired. An estimate: it only steers the split, the sound does not depend on it */
 #if FELUCCA_CPU2
 static uint16_t part_cost[NTRK];                        /* the last block's, per part */
-static const uint16_t ENG_VCOST[NENGINES] = {181, 181};
+static const uint16_t ENG_VCOST[NENGINES] = {181, 181, 181};
 #endif
 
 /* one synth part into the dry mix and the sends of sm (mx[0]; mx[1] on the second core); a part with no voice sounding costs

@@ -580,7 +580,7 @@ static void gbsv_keys(uint32_t pressed)
 }
 static uint32_t gbsv_leds(void)                          /* the slots in use: the machine's sounds, the kits */
 {
-    uint32_t k, m = 0, mach = trk_mach(TSEL);
+    uint32_t k, m = 0, mach = song.sel;                  /* (the slots are the track's) */
     for (k = 0; k < 27u; k++) {
         uint32_t p = key_place(k);
         if (key_black(k) ? gbk_used(p) : p < 16u && gbs_used(mach, p))
@@ -1395,9 +1395,18 @@ static void ui_input(void)
     } else if (song.grid && sgrid_on()) {
         sgrid_keys(notes);
     }
-    (void)panel_enc(EN_PRESET);                         /* (the PRESETS knob: free for now) */
-    if ((s = panel_enc(EN_ALGO)) != 0)                  /* ALGORITHM: the selected track, on every page */
-        track_select((uint32_t)clamp((int32_t)song.sel + (s > 0 ? 1 : -1), 0, NTRK - 1));
+    if ((s = panel_enc(EN_PRESET)) != 0) {              /* PRESETS: the selected track's machine (FM, then the 808s) */
+        int32_t m = clamp((int32_t)trk_mach(TSEL) + (s > 0 ? 1 : -1), 0, (int32_t)NMACH - 1);
+        if ((uint32_t)m != trk_mach(TSEL))
+            machine_set(TSEL, (uint32_t)m);
+    }
+    if ((s = panel_enc(EN_ALGO)) != 0) {                /* ALGORITHM: the selected track's volume, on every page */
+        int16_t was = TSEL->p[P_LEVEL];
+        TSEL->p[P_LEVEL] = (int16_t)param_turn(&TP[P_LEVEL], was, accel(EN_ALGO, s, TP[P_LEVEL].max - TP[P_LEVEL].min));
+        pm_record(TSEL, &TSEL->p[P_LEVEL], was);       /* (a macro holds it too) */
+        motion_capture(TSEL, P_LEVEL, TSEL->p[P_LEVEL]);
+        ui.force = 1;
+    }
     if ((s = panel_enc(EN_SELECT)) != 0) {              /* SELECT: the tempo */
         int16_t was = song.g[G_BPM];
         song.g[G_BPM] = (int16_t)clamp(song.g[G_BPM] + accel(EN_SELECT, s, 200), GP[G_BPM].min, GP[G_BPM].max);

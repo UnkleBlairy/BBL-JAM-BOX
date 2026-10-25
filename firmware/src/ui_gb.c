@@ -21,7 +21,7 @@ typedef struct {
     int16_t dj, cmix, ctune;                 /* PERF: the master DJ filter and comb */
     uint8_t fill[8], rel, bpm_alt;           /* PERF: each held macro's tile filled 0..26 rows; the release fade; the tempo is held by a macro */                           /* a macro holds this value: its dial is drawn inverted */
     uint8_t kmode, pk, fx;                   /* the keys: 1 SEQ 2 PARAM 3 KEY; PARAM's knob + 1 (0: the keys play); the FX lane */
-    uint8_t icon, picon, hit;                /* the header's icon and the machine pill's (IC_*, engines.c); a drum just hit */
+    uint8_t icon, picon, hit, an;            /* the header's icon and the machine pill's (IC_*, engines.c); a drum just hit; an 808 */
     char title[12], lab[4][8], val[4][12];
 } gb_view_t;
 static gb_view_t gb_v, gb_last;
@@ -67,6 +67,8 @@ static uint32_t gb_page_icon(const page_t *pg, uint32_t mach)
         return IC_MACRO;
     if (str_eq(pg->title, "COMB"))
         return alt_mode ? IC_DJ : IC_COMB;
+    if (str_eq(pg->title, "AGE"))
+        return IC_AGE;
     if (str_eq(pg->title, "DELAY"))
         return IC_DELAY;
     if (str_eq(pg->title, "VERB"))
@@ -101,6 +103,7 @@ static void gb_fill(gb_view_t *v)
         v->tm[k] = (uint8_t)gb_mach(k);
     v->mach = v->tm[song.sel % NTRK];
     v->picon = v->fx ? IC_NONE : MACHINES[v->mach % NMACH].icon;
+    v->an = (uint8_t)(!v->fx && MACHINES[v->mach % NMACH].engine == ENGI_ANALOG);
     v->icon = (uint8_t)gb_page_icon(pg, v->mach);
     {                                             /* a drum's hit: the header icon flashes ~90 ms */
         uint32_t h = trk_hit_ms[song.sel % NTRK];
@@ -256,6 +259,18 @@ static void gb_fill(gb_view_t *v)
         r = RATIO(d, enum_rank(d, cur));
         v->ratio[k] = (int16_t)(r < 0 ? 0 : r);
         v->mask |= (uint8_t)(1u << k);
+    }
+    if (str_eq(pg->title, "CLOCK")) {                 /* the audio's CPU load (read only): the room the sounds have */
+        uint32_t c = song.cpu_q8 * 100u / 256u;
+        c = c > 100u ? 100u : c;
+        str_cpy(v->lab[3], "CPU", sizeof v->lab[3]);
+        fmt_int(v->val[3], (int32_t)c);
+        for (i = 0; v->val[3][i]; i++)
+            ;
+        v->val[3][i] = '%';
+        v->val[3][i + 1u] = 0;
+        v->ratio[3] = (int16_t)(c * 10u);
+        v->mask |= 8u;
     }
 }
 
@@ -512,10 +527,10 @@ static void gb_scene(const gb_view_t *v, uint16_t bgc)
             cv_rrect(8 + (int32_t)k * 20, 206, 8, 8, 4, c, bgc);
             cv_rrect(10 + (int32_t)k * 20, 208, 4, 4, 2, bgc, c);
         }
-    gb_pill(232 - pw, 198, pw, 24, c, 0);                          /* the machine, bottom right: an oval, its icon, its name */
-    if (v->picon)
-        gb_icon(232 - pw + 8, 202, 1, v->picon, c);
-    cv_text_on(232 - pw + 8 + (v->picon ? 20 : 0), 201, &AF_M, nm, c, bgc);
+    gb_pill(232 - pw, 198, pw, 24, c, v->an);                      /* the machine, bottom right: an oval (an 808: filled), */
+    if (v->picon)                                                 /* its icon, its name */
+        gb_icon(232 - pw + 8, 202, 1, v->picon, v->an ? bgc : c);
+    cv_text_on(232 - pw + 8 + (v->picon ? 20 : 0), 201, &AF_M, nm, v->an ? bgc : c, v->an ? c : bgc);
 }
 
 static void gb_draw(void)

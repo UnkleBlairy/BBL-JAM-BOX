@@ -217,7 +217,7 @@ static const uint8_t MIDI_CC_MAP[][2] = {
     {91, P_REV}, {94, P_DLY},
 };
 /* per engine (ENGINES[] order): CC74's E index + 1 in the high nibble, CC71's in the low one, 0 = none */
-static const uint8_t MIDI_CC_ENG[NENGINES] = {0x00, 0x00};   /* (DIGITAL: none) */
+static const uint8_t MIDI_CC_ENG[NENGINES] = {0x00, 0x00, 0x00};   /* (DIGITAL, ANALOG: none) */
 /* a CC sets parameter id of track t as a knob would: 0..127 over its range */
 static void midi_cc_set(track_t *t, uint32_t id, uint32_t value)
 {
