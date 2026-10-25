@@ -588,7 +588,7 @@ static int32_t env_tick(track_t *t, voice_t *v)
 {
     const int16_t *p = t->p;
     int32_t sus = (int32_t)p[P_SUS] << 17;              /* Q24 */
-    int ad = trk_machine(t)->drum;                      /* a drum machine: attack and decay only, it rings out */
+    int ad = trk_machine(t)->drum == 1;                 /* a drum machine: attack and decay only, it rings out */
     if (ad) {
         sus = 0;
         if (v->stage == 3)

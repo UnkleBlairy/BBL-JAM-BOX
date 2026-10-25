@@ -70,6 +70,26 @@ kbd { font: 600 11px ui-monospace, Menlo, monospace; border: 1px solid var(--rul
 footer { margin-top: 12px; font-size: 12px; }
 footer nav a { margin: 0 6px; }
 footer small { font-size: 11px; opacity: .8; }
+/* the sample uploader */
+.smp { margin: 20px auto 0; max-width: 720px; background: var(--body); color: var(--label); border-radius: 12px; padding: 16px; }
+.smp h2 { margin: 0 0 4px; font-size: 15px; color: #fff; }
+.smp p { margin: 0 0 10px; }
+.smp .row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 8px 0; }
+.smp button, .smp select { font: inherit; padding: 4px 12px; border-radius: 6px; border: 1px solid var(--edge); background: var(--part); color: #fff; cursor: pointer; }
+.smp button:disabled { opacity: .4; cursor: default; }
+.smp button.go { background: #fff; color: #000; border-color: #fff; }
+.smp canvas { display: block; width: 100%; height: 96px; background: var(--tray); border-radius: 6px; }
+.smp input[type=range] { flex: 1; min-width: 120px; }
+.smp .msg { color: #aaa; }
+.smp .msg.bad { color: #ff8a80; }
+.smp .msg.ok { color: var(--green); }
+.smp .meter { height: 8px; background: var(--tray); border-radius: 4px; overflow: hidden; flex: 1; min-width: 160px; }
+.smp .meter div { height: 100%; width: 0; background: var(--green); }
+.smp ol { margin: 8px 0; padding: 0; list-style: none; }
+.smp li { display: grid; grid-template-columns: 40px 1fr auto auto auto; gap: 10px; align-items: center; padding: 4px 0; border-top: 1px solid var(--part); }
+.smp li .n { font-family: ui-monospace, Menlo, monospace; color: #fff; }
+.smp li .sz { color: #aaa; font-size: 12px; }
+.smp li button { padding: 2px 10px; }
 </style>
 </head>
 <body>
@@ -98,6 +118,23 @@ footer small { font-size: 11px; opacity: .8; }
   </select></span>
 </p>
 
+<section class="smp" id="smp" aria-labelledby="smph">
+  <h2 id="smph">Samples</h2>
+  <p>Pick a sound file, choose the part you want and press <b>Write</b> to add it to the list. Then press <b>Upload</b>:
+  the list replaces everything in the FM-1's sample memory. A SAMPLE track plays slot S01 to S32 (its SLOT knob).</p>
+  <div class="row"><input type="file" id="sfile" accept="audio/*,.wav,.mp3,.ogg,.flac,.aif,.aiff" aria-label="Sound file"> <span class="msg" id="sfinfo">WAV, MP3, OGG or FLAC.</span></div>
+  <canvas id="swave" width="1400" height="192" aria-label="The sound's waveform with the chosen part"></canvas>
+  <div class="row"><label for="sA">Start</label><input type="range" id="sA" min="0" max="1000" value="0">
+    <label for="sB">End</label><input type="range" id="sB" min="0" max="1000" value="1000"></div>
+  <div class="row"><button type="button" id="spv" disabled>Play</button>
+    <label>Rate <select id="srate"><option value="11025">11 kHz</option><option value="22050" selected>22 kHz</option><option value="32000">32 kHz</option></select></label>
+    <label><input type="checkbox" id="snorm" checked> Normalise</label>
+    <button type="button" id="swr" disabled>Write</button> <span class="msg" id="swmsg"></span></div>
+  <div class="row"><span>Memory</span><div class="meter"><div id="smbar"></div></div><span class="msg" id="smtxt"></span></div>
+  <ol id="slist"></ol>
+  <div class="row"><button type="button" class="go" id="sup">Upload to the FM-1</button> <button type="button" id="sclr">Clear memory</button> <span class="msg" id="sumsg"></span></div>
+</section>
+
 <footer>
   <small class="version">@VERSION@@PREVIEW@</small><br>
   Felucca by Leo Kuroshita, Hügelton Instruments · <a href="https://www.gnu.org/licenses/gpl-3.0.html">GPL-3.0</a> · browser build after charlesvestal's <a href="https://github.com/charlesvestal/fm1-x0x">X0X</a> · DotGothic16 font, <a href="fonts/OFL.txt">SIL OFL 1.1</a><br>
@@ -108,6 +145,7 @@ footer small { font-size: 11px; opacity: .8; }
 
 <script type="module">
 import { midiKnob, KNOB_MODES } from "./worklet.js";
+import { SMP_BASE, SMP_REGION, SMP_CAP, SMP_MAX, makeChunk, chunkFloat, usedBytes, buildImage, parseImage } from "./smpimg.js";
 const NS = "http://www.w3.org/2000/svg";
 // panel.c's labels (bit = label) and encoder roles
 const B = { FX: 0, SCL: 1, ENV: 2, LFO: 3, EDIT: 4, GLO: 5, HOME: 6, SAVE: 7, ARP: 8, SEQ: 9, PLAY: 10, REC: 11, "OCT-": 12, "OCT+": 13 };
@@ -572,6 +610,117 @@ async function switchOn() {
 }
 document.getElementById("go").addEventListener("click", switchOn);
 document.addEventListener("visibilitychange", () => send({ type: "visible", on: !document.hidden }));
+
+// ------------------------------------------------------------------ the sample uploader (web/smpimg.js)
+{
+  const $ = (id) => document.getElementById(id);
+  let src = null, list = [], pac = null, pnode = null;
+  { // what the emulator's flash already holds
+    const fl = loadFlash(), img = new Uint8Array(SMP_REGION).fill(0xFF);
+    for (let o = 0; o < SMP_REGION; o += 4096) if (fl[SMP_BASE + o]) img.set(fl[SMP_BASE + o], o);
+    list = parseImage(img);
+  }
+  const msg = (id, t, cls) => { const e = $(id); e.textContent = t; e.className = "msg" + (cls ? " " + cls : ""); };
+  const kb = (b) => (b / 1024).toFixed(b < 10240 ? 1 : 0) + " KB";
+  const secs = () => [+$("sA").value / 1000 * (src ? src.dur : 0), +$("sB").value / 1000 * (src ? src.dur : 0)];
+  function stopPlay() { if (pnode) { try { pnode.onended = null; pnode.stop(); } catch {} pnode = null; } $("spv").textContent = "Play"; }
+  function play(samples, rate) {
+    stopPlay();
+    pac = pac || new AudioContext();
+    const b = pac.createBuffer(1, samples.length, rate);
+    b.copyToChannel(samples, 0);
+    pnode = pac.createBufferSource();
+    pnode.buffer = b;
+    pnode.connect(pac.destination);
+    pnode.onended = () => { pnode = null; $("spv").textContent = "Play"; };
+    pnode.start();
+  }
+  function drawWave() {
+    const c = $("swave"), g = c.getContext("2d"), W = c.width, H = c.height;
+    g.fillStyle = "#141415"; g.fillRect(0, 0, W, H);
+    if (!src) return;
+    const [a, b] = secs(), xa = a / src.dur * W, xb = b / src.dur * W, n = src.mono.length;
+    for (let x = 0; x < W; x++) {
+      let m = 0;
+      for (let i = Math.floor(x / W * n), e = Math.floor((x + 1) / W * n); i < e; i++) m = Math.max(m, Math.abs(src.mono[i]));
+      g.fillStyle = x >= xa && x <= xb ? "#fff" : "#555";
+      g.fillRect(x, H / 2 - m * H / 2, 1, Math.max(1, m * H));
+    }
+    g.fillStyle = "#5fe08a"; g.fillRect(xa, 0, 2, H); g.fillRect(xb - 2, 0, 2, H);
+  }
+  function render() {
+    const used = usedBytes(list);
+    $("smbar").style.width = Math.min(100, used / SMP_CAP * 100) + "%";
+    msg("smtxt", kb(used) + " of " + kb(SMP_CAP) + " · " + list.length + " of " + SMP_MAX + " slots");
+    const L = $("slist");
+    L.textContent = "";
+    list.forEach((c, i) => {
+      const li = document.createElement("li");
+      li.innerHTML = '<span class="n"></span><span></span><span class="sz"></span><button type="button">Play</button><button type="button">Remove</button>';
+      li.children[0].textContent = "S" + String(i + 1).padStart(2, "0");
+      li.children[1].textContent = c.name;
+      li.children[2].textContent = (c.data.length / c.rate).toFixed(2) + " s · " + Math.round(c.rate / 1000) + " kHz · " + kb(c.data.length);
+      li.children[3].addEventListener("click", () => play(chunkFloat(c), c.rate));
+      li.children[4].addEventListener("click", () => { list.splice(i, 1); render(); msg("sumsg", "Not on the FM-1 until you upload.", ""); });
+      L.appendChild(li);
+    });
+  }
+  function sync(which) {
+    if (+$("sA").value >= +$("sB").value) { if (which === "a") $("sB").value = Math.min(1000, +$("sA").value + 1); else $("sA").value = Math.max(0, +$("sB").value - 1); }
+    const [a, b] = secs();
+    if (src) msg("sfinfo", src.name + " · " + src.dur.toFixed(2) + " s · part " + a.toFixed(2) + "–" + b.toFixed(2) + " s (" + (b - a).toFixed(2) + " s)");
+    drawWave();
+  }
+  $("sA").addEventListener("input", () => sync("a"));
+  $("sB").addEventListener("input", () => sync("b"));
+  $("sfile").addEventListener("change", async () => {
+    const f = $("sfile").files[0];
+    if (!f) return;
+    stopPlay();
+    msg("sfinfo", "Reading " + f.name + "…");
+    try {
+      const buf = await new OfflineAudioContext(1, 1, 44100).decodeAudioData(await f.arrayBuffer());
+      const mono = new Float32Array(buf.length);
+      for (let ch = 0; ch < buf.numberOfChannels; ch++) { const d = buf.getChannelData(ch); for (let i = 0; i < d.length; i++) mono[i] += d[i] / buf.numberOfChannels; }
+      src = { name: f.name.replace(/\.[^.]*$/, ""), rate: buf.sampleRate, mono, dur: buf.duration };
+      $("sA").value = 0; $("sB").value = 1000;
+      $("spv").disabled = $("swr").disabled = false;
+      sync("a");
+    } catch { src = null; drawWave(); msg("sfinfo", "Could not read that file. Try a WAV, MP3 or OGG.", "bad"); }
+  });
+  $("spv").addEventListener("click", () => {
+    if (pnode) { stopPlay(); return; }
+    if (!src) return;
+    const [a, b] = secs();
+    play(src.mono.slice(Math.floor(a * src.rate), Math.floor(b * src.rate)), src.rate);
+    $("spv").textContent = "Stop";
+  });
+  $("swr").addEventListener("click", () => {
+    if (!src) return;
+    const [a, b] = secs(), rate = +$("srate").value, free = SMP_CAP - usedBytes(list);
+    if (list.length >= SMP_MAX) { msg("swmsg", "All " + SMP_MAX + " slots are full.", "bad"); return; }
+    const c = makeChunk(src.mono, src.rate, a, b, rate, $("snorm").checked, (src.name.slice(0, 10) + (list.length + 1)).toUpperCase());
+    if (!c) { msg("swmsg", "That part is too short.", "bad"); return; }
+    if (c.data.length > free) { msg("swmsg", "Does not fit. " + kb(free) + " left: " + (free / rate).toFixed(2) + " s at this rate. Shorten it or pick a lower rate.", "bad"); return; }
+    list.push(c);
+    render();
+    msg("swmsg", "Written to S" + String(list.length).padStart(2, "0") + ": " + (c.data.length / rate).toFixed(2) + " s, " + kb(c.data.length) + ".", "ok");
+    msg("sumsg", "Not on the FM-1 until you upload.", "");
+  });
+  $("sclr").addEventListener("click", () => { list = []; render(); msg("sumsg", "List cleared. Upload to empty the FM-1's memory.", ""); });
+  $("sup").addEventListener("click", () => {
+    if (!node) { msg("sumsg", "Switch the emulator on first.", "bad"); return; }
+    const img = buildImage(list);
+    node.port.addEventListener("message", function done(e) {
+      if (e.data.type !== "smpdone") return;
+      node.port.removeEventListener("message", done);
+      msg("sumsg", list.length ? "Uploaded: " + list.length + " sample" + (list.length > 1 ? "s" : "") + " on the FM-1." : "The FM-1's sample memory is empty.", "ok");
+    });
+    send({ type: "smp", img });
+  });
+  render();
+  drawWave();
+}
 </script>
 </body>
 </html>

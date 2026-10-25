@@ -4,6 +4,7 @@
 #include "dsp.c"                /* the shared DSP blocks (MIT, from Felucca-Engines) */
 #include "eng_digital.c"        /* DIGITAL: four-operator FM */
 #include "eng_analog.c"         /* ANALOG: the 808 machines (docs/808lab.html) */
+#include "eng_sampler.c"        /* SAMPLER: the uploaded chunks (docs/samplelab.html) */
 #define ICON_MUTE GBI_MUTE        /* (ui_icons.h, Felucca's parameter icons, has these three names) */
 #define ICON_DELAY GBI_DELAY
 #define ICON_FADE GBI_FADE
@@ -16,14 +17,15 @@
 /* the icons by number (the screen's description holds the number: ui_gb.c gb_view_t) */
 enum { IC_NONE, IC_SYN, IC_KICK, IC_SNARE, IC_HATS, IC_CYMBAL, IC_PERC, IC_TOM, IC_RIM, IC_CLAP, IC_COWBELL, IC_AGE,
        IC_LP, IC_BP, IC_HP, IC_DJ, IC_COMB, IC_SINE, IC_TRI, IC_SAW, IC_SQUARE, IC_RANDOM, IC_DELAY, IC_VERB, IC_MUTE,
-       IC_FADE, IC_REPEAT, IC_REVERSE, IC_MACRO, IC_COUNT };
+       IC_FADE, IC_REPEAT, IC_REVERSE, IC_MACRO, IC_SAMPLE, IC_ONCE, IC_LOOP, IC_PING, IC_REV, IC_COUNT };
 static const uint16_t *const GB_ICONS[IC_COUNT] = {
     0, ICON_SYN, ICON_KICK, ICON_SNARE, ICON_HATS, ICON_CYMBAL, ICON_PERC, ICON_TOM, ICON_RIM, ICON_CLAP, ICON_COWBELL,
     ICON_AGE, ICON_LOW_PASS, ICON_BAND_PASS, ICON_HIGH_PASS, ICON_DJ_FILTER, ICON_COMB, ICON_SINE, ICON_TRI, ICON_SAW,
-    ICON_SQUARE, ICON_RANDOM, GBI_DELAY, ICON_VERB, GBI_MUTE, GBI_FADE, ICON_REPEAT, ICON_REVERSE, ICON_MACRO};
+    ICON_SQUARE, ICON_RANDOM, GBI_DELAY, ICON_VERB, GBI_MUTE, GBI_FADE, ICON_REPEAT, ICON_REVERSE, ICON_MACRO, ICON_SMP,
+    ICON_SMP_ONCE, ICON_SMP_LOOP, ICON_SMP_PING, ICON_SMP_REV};
 
-/* the stores hold engine numbers: DIGITAL is 1 (ENGI_DIGITAL), ANALOG 2 (ENGI_ANALOG); 0 plays DIGITAL too */
-static const engine_t *const ENGINES[NENGINES] = {&ENG_DIGITAL, &ENG_DIGITAL, &ENG_ANALOG};
+/* the stores hold engine numbers: DIGITAL is 1 (ENGI_DIGITAL), ANALOG 2 (ENGI_ANALOG), SAMPLER 3; 0 plays DIGITAL too */
+static const engine_t *const ENGINES[NENGINES] = {&ENG_DIGITAL, &ENG_DIGITAL, &ENG_ANALOG, &ENG_SAMPLER};
 
 /* a track's engine number as an index (a bad number: 0) */
 static inline uint32_t eng_idx(uint32_t e) { return e < NENGINES ? e : 0u; }
@@ -34,7 +36,7 @@ static inline uint32_t eng_idx(uint32_t e) { return e < NENGINES ? e : 0u; }
 typedef struct {
     const char *pill;            /* the screen's oval */
     uint8_t engine, sub;         /* its engine (ENGINES[] index) and the engine's machine number */
-    uint8_t drum;                /* a drum: the ENV is attack-decay (no sustain, no release) */
+    uint8_t drum;                /* 1 a drum: the ENV is attack-decay (no sustain, no release); 1, 2: one voice (a hit takes over) */
     uint8_t note;                /* the note the step keys play (a synth: its last chord, this one before any) */
     uint8_t preset;              /* its starting sound: the engine's preset */
     uint8_t icon;                /* its screen icon (IC_*) */
@@ -54,6 +56,7 @@ static const machine_t MACHINES[] = {
     {"COWBELL", ENGI_ANALOG, AN_COW, 1, AN_NOTE, AN_COW, IC_COWBELL},
     {"HAT", ENGI_ANALOG, AN_HAT, 1, AN_NOTE, AN_HAT, IC_HATS},
     {"CYMBAL", ENGI_ANALOG, AN_CYM, 1, AN_NOTE, AN_CYM, IC_CYMBAL},
+    {"SAMPLE", ENGI_SAMPLER, 0, 2, SMP_NOTE, 0, IC_SAMPLE},             /* SAMPLER: one voice, the whole ENV */
 };
 #define NMACH (sizeof MACHINES / sizeof MACHINES[0])
 /* the machine track t is (its engine and machine number; none of them: the first) */

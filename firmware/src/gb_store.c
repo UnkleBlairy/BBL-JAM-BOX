@@ -20,7 +20,8 @@ _Static_assert(NTRK <= GB_MACH, "more tracks: more sound objects (GB_SOBJ, stora
 #define GB_MAGIC 0x31534247u                             /* "GBS1": the sounds; the four-track build's kits */
 #define GB_KMAGIC 0x324B4247u                            /* "GBK2": the six-track kits */
 typedef struct { uint8_t used, np; int8_t p[P_COUNT]; } gb_snd_t;   /* values - 64 (all of them fit in -64..127: project.c);
-                                                                    * used: 1 a DIGITAL sound (all before the 808s), 2 ANALOG */
+                                                                    * used: 1 a DIGITAL sound (all before the 808s), 2 ANALOG,
+                                                                    * 3 SAMPLER */
 typedef struct { uint32_t magic; uint16_t np, kind; gb_snd_t s[2u * GB_SLOTS]; } gb_sobj_t;
 typedef struct {
     uint8_t used, rel, fade, rsv;
@@ -144,7 +145,7 @@ static void gb_store_poll(void)
 static void gb_snd_take(gb_snd_t *s, const track_t *t)
 {
     uint32_t i;
-    s->used = eng_idx(t->eng_req) == ENGI_ANALOG ? 2u : 1u;
+    s->used = eng_idx(t->eng_req) == ENGI_ANALOG ? 2u : eng_idx(t->eng_req) == ENGI_SAMPLER ? 3u : 1u;
     s->np = (uint8_t)P_COUNT;
     for (i = 0; i < P_COUNT; i++)
         s->p[i] = (int8_t)(clamp(motion_base_value(t, i), -64, 127) - 64);   /* (the sound's own, not a lock playing) */
@@ -161,7 +162,7 @@ static void gb_snd_put(const gb_snd_t *s, track_t *t)
     params_by_count(out, in, np, def);
     motion_restore(t);                                   /* (the locks playing put back first: motion_rebase) */
     fm1_irq_off();                                       /* (the ISR sees the old engine or the new one, never a mix) */
-    t->eng_req = s->used == 2u ? ENGI_ANALOG : ENGI_DIGITAL;   /* its engine first: the values fit its knobs */
+    t->eng_req = s->used == 2u ? ENGI_ANALOG : s->used == 3u ? ENGI_SAMPLER : ENGI_DIGITAL;   /* its engine first: the values fit its knobs */
     t->p[P_E7] = out[P_E7];
     for (i = 0; i < P_COUNT; i++)
         if (gb_sound_id(i))
@@ -255,4 +256,68 @@ static int gbk_load(uint32_t k)
         song.g[GB_KIT_G[i]] = (int16_t)clamp(kt->g[GB_KIT_G[i]], GP[GB_KIT_G[i]].min, GP[GB_KIT_G[i]].max);
     ui.force = 1;
     return 1;
+}
+
+/* ---- the sample memory (eng_sampler.c has the layout): its table, checked whole (a bad table or data: no chunks) */
+static inline uint32_t smp_u32(const uint8_t *p) { return p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24; }
+static inline uint32_t smp_u16(const uint8_t *p) { return p[0] | (uint32_t)p[1] << 8; }
+static void smp_scan(void)                         /* at boot (persist_boot) and after an upload */
+{
+    static smp_chunk_t tb[SMP_MAX];
+    const uint8_t *h = SMP_XIP(SMP_BASE), *e;
+    uint32_t cnt = 0, dlen = 0, i, k, ok;
+    ok = smp_u32(h) == SMP_MAGIC && smp_u16(h + 4) == 1u && (cnt = smp_u16(h + 6)) <= SMP_MAX &&
+         (dlen = smp_u32(h + 8)) <= SMP_CAP;
+    if (ok)
+        ok = ~st_crc32_add(st_crc32_add(0xFFFFFFFFu, h, 28u), h + 32, cnt * 24u) == smp_u32(h + 28);
+    for (i = 0; ok && i < cnt; i++) {
+        uint32_t off, len, rate;
+        e = h + 32 + i * 24u;
+        off = smp_u32(e + 12);
+        len = smp_u32(e + 16);
+        rate = smp_u16(e + 20);
+        ok = len >= 64u && off <= dlen && len <= dlen - off && rate >= 4000u && rate <= 48000u && !smp_u16(e + 22);
+        for (k = 0; k < 12u; k++)
+            tb[i].name[k] = e[k] >= ' ' && e[k] < 127 ? (char)e[k] : (e[k] ? '?' : 0);
+        tb[i].name[12] = 0;
+        tb[i].off = SMP_DATA + off;
+        tb[i].len = len;
+        tb[i].rate = (uint16_t)rate;
+    }
+    if (ok)
+        ok = st_crc32(SMP_XIP(SMP_DATA), dlen) == smp_u32(h + 12);
+    fm1_irq_off();
+    for (i = 0; ok && i < cnt; i++)
+        smp_tab[i] = tb[i];
+    smp_n = (uint8_t)(ok ? cnt : 0u);
+    smp_gen++;
+    fm1_irq_on();
+    ui.force = 1;
+}
+
+/* the screen's waveform of a chunk: GB_WAVE columns of its loudest sample (0..255), kept for the chunk last asked */
+static uint8_t smp_pk[GB_WAVE];
+static uint32_t smp_pk_of = 0xFFFFFFFFu;          /* (slot | gen << 8) */
+static const uint8_t *smp_peaks(uint32_t sl)
+{
+    uint32_t key = sl | smp_gen << 8, x, i;
+    if (sl >= smp_n)
+        return 0;
+    if (smp_pk_of != key) {
+        const smp_chunk_t *c = &smp_tab[sl];
+        const uint8_t *d = SMP_XIP(c->off);
+        for (x = 0; x < GB_WAVE; x++) {
+            uint32_t a = x * c->len / GB_WAVE, b = (x + 1u) * c->len / GB_WAVE;   /* (< 2^26: 32 bits) */
+            int32_t m = 0;
+            b = b > a ? b : a + 1u;
+            for (i = a; i < b && i < c->len; i++) {
+                int32_t s = SMP_ULAW[d[i]];
+                s = s < 0 ? -s : s;
+                m = s > m ? s : m;
+            }
+            smp_pk[x] = (uint8_t)(m >> 7);
+        }
+        smp_pk_of = key;
+    }
+    return smp_pk;
 }

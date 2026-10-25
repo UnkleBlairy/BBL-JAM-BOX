@@ -33,7 +33,7 @@
 #endif
 
 static uint8_t nor[0x100000];            /* the SPI NOR (erased: 0xFF) */
-#define SMP_USER_XIP(k) ((const uint8_t *)nor + SMP_USER_BASE + (k) * SMP_USER_SIZE)   /* eng_sample.c */
+#define SMP_XIP(off) ((const uint8_t *)nor + (off))   /* eng_sampler.c: the sample memory */
 #include <stdio.h>
 #include <math.h>
 #include <stdlib.h>
@@ -382,6 +382,8 @@ EXPORT void web_render(uint32_t n)
 EXPORT uint8_t *web_nor(void) { return nor; }
 EXPORT uint32_t web_nor_size(void) { return sizeof nor; }
 EXPORT void web_nor_erase(void) { memset(nor, 0xFF, sizeof nor); }
+/* the sample uploader wrote the sample memory (nor 0xA0000..): read its table again */
+EXPORT void web_smp_scan(void) { smp_scan(); }
 EXPORT uint32_t web_flash_writes_count(void) { return web_flash_writes; }
 EXPORT void web_boot(void)
 {

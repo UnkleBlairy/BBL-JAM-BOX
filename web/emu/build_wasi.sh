@@ -18,6 +18,6 @@ mkdir -p build/emu/fonts
     -mexec-model=reactor -Wl,--export-dynamic -Wl,--initial-memory=33554432 -Wl,-z,stack-size=1048576 \
     -o build/emu/felucca.wasm web/emu/felucca_web.c
 sed -e "s/@VERSION@/$VERSION/g" -e "s/@PREVIEW@/ (preview)/g" web/emu/index.html > build/emu/index.html
-cp web/emu/worklet.js build/emu/
+cp web/emu/worklet.js web/smpimg.js build/emu/
 cp web/emu/fonts/DotGothic16-subset.woff web/emu/fonts/OFL.txt build/emu/fonts/
 echo "emu: build/emu ready. Run:  cd build/emu && python3 -m http.server 8123   then open http://localhost:8123/"

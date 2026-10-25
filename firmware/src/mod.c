@@ -52,14 +52,14 @@
  * Nothing active (every slot with SRC, DST or AMT at 0): no work, and the sound is bit-identical. */
 enum { MS_OFF, MS_LFO, MS_ENV, MS_VEL, MS_KEY, MS_RAND, MS_MODW, MS_AT, MS_EXPR, MS_SH, MS_SLEW, MS_N };
 enum { MD_OFF, MD_PITCH, MD_CUT, MD_SHP, MD_AMP, MD_PAN, MD_DIST, MD_CHO, MD_DLY, MD_REV, MD_RATE, MD_VIB, MD_E1,
-       MD_DEPTH = MD_E1 + 8, MD_VEL, MD_TIME, MD_X0, MD_N = MD_X0 + 30 };   /* (append-only: the stored values keep their meaning) */
+       MD_DEPTH = MD_E1 + 8, MD_VEL, MD_TIME, MD_X0, MD_N = MD_X0 + 31 };   /* (append-only: the stored values keep their meaning) */
 /* SIMPLE: MD_X0 and up, every other knob that moves smoothly, per block (AMT 64 = the whole range, as E1..E8): a track
  * parameter, or 0x80 | a global (the delay, the reverb, the comb, the DJ filter: one for every track, the tracks'
  * offsets add up, fx.c mod_g_begin). Not the knobs that switch (TYPE WAVE DEST MACH SYNC TRIG) */
 static const uint8_t MDX[MD_N - MD_X0] = {P_ATK, P_DEC, P_SUS, P_REL, P_ED_FLT, P_ED_PIT, P_ED_SHP, P_ED_FX, P_LD_FLT,
     P_LD_SHP, P_LD_AMP, 0x80 | G_DTIME, 0x80 | G_DFDBK, 0x80 | G_DCOLOR, 0x80 | G_RSIZE, 0x80 | G_RDAMP, 0x80 | G_RTYPE,
     P_FLT_RES, P_FE_AMT, P_FE_ATK, P_FE_DEC, P_FE_SUS, P_FE_REL, 0x80 | G_SYNC, 0x80 | G_CRATE, 0x80 | G_CDEPTH,
-    0x80 | G_INFO, 0x80 | G_MIDI, P_LN0, P_LN1};
+    0x80 | G_INFO, 0x80 | G_MIDI, P_LN0, P_LN1, P_LN2};
 #define MD_GLOBAL(d) ((d) >= MD_X0 && (d) < MD_N && (MDX[(d) - MD_X0] & 0x80u))
 _Static_assert(NELEM(N_MSRC) == MS_N && NELEM(N_MDST) == MD_N, "N_MSRC / N_MDST == MS_* / MD_*");
 _Static_assert(P_M2SRC == P_M1SRC + 3 && P_M4AMT == P_M1SRC + 11 && P_M4AMT + 1 == P_FM1_ATK, "matrix slots: 3 ids each");

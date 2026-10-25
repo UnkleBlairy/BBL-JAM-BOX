@@ -9,6 +9,7 @@ been taken out):
 - One 4-op FM DIGITAL engine with machines: SYN, BD, SD, HH, CYM, PERC
 - One ANALOG 808 engine (ported from docs/808lab.html) with machines: KICK
   SNARE TOM RIM CLAP COWBELL HAT CYMBAL
+- One SAMPLER engine (docs/samplelab.html): plays uploaded sample chunks
 - 6 tracks
 - Minimal menus
 
@@ -21,6 +22,10 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
 - `firmware/src/ui.c` — macro system (PERF page), `pm_*` functions
 - `firmware/src/eng_digital.c` — the FM engine (its presets and filter too)
 - `firmware/src/eng_analog.c` — the 808 engine (AGE weights, level trims)
+- `firmware/src/eng_sampler.c` — the sampler (sample memory layout at the top);
+  `gb_store.c` smp_scan / smp_peaks read the table and the waveform
+- `web/smpimg.js` — builds the sample memory image (shared by the uploaders);
+  the emulator page's "Samples" panel is the uploader for now
 - `firmware/src/engines.c` — the engine table and the tracks' power-on sounds
 - `firmware/src/repeat.c` — PERF's beat repeats (1/8 1/16 1/32 REV)
 - `firmware/src/gb_store.c` — sounds and kits; `persist.c` — device settings
@@ -221,3 +226,14 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   sit with the FM drums (the prototype evened them with a compressor).
 - The 808 machine pill is drawn filled (inverted) so you can tell it from FM.
 - CLOCK page 4th dial = CPU % (audio load, read-only; 0 in the emulator).
+- SAMPLER: one machine "SAMPLE" (PRESETS, after the 808s), one voice a track (a
+  new hit takes over, the old sound fades in 4 ms; MACHINES drum = 2: one voice,
+  full ENV). OSC 1: PITCH STRCH START LEN, OSC 2: MODE (icons ONCE LOOP PING
+  REV) SLOT (S01..S32) LOFI LEVEL, page 3 = GATE (P_LN2: KEY = the note's
+  length, 1/16..BAR = loops play that long; one-shots always play to the end).
+  Track n starts on slot n. ENV and FILTER work (DIGITAL's filter).
+- Sample memory: flash 0xA0000..0xDBFFF (240 KB), survives power-off and
+  firmware updates. 8-bit mu-law (the user chose twice the time over 16 bits):
+  ~11 s at 22 kHz in all. Table "FSM2" + CRCs; a bad table = no samples.
+- The uploader replaces the whole sample memory each Upload (up to 32 chunks).
+  Step 2 (to do): send it to the real FM-1 over USB SysEx from the installer site.

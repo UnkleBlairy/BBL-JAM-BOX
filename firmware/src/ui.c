@@ -1242,6 +1242,10 @@ static void machine_defaults(track_t *t)
     if (m->engine == ENGI_ANALOG) {                   /* an 808: its LEVEL (the eighth knob), AGE */
         t->p[P_LN0] = AN_DEF[m->sub % AN_N][7];
         t->p[P_LN1] = AN_AGE_DEF;
+    } else if (m->engine == ENGI_SAMPLER) {           /* the sampler: LEVEL, GATE, track n's slot n */
+        t->p[P_LN0] = 100;
+        t->p[P_LN2] = TP[P_LN2].def;
+        t->p[P_E5] = (int16_t)(trk_index(t) % SMP_MAX);
     }
 }
 /* SIMPLE: track t becomes machine mach (the PRESETS knob): its engine (the old one's voices fade, voice.c

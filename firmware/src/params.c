@@ -77,7 +77,7 @@ static const char *const N_MDST[] = {"OFF", "PITCH", "CUT", "SHP", "AMP", "PAN",
                                      "ATK", "DEC", "SUS", "REL", "E.FLT", "E.PIT", "E.SHP", "E.R2", "L.FLT", "L.SHP", "L.AMP",
                                      "DTIME", "DFDBK", "DTONE", "RTIME", "RDAMP", "GRIT", "RES", "F.AMT", "F.ATK",
                                      "F.DEC", "F.SUS", "F.REL", "C.MIX", "CTUNE", "CFDBK", "CDAMP", "DJ",
-                                     "LEVEL", "AGE"};   /* (5 letters fit) (ANALOG's LEVEL and AGE) */
+                                     "LEVEL", "AGE", "GATE"};   /* (5 letters fit) (ANALOG's LEVEL and AGE, SAMPLER's GATE) */
 static const char *const N_ENGNAME[] = {"ANALOG", FELUCCA_FM4 ? "DIGITAL" : "-", "PHASE", "LOFI", "SAMPLE", "VOICE", "TRIO", "WHEEL", "GRAIN", "PHYS",
                                              "DRUM", "NOISE", "FM6",
 };
@@ -176,10 +176,12 @@ static const param_desc_t TP[P_COUNT] = {
     [P_VOIC] = PE("VOIC", N_VOIC, 0),
 /* the DRUM engine's lane levels (eng_drum.c, #97): 100 % = the kit as designed (the sound before 1.1) */
 #define LANE(k, l) [P_LN0 + (k)] = PD(l, F_PCT, 0, 127, 127)
-    LANE(2, "CLAP"), LANE(3, "HATCL"), LANE(4, "HATOP"), LANE(5, "TOM"), LANE(6, "RIM"), LANE(7, "BELL"),
+    LANE(3, "HATCL"), LANE(4, "HATOP"), LANE(5, "TOM"), LANE(6, "RIM"), LANE(7, "BELL"),
 #undef LANE
     /* SIMPLE: lanes 1 and 2 are ANALOG's (eng_analog.c): an 808 machine's LEVEL (its eighth knob) and AGE */
     [P_LN0] = PD("LEVEL", F_INT, 0, 127, 100), [P_LN1] = PD("AGE", F_INT, 0, 127, 40),
+    /* .. lane 3 SAMPLER's GATE (eng_sampler.c): 0 the key's length, 1..16 steps (loops) */
+    [P_LN2] = PD("GATE", F_INT, 0, 16, 2),
     [P_LSYNC] = PE("SYNC", N_LSYNC, 0),
     [P_LTRIG] = PE("TRIG", N_LTRIG, 0),
     [P_LPOL] = PE("POL", N_LPOL, 0),
@@ -253,17 +255,24 @@ static const param_desc_t GP[G_COUNT] = {
 
 static const param_desc_t AD_SUS = {"-", F_INT, 0, 127, 90, 0, 0}, AD_REL = {"-", F_INT, 0, 127, 60, 0, 0};
 static const param_desc_t AD_NONE = {"-", F_INT, 0, 127, 0, 0, 0};
+/* SIMPLE: lane ids that are a knob of track t's engine: LEVEL (P_LN0) ANALOG's and SAMPLER's, AGE (P_LN1) ANALOG's,
+ * GATE (P_LN2) SAMPLER's */
+static int ln_on(const track_t *t, uint32_t id)
+{
+    uint32_t e = eng_idx(t->eng_req);
+    return id == P_LN0 ? e == ENGI_ANALOG || e == ENGI_SAMPLER : id == P_LN1 ? e == ENGI_ANALOG : id == P_LN2 ? e == ENGI_SAMPLER : 1;
+}
 static const param_desc_t *track_desc(const track_t *t, uint32_t id)
 {
-    if ((id == P_SUS || id == P_REL) && trk_machine(t)->drum)   /* a drum machine: attack and decay only */
+    if ((id == P_SUS || id == P_REL) && trk_machine(t)->drum == 1)   /* a drum machine: attack and decay only */
         return id == P_SUS ? &AD_SUS : &AD_REL;
     if (id >= P_E0 && id <= P_E7) {                   /* the engine asked for (t->engine follows after a fade) */
         const engine_t *e = ENGINES[eng_idx(t->eng_req)];
         const param_desc_t *d = e->desc ? e->desc(t, id - P_E0) : 0;   /* a mode-dependent label / names */
         return d ? d : &e->edit[id - P_E0];
     }
-    if ((id == P_LN0 || id == P_LN1) && FELUCCA_SIMPLE && eng_idx(t->eng_req) != ENGI_ANALOG)
-        return &AD_NONE;                              /* (LEVEL, AGE: ANALOG's) */
+    if (FELUCCA_SIMPLE && id >= P_LN0 && id <= P_LN2 && !ln_on(t, id))
+        return &AD_NONE;                              /* (LEVEL: ANALOG's and SAMPLER's, AGE ANALOG's, GATE SAMPLER's) */
     if (id >= P_IA && id <= P_IC)                     /* the INSERT's values as its TYPE names them */
         return ins_desc(t->p[P_ITYPE], id - P_IA);
     if (t->p[P_ESYNC] && (id == P_ATK || id == P_DEC || id == P_REL))   /* ENV SYNC: note values (1.5, #175) */
@@ -464,7 +473,7 @@ static const page_t PAGES[] = {
     {"VERB", FAM_FX, SC_TRACK, GR_NONE, {P_REV, 0x80 | G_RSIZE, 0x80 | G_RDAMP, 0x80 | G_RTYPE}},   /* the track's send, then the reverb's SIZE DAMP TYPE */
     {"OSC 1", FAM_EDIT, SC_ENGINE, GR_NONE, {P_E0, P_E1, P_E2, P_E3}},   /* the machine's first four (the PRESETS knob: MACH) */
     {"OSC 2", FAM_EDIT, SC_ENGINE, GR_NONE, {P_E4, P_E5, P_E6, P_LN0}},  /* the rest (ANALOG: .. DRIVE LEVEL) */
-    {"AGE", FAM_EDIT, SC_ENGINE, GR_NONE, {P_LN1, 0xFF, 0xFF, 0xFF}},   /* ANALOG only (ui.c page_visible) */
+    {"AGE", FAM_EDIT, SC_ENGINE, GR_NONE, {P_LN1, 0xFF, 0xFF, 0xFF}},   /* ANALOG's AGE, SAMPLER's GATE (page_id_an; ui.c page_visible) */
     {"FILTER", FAM_FLT, SC_TRACK, GR_NONE, {P_FLT_CUT, P_FLT_RES, P_FTYPE, P_FE_AMT}},    /* CUT RES TYPE AMT */
     {"FILTER ENV", FAM_FLT, SC_TRACK, GR_NONE, {P_FE_ATK, P_FE_DEC, P_FE_SUS, P_FE_REL}}, /* ATK DEC SUS REL */
     {"PERF", FAM_GLO, SC_GLOBAL, GR_PERF, {0xFF, 0xFF, 0xFF, 0xFF}},        /* GLO: the performance macros (ui.c perf_*) */
@@ -489,11 +498,14 @@ static const uint8_t *alt_ids(const page_t *pg)
     (void)FX;
     return str_eq(pg->title, "LFO") ? LFO : str_eq(pg->title, "COMB") ? COMB : 0;
 }
-/* SIMPLE: ANALOG's LEVEL and AGE (P_LN0, P_LN1) are no knob on a track of another engine */
+/* SIMPLE: LEVEL and AGE (P_LN0, P_LN1) are no knob on a track of an engine without them; SAMPLER's AGE page is GATE */
 static uint32_t page_id_an(const page_t *pg, uint32_t id)
 {
-    return FELUCCA_SIMPLE && pg->scope == SC_ENGINE && (id == P_LN0 || id == P_LN1) &&
-           eng_idx(TSEL->eng_req) != ENGI_ANALOG ? 0xFFu : id;
+    if (!FELUCCA_SIMPLE || pg->scope != SC_ENGINE || (id != P_LN0 && id != P_LN1))
+        return id;
+    if (id == P_LN1 && eng_idx(TSEL->eng_req) == ENGI_SAMPLER)
+        return P_LN2;
+    return ln_on(TSEL, id) ? id : 0xFFu;
 }
 static const param_desc_t *page_desc(const page_t *pg, uint32_t slot, int16_t **valp)
 {

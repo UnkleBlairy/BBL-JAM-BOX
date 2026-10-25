@@ -93,6 +93,12 @@ if (typeof registerProcessor === "function") {
       else if (m.type === "master") ex.web_master(m.value | 0);
       else if (m.type === "midi") ex.web_midi(m.data[0] | 0, m.data[1] | 0, m.data[2] | 0);
       else if (m.type === "visible") this.period = m.on ? 1 / 30 : 1 / 4;
+      else if (m.type === "smp") {                    // the sample uploader: the sample memory, written whole (web/smpimg.js)
+        new Uint8Array(ex.memory.buffer, ex.web_nor() + 0xA0000, m.img.length).set(m.img);
+        ex.web_smp_scan();
+        this.sentWrites = -2;                         // (the page keeps the flash: sent with the next frame)
+        this.port.postMessage({ type: "smpdone" });
+      }
     }
 
     publish() {

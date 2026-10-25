@@ -22,6 +22,9 @@ typedef struct {
     uint8_t fill[8], rel, bpm_alt;           /* PERF: each held macro's tile filled 0..26 rows; the release fade; the tempo is held by a macro */                           /* a macro holds this value: its dial is drawn inverted */
     uint8_t kmode, pk, fx;                   /* the keys: 1 SEQ 2 PARAM 3 KEY; PARAM's knob + 1 (0: the keys play); the FX lane */
     uint8_t icon, picon, hit, an;            /* the header's icon and the machine pill's (IC_*, engines.c); a drum just hit; an 808 */
+    uint8_t vic[4];                          /* a dial's value as an icon (SAMPLER's MODE), 0 = its text */
+    uint8_t wv, wa, wb;                      /* SAMPLER's waveform: 1 NO SAMPLE, 2 the chunk (window wa .. wb of GB_WAVE) */
+    uint16_t wkey;                           /* .. which chunk (its peaks) */
     char title[12], lab[4][8], val[4][12];
 } gb_view_t;
 static gb_view_t gb_v, gb_last;
@@ -38,6 +41,7 @@ static int gbk_save(uint32_t k);
 static int gbk_load(uint32_t k);
 static void gb_store_poll(void);
 static uint64_t lock_held(void);                   /* (ui_input.c) .. on a sound page: its knobs lock */
+static const uint8_t *smp_peaks(uint32_t sl);      /* (gb_store.c) SAMPLER: a chunk's waveform */
 /* the SEQ page (ui_input.c gbseq_knob) */
 static const uint8_t GB_SPEED[5] = {0, 1, 2, 3, 10};
 static uint32_t gb_speed(int32_t div)                    /* SPEED 0..4 of a DIV (another DIV: x1) */
@@ -67,8 +71,8 @@ static uint32_t gb_page_icon(const page_t *pg, uint32_t mach)
         return IC_MACRO;
     if (str_eq(pg->title, "COMB"))
         return alt_mode ? IC_DJ : IC_COMB;
-    if (str_eq(pg->title, "AGE"))
-        return IC_AGE;
+    if (str_eq(pg->title, "AGE"))                       /* (SAMPLER's GATE: the machine's) */
+        return eng_idx(t->eng_req) == ENGI_SAMPLER ? MACHINES[mach % NMACH].icon : IC_AGE;
     if (str_eq(pg->title, "DELAY"))
         return IC_DELAY;
     if (str_eq(pg->title, "VERB"))
@@ -82,10 +86,60 @@ static uint32_t gb_page_icon(const page_t *pg, uint32_t mach)
     return MACHINES[mach % NMACH].icon;
 }
 
+/* SAMPLER's values as the prototype shows them: PITCH in semitones, STRETCH x, MODE an icon, SLOT S01, GATE steps.
+ * -> the icon (IC_*) when the value is one, else 0 (b rewritten or kept) */
+static uint32_t smp_format(uint32_t id, int32_t cur, char *b)
+{
+    char nb[8];
+    uint32_t o = 0, q;
+    if (id == P_E0) {                                 /* (cur - 64) * 24 / 64 = (cur - 64) * 3 / 8, one decimal */
+        int32_t t10 = (cur - 64) * 30 / 8, a = t10 < 0 ? -t10 : t10;
+        b[o++] = t10 < 0 ? '-' : '+';
+        fmt_int(nb, a / 10);
+        for (q = 0; nb[q]; q++) b[o++] = nb[q];
+        b[o++] = '.';
+        b[o++] = (char)('0' + a % 10);
+        b[o] = 0;
+    } else if (id == P_E1) {                          /* 4^((cur - 64) / 64), two decimals */
+        uint32_t x = ((uint32_t)SMP_STRETCH[cur & 127] * 100u + 2048u) >> 12;
+        fmt_int(nb, (int32_t)(x / 100u));
+        for (q = 0; nb[q]; q++) b[o++] = nb[q];
+        b[o++] = '.';
+        b[o++] = (char)('0' + x / 10u % 10u);
+        b[o++] = (char)('0' + x % 10u);
+        b[o++] = 'x';
+        b[o] = 0;
+    } else if (id == P_E4) {
+        b[0] = 0;
+        return IC_ONCE + (uint32_t)(cur & 3);
+    } else if (id == P_E5) {
+        b[0] = 'S';
+        b[1] = (char)('0' + (cur + 1) / 10);
+        b[2] = (char)('0' + (cur + 1) % 10);
+        b[3] = 0;
+    } else if (id == P_LN2) {                         /* 0 the key's length, else 1/16 .. BAR as FADE shows them */
+        uint32_t n = (uint32_t)cur, d = 16u;
+        if (!n) {
+            str_cpy(b, "KEY", 8);
+        } else if (n >= 16u) {
+            str_cpy(b, "BAR", 8);
+        } else {
+            while (!(n & 1u)) { n >>= 1; d >>= 1; }
+            fmt_int(nb, (int32_t)n);
+            for (q = 0; nb[q]; q++) b[o++] = nb[q];
+            b[o++] = '/';
+            fmt_int(nb, (int32_t)d);
+            for (q = 0; nb[q]; q++) b[o++] = nb[q];
+            b[o] = 0;
+        }
+    }
+    return 0;
+}
+
 static void gb_fill(gb_view_t *v)
 {
     const page_t *pg = cur_page();
-    uint32_t k, i, n = 0, at = 0;
+    uint32_t k, i, n = 0, at = 0, smp;
     uint64_t lk;
     char *p = (char *)v;
     for (i = 0; i < sizeof *v; i++)
@@ -216,6 +270,18 @@ static void gb_fill(gb_view_t *v)
         return;
     }
     lk = lock_held();
+    smp = !v->fx && eng_idx(TSEL->eng_req) == ENGI_SAMPLER && pg->scope == SC_ENGINE;
+    if (smp && str_eq(pg->title, "AGE"))
+        str_cpy(v->title, "GATE", sizeof v->title);
+    else if (smp) {                                   /* the chunk's waveform, START .. START + LEN bright */
+        const track_t *t = TSEL;
+        uint32_t sl = (uint32_t)t->p[P_E5], a = (uint32_t)(t->p[P_E2] & 127) * (GB_WAVE - 1u) / 127u;
+        uint32_t b = a + (uint32_t)(t->p[P_E3] & 127) * (GB_WAVE - 1u) / 127u;
+        v->wv = smp_peaks(sl) ? 2u : 1u;
+        v->wa = (uint8_t)a;
+        v->wb = (uint8_t)(b > GB_WAVE - 1u ? GB_WAVE - 1u : b);
+        v->wkey = (uint16_t)(sl | smp_gen << 6);
+    }
     for (k = 0; k < 4u; k++) {
         int16_t *vp, cur;
         const param_desc_t *d = page_desc(pg, k, &vp);
@@ -252,6 +318,8 @@ static void gb_fill(gb_view_t *v)
             }
         }
         param_format(d, cur, v->val[k], &u);
+        if (smp && vp >= TSEL->p && vp < TSEL->p + P_COUNT)
+            v->vic[k] = (uint8_t)smp_format((uint32_t)(vp - TSEL->p), cur, v->val[k]);
         if (vp == &song.g[G_RSIZE] && cur >= 127)       /* the reverb's TIME at the top: FREEZE (fx.c rev_quad) */
             str_cpy(v->val[k], "FREEZE", sizeof v->val[k]);
         if (str_eq(v->val[k], "CYM"))                 /* (too wide beside a negative value) */
@@ -370,6 +438,16 @@ static void gb_header(const gb_view_t *v, const char *title, uint16_t bgc)
     cv_text_on(tx, tf == &AF_L ? 6 : 13, tf, title, GB_W, bgc);
     if (tg[0])
         cv_text_on(tx + tw + 8, tf == &AF_L ? 20 : 16, &AF_S, tg, GB_W, bgc);
+}
+
+/* white mixed into the background: a (0..255) of white */
+static uint16_t gb_mix(uint16_t bg, uint32_t a)
+{
+    uint32_t r = bg >> 11, g = (bg >> 5) & 63u, b = bg & 31u;
+    r += ((31u - r) * a) >> 8;
+    g += ((63u - g) * a) >> 8;
+    b += ((31u - b) * a) >> 8;
+    return (uint16_t)(r << 11 | g << 5 | b);
 }
 
 static void gb_scene(const gb_view_t *v, uint16_t bgc)
@@ -507,9 +585,28 @@ static void gb_scene(const gb_view_t *v, uint16_t bgc)
             vf = &AF_M;
         if (text_w(vf, v->val[k]) > 54)
             vf = &AF_S;
-        cv_text_in(cx - 27, vf == &AF_L ? 142 : 150, 54, vf, v->val[k], dc, bk);
+        if (v->vic[k])                                            /* (SAMPLER's MODE: its icon) */
+            gb_icon(cx - 16, 140, 2, v->vic[k], dc);
+        else
+            cv_text_in(cx - 27, vf == &AF_L ? 142 : 150, 54, vf, v->val[k], dc, bk);
         if (v->pk == k + 1u)                                      /* PARAM: the knob the white keys set, underlined */
             cv_rrect(cx - 18, 182, 36, 5, 2, GB_W, bgc);
+    }
+    if (v->wv == 1u)                                              /* SAMPLER: the chunk's waveform, or none */
+        cv_text_in(0, 172, 240, &AF_M, "NO SAMPLE", c, bgc);
+    else if (v->wv == 2u) {
+        const uint8_t *pk = smp_peaks(v->wkey & 63u);
+        uint16_t dim = gb_mix(bgc, 90);                           /* outside the window: the ink at ~35 % */
+        int32_t x, y0 = 172, hh = 24;
+        for (x = 0; pk && x < (int32_t)GB_WAVE; x++) {
+            int32_t h2 = (int32_t)pk[x] * hh / 512;
+            h2 = h2 < 1 ? 1 : h2;
+            cv_rect(8 + x, y0 + hh / 2 - h2, 1, h2 * 2, x >= v->wa && x <= v->wb ? c : dim);
+        }
+        cv_rect(8 + v->wa, y0 - 2, 1, hh + 4, c);                 /* the window's ends */
+        cv_rect(8 + v->wb, y0 - 2, 1, hh + 4, c);
+        cv_rect(8 + v->wa, y0 - 2, 3, 1, c);
+        cv_rect(8 + v->wb - 2, y0 - 2, 3, 1, c);
     }
     const char *nm = v->fx ? "FX" : MACHINES[v->mach % NMACH].pill;
     int32_t pw = (text_w(&AF_M, nm) + 17 + (v->picon ? 20 : 0)) & ~1;

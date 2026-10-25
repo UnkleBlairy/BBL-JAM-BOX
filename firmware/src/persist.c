@@ -44,6 +44,7 @@ static uint8_t persist_pending;                 /* 1 requested, 2 waiting after 
 static uint32_t persist_retry_ms;
 #endif
 
+static void smp_scan(void);
 static void persist_boot(void)                    /* before settings_init / panel_init */
 {
 #if FELUCCA_FLASH
@@ -56,6 +57,7 @@ static void persist_boot(void)                    /* before settings_init / pane
     fl_plain_window_init();
     if (settings_import(&p, st_load(OBJ_SETTINGS, &p, sizeof p)))
         persist_saved = p;
+    smp_scan();                                         /* the sampler's chunks (gb_store.c) */
 #endif
 }
 
