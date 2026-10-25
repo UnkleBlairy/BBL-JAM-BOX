@@ -72,7 +72,7 @@ static const char *const N_IRATE[] = {"689", "919", "1.1k", "1.4k", "1.8k", "2.2
  * (1.5.6, #213: at the note) after DEPTH */
 static const char *const N_MSRC[] = {"OFF", "LFO", "ENV", "VEL", "KEY", "RAND", "MODW", "AT", "EXPR", "S&H", "SLEW"};
 static const char *const N_MDST[] = {"OFF", "PITCH", "CUT", "SHP", "AMP", "PAN", "-", "-", "DLY", "REV", "RATE",
-                                     "VIB", "E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "DEPTH", "VEL", "TIME",
+                                     "L.PIT", "E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "DEPTH", "VEL", "TIME",
                                      /* SIMPLE: every other knob that moves smoothly (mod.c MDX), page by page */
                                      "ATK", "DEC", "SUS", "REL", "E.FLT", "E.PIT", "E.SHP", "E.R2", "L.FLT", "L.SHP", "L.AMP",
                                      "DTIME", "DFDBK", "DTONE", "RTIME", "RDAMP", "GRIT", "RES", "F.AMT", "F.ATK",
@@ -179,7 +179,7 @@ static const param_desc_t TP[P_COUNT] = {
     LANE(3, "HATCL"), LANE(4, "HATOP"), LANE(5, "TOM"), LANE(6, "RIM"), LANE(7, "BELL"),
 #undef LANE
     /* SIMPLE: lanes 1 and 2 are ANALOG's (eng_analog.c): an 808 machine's LEVEL (its eighth knob) and AGE */
-    [P_LN0] = PD("LEVEL", F_INT, 0, 127, 100), [P_LN1] = PD("AGE", F_INT, 0, 127, 40),
+    [P_LN0] = PD("LEVEL", F_INT, 0, 127, 100), [P_LN1] = PD("AGE", F_INT, 0, 127, 0),
     /* .. lane 3 SAMPLER's GATE (eng_sampler.c): 0 the key's length, 1..16 steps (loops) */
     [P_LN2] = PD("GATE", F_INT, 0, 16, 2),
     [P_LSYNC] = PE("SYNC", N_LSYNC, 0),
@@ -308,6 +308,20 @@ static const uint8_t DIV_ORDER[10] = {9, 8, 7, 6, 0, 1, 4, 2, 5, 3};   /* 4BAR 2
 static const uint8_t SLDIV_ORDER[6] = {0, 3, 1, 4, 2, 5};              /* 1/8 8T 1/16 16T 1/32 32T */
 static const uint8_t DTIME_ORDER[13] = {9, 8, 7, 6, 12, 0, 10, 1, 11, 4, 2, 5, 3};   /* 4BAR 2BAR 1/1 1/2 1/4D 1/4 1/8D
                                                                                       * 1/8 1/16D 8T 1/16 16T 1/32 */
+/* SIMPLE: the LFO DEST knob's order: the knobs as their pages show them, left to right (OSC 1, OSC 2, AGE / GATE,
+ * FILTER, FILTER ENV, ENV, ENV DEST, LFO, LFO DEST, DELAY, VERB, COMB, DJ), then PITCH and AMP. Left out: PAN SHP
+ * DEPTH VEL TIME, E8 (MACH) and DIST CHO (a sound saved with one keeps it). The stored values (mod.c MD_*) stay */
+static const uint8_t MDST_ORDER[] = {0, 12, 13, 14, 15, 16, 17, 18, 51, 52, 53, 2, 40, 41, 42, 43, 44, 45, 23, 24, 25,
+                                     26, 27, 28, 29, 30, 10, 11, 31, 32, 33, 8, 34, 35, 36, 9, 37, 38, 39, 46, 47, 48,
+                                     49, 50, 1, 4};
+static int32_t mdst_rank(int32_t v)               /* v's place in MDST_ORDER (one left out: OFF's) */
+{
+    int32_t r;
+    for (r = 0; r < (int32_t)sizeof MDST_ORDER; r++)
+        if (MDST_ORDER[r] == v)
+            return r;
+    return 0;
+}
 static const uint8_t *enum_order(const param_desc_t *d)
 {
     return d->names == N_DIV ? DIV_ORDER : d->names == N_SLDIV ? SLDIV_ORDER : d->names == N_DTIME ? DTIME_ORDER : 0;
@@ -316,6 +330,8 @@ static int32_t enum_rank(const param_desc_t *d, int32_t v)   /* v's place in the
 {
     const uint8_t *o = enum_order(d);
     int32_t r;
+    if (FELUCCA_SIMPLE && d->names == N_MDST)       /* (the gauge over the shown order) */
+        return d->min + mdst_rank(v) * (d->max - d->min) / ((int32_t)sizeof MDST_ORDER - 1);
     for (r = 0; o && r < d->max - d->min; r++)
         if (o[r] == v - d->min)
             break;
@@ -325,6 +341,8 @@ static int32_t enum_rank(const param_desc_t *d, int32_t v)   /* v's place in the
 static int32_t param_turn(const param_desc_t *d, int32_t v, int32_t steps)
 {
     const uint8_t *o = enum_order(d);
+    if (FELUCCA_SIMPLE && d->names == N_MDST)
+        return MDST_ORDER[clamp(mdst_rank(v) + steps, 0, (int32_t)sizeof MDST_ORDER - 1)];
     if (o)
         return o[clamp(enum_rank(d, v) - d->min + steps, 0, d->max - d->min)] + d->min;
     if (d->names == ESYNC_NAMES) {                    /* ENV SYNC: a note value a step (the first value showing it) */

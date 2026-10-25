@@ -21,6 +21,7 @@ typedef struct {
     int16_t dj, cmix, ctune;                 /* PERF: the master DJ filter and comb */
     uint8_t fill[8], rel, bpm_alt;           /* PERF: each held macro's tile filled 0..26 rows; the release fade; the tempo is held by a macro */                           /* a macro holds this value: its dial is drawn inverted */
     uint8_t kmode, pk, fx;                   /* the keys: 1 SEQ 2 PARAM 3 KEY; PARAM's knob + 1 (0: the keys play); the FX lane */
+    uint8_t rec;                             /* the selected track is armed (REC): a red REC by the BPM */
     uint8_t icon, picon, hit, an;            /* the header's icon and the machine pill's (IC_*, engines.c); a drum just hit; an 808 */
     uint8_t vic[4];                          /* a dial's value as an icon (SAMPLER's MODE), 0 = its text */
     uint8_t wv, wa, wb;                      /* SAMPLER's waveform: 1 NO SAMPLE, 2 the chunk (window wa .. wb of GB_WAVE) */
@@ -149,6 +150,7 @@ static void gb_fill(gb_view_t *v)
     v->sel = (uint8_t)song.sel;
     v->bpm = song.g[G_BPM];
     v->bpm_alt = (uint8_t)(pm_altered(TSEL, &song.g[G_BPM]) != 0);
+    v->rec = (uint8_t)((song.rec >> song.sel) & 1u);
     str_cpy(v->title, pg->title, sizeof v->title);
     v->kmode = (uint8_t)(ui.sgrid == 1u ? 1u : ui.sgrid == 2u ? 2u : 3u);
     v->pk = (uint8_t)(par_on() && par_id != 0xFFu ? par_k + 1u : 0u);
@@ -421,6 +423,13 @@ static void gb_header(const gb_view_t *v, const char *title, uint16_t bgc)
         cv_text_r(232, 12, &AF_M, bb, bgc, GB_W);
     } else
         cv_text_r(232, 12, &AF_M, bb, GB_W, bgc);
+    if (v->rec) {                                                 /* armed: a red REC left of the BPM */
+        int32_t rw = text_w(&AF_S, "REC") + 12, rx = 232 - bw - 6 - rw;
+        cv_rrect(rx - 1, 8, rw + 2, 24, 7, GB_W, bgc);
+        cv_rrect(rx, 9, rw, 22, 6, 0xF800u, GB_W);
+        cv_text_on(rx + 6, 14, &AF_S, "REC", GB_W, 0xF800u);
+        bw += rw + 6;
+    }
     room = 232 - bw - 8 - tx;
     tg[0] = 0;
     if (v->npages > 1u) {

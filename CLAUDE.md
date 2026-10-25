@@ -211,8 +211,7 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
 2. Serve `/tmp/felucca-site` on port 8000 (in the background):
    `cd /tmp/felucca-site && python3 -m http.server 8000`
 3. Open http://localhost:8000/webapp/installer/
-- PRESETS knob = machine selector (FM machines, then the 808s; switching
-  engine fades over). ALGORITHM knob = the selected track's volume.
+- PRESETS knob = machine selector (switching engine fades over). ALGORITHM knob = the selected track's volume.
 - Sound save slots are per TRACK (16 each), not per machine; a saved sound
   remembers its engine (gb_snd_t used: 1 = DIGITAL, 2 = ANALOG). Old machine
   slots became track slots.
@@ -245,3 +244,10 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   update's frames: BEGIN / SUM / WRITE / END). Only changed 4 KB sectors are
   sent, the table last; an Upload cut short resumes. The page keeps its list in
   the browser. The panel itself is web/smpui.js (emulator and page share it).
+- Machine names and order (engines.c MACHINES, by type, 808 then FM): 8BD FMBD
+  8SD FMSD 8TOM 8RIM 8CLP 8COW 8HH FMHH 8CYM FMCYM FMPRC FMSYN SMPL.
+- 808s start with AGE 0 (clean).
+- REC armed (the selected track): a red "REC" pill left of the BPM.
+- LFO DEST order = the knobs as their pages show them, left to right (params.c
+  MDST_ORDER), then PITCH AMP. PAN SHP DEPTH VEL TIME E8 are left out. VIB is
+  called L.PIT.

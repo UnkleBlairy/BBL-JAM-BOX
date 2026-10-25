@@ -1241,7 +1241,7 @@ static void machine_defaults(track_t *t)
     t->p[P_REL] = pr->env[3];
     if (m->engine == ENGI_ANALOG) {                   /* an 808: its LEVEL (the eighth knob), AGE */
         t->p[P_LN0] = AN_DEF[m->sub % AN_N][7];
-        t->p[P_LN1] = AN_AGE_DEF;
+        t->p[P_LN1] = 0;                              /* AGE: clean at the start (the user's choice) */
     } else if (m->engine == ENGI_SAMPLER) {           /* the sampler: LEVEL, GATE, track n's slot n */
         t->p[P_LN0] = 100;
         t->p[P_LN2] = TP[P_LN2].def;
