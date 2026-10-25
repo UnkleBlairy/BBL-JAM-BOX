@@ -10,6 +10,8 @@ static const char *const N_LTRIG[] = {"NOTE", "FREE"};
 static const char *const N_LPOL[] = {"BI", "UNI"};
 static const char *const N_AMODE[] = {"OFF", "UP", "DN", "UPDN", "RND", "ORD", "REPEAT",   /* (append-only: seq.c AM_*) */
                                        "DNUP", "UP+8", "CONV", "DIVG", "PINKY", "THUMB", "WALK", "CHORD"};
+static const char *const N_SAMODE[] = {"UP", "DOWN", "UPDN", "CYCLE", "RAND", "PATRN"};   /* SIMPLE ARP (seq.c ARP_MODE) */
+static const char *const N_SARATE[] = {"1/64", "1/32", "16T", "1/16", "8T", "1/8", "1/4"};   /* (seq.c ARP_DIV) */
 static const char *const N_DIV[] = {"1/4", "1/8", "1/16", "1/32", "8T", "16T", "1/2", "1/1", "2BAR", "4BAR"};
 /* SIMPLE: SEQ DIV, N_DIV's ten and 1/64 (10: fx.c div_samples), SPEED x1/4 x1/2 x1 x2 x4 = 1/4 1/8 1/16 1/32 1/64 (ui_input.c gbseq_knob) */
 static const char *const N_SDIV[] = {"1/4", "1/8", "1/16", "1/32", "8T", "16T", "1/2", "1/1", "2BAR", "4BAR", "1/64"};
@@ -100,13 +102,29 @@ static const param_desc_t TP[P_COUNT] = {
     [P_LD_FLT] = PD("FLT", F_BIPCT, -64, 63, 0),
     [P_LD_SHP] = PD("SHP", F_BIPCT, -64, 63, 0),
     [P_LD_AMP] = PD("AMP", F_PCT, 0, 127, 0),
+#if FELUCCA_SIMPLE
+    [P_AMODE] = PE("MODE", N_SAMODE, 0),
+#else
     [P_AMODE] = PE("MODE", N_AMODE, 0),
+#endif
+#if FELUCCA_SIMPLE
+    [P_ARATE] = PE("RATE", N_SARATE, 3),
+#else
     [P_ARATE] = PE("RATE", N_DIV, 2),
+#endif
     [P_AOCT] = PD("OCT", F_INT, 1, 4, 1),
     [P_AGATE] = PD("GATE", F_PCT, 1, 127, 64),
+#if FELUCCA_SIMPLE
+    [P_ASWING] = PD("FADE", F_PCT, 0, 100, 0),
+#else
     [P_ASWING] = PD("SWG", F_PCT, 0, 100, 0),
+#endif
     [P_APROB] = PD("CHANCE", F_PCT, 0, 100, 100),       /* SIMPLE (no ARP): the track's CHANCE, % (seq.c seq_miss) */
+#if FELUCCA_SIMPLE
+    [P_AHOLD] = PE("ARP", N_ONOFF, 0),
+#else
     [P_AHOLD] = PE("HOLD", N_ONOFF, 0),
+#endif
     [P_AORDER] = PE("ORD", N_ORDER, 0),
     [P_ROOT] = PD("ROOT", F_NOTE, 0, 11, 0),
     [P_SCALE] = PE("SCL", N_SCALE, 0),
@@ -445,7 +463,8 @@ static const page_t PAGES[] = {
     {"FILTER ENV", FAM_FLT, SC_TRACK, GR_NONE, {P_FE_ATK, P_FE_DEC, P_FE_SUS, P_FE_REL}}, /* ATK DEC SUS REL */
     {"PERF", FAM_GLO, SC_GLOBAL, GR_PERF, {0xFF, 0xFF, 0xFF, 0xFF}},        /* GLO: the performance macros (ui.c perf_*) */
     {"COMB", FAM_GLO, SC_GLOBAL, GR_NONE, {G_SYNC, G_CRATE, G_CDEPTH, G_INFO}},   /* the master comb: MIX TUNE FDBK DAMP (mfx.c) */
-    {"SEQ", FAM_SEQ, SC_TRACK, GR_GBSEQ, {P_SLEN, P_SDIV, P_APROB, 0xFF}},   /* LEN SPEED CHANCE TRIG (ui_input.c gbseq_knob) */
+    {"SEQ", FAM_SEQ, SC_TRACK, GR_GBSEQ, {P_SLEN, P_SDIV, P_APROB, 0xFF}},
+    {"ARP", FAM_ARP, SC_TRACK, GR_NONE, {P_AHOLD, P_AMODE, P_ARATE, P_ASWING}},   /* ARP MODE RATE FADE (seq.c ARP_*) */   /* LEN SPEED CHANCE TRIG (ui_input.c gbseq_knob) */
     {"VOLUME 1-4", FAM_TRK, SC_TRK, GR_TRK, {0, 1, 2, 3}},   /* the tracks' levels, KNOB k track id[k] (0xFF: none) */
     {"VOLUME 5-6", FAM_TRK, SC_TRK, GR_TRK, {4, 5, 0xFF, 0xFF}},
     {"CLOCK", FAM_TRK, SC_GLOBAL, GR_NONE, {G_BPM, G_SWING, G_CLOCK, 0xFF}},

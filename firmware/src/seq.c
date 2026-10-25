@@ -172,10 +172,14 @@ static uint32_t kb_map(const track_t *t, uint32_t k)
 #include "chord.c"
 
 /* ------------------------------------------------------------- arp --- */
+static uint32_t arp_am(const track_t *t);        /* the AM_* playing (AM_OFF: none) */
+static uint16_t arp_lv[NTRK];                    /* FADE: the next note's velocity, Q8 */
+static uint32_t arp_seed[NTRK];                  /* PATRN: its order */
+static uint32_t arp_latch(const track_t *t) { return FELUCCA_SIMPLE ? 0u : (uint32_t)t->p[P_AHOLD]; }
 static void arp_add(track_t *t, uint32_t note)
 {
     uint32_t i, k = in_key - 1u;
-    if (t->p[P_AHOLD] && t->arp_phys == 0u)
+    if (arp_latch(t) && t->arp_phys == 0u)
         t->nheld = 0;                               /* new chord replaces the latched one */
     t->arp_phys++;                                  /* every key-down: arp_remove counts every key-up */
     for (i = 0; i < t->nheld; i++)
@@ -194,7 +198,9 @@ static void arp_add(track_t *t, uint32_t note)
     if (t->nheld == 1u) {
         t->arp_pos = 0xFFFFFFF;                     /* fire on this block */
         t->arp_idx = 0xFFFFFFFFu;
+        arp_lv[trk_index(t)] = 100u << 8;           /* (SIMPLE FADE: from full) */
     }
+    arp_seed[trk_index(t)] = rng();                 /* (SIMPLE PATRN: a new order) */
 }
 
 static void arp_remove(track_t *t, uint32_t note)
@@ -204,7 +210,7 @@ static void arp_remove(track_t *t, uint32_t note)
     int8_t *dt = held_dt[trk_index(t)];
     if (t->arp_phys)
         t->arp_phys--;
-    if (t->p[P_AHOLD])
+    if (arp_latch(t))
         return;
     for (i = 0; i < t->nheld; i++)
         if (t->held[i] != note) {
@@ -230,7 +236,21 @@ static int rec_on(const track_t *t) { return ((song.rec >> trk_index(t)) & 1u) &
  * C E C G (the bottom one); WALK a random step up or down the list (bouncing off its ends); CHORD all the held
  * notes together (the first 4), an octave higher each step through OCT */
 enum { AM_OFF, AM_UP, AM_DN, AM_UPDN, AM_RND, AM_ORD, AM_REPEAT, AM_DNUP, AM_UP8, AM_CONV, AM_DIVG, AM_PINKY,
-       AM_THUMB, AM_WALK, AM_CHORD };
+       AM_THUMB, AM_WALK, AM_CHORD, AM_PAT };
+/* SIMPLE, the ARP page (params.c): ARP (P_AHOLD: on / off), MODE (P_AMODE: UP DOWN UPDN CYCLE RAND PATRN; CYCLE plays
+ * the notes in the order pressed, PATRN a random order picked when a note is added, then repeated), RATE (P_ARATE:
+ * 1/64 .. 1/4, ARP_DIV), FADE (P_ASWING: each note quieter, from the first of a phrase; none at 0). No latch, no
+ * swing, no CHANCE of its own (P_APROB is the track's). Notes from the keys and from the sequencer both go through
+ * it: a step's notes ratchet at RATE for its gate */
+static const uint8_t ARP_MODE[6] = {AM_UP, AM_DN, AM_UPDN, AM_ORD, AM_RND, AM_PAT};
+static const uint8_t ARP_DIV[7] = {10, 3, 5, 2, 4, 1, 0};   /* 1/64 1/32 16T 1/16 8T 1/8 1/4 (div_samples) */
+
+static uint32_t arp_am(const track_t *t)
+{
+    if (FELUCCA_SIMPLE)
+        return t->p[P_AHOLD] ? ARP_MODE[clamp(t->p[P_AMODE], 0, 5)] : AM_OFF;
+    return (uint32_t)t->p[P_AMODE];
+}
 
 static void arp_forget(track_t *t)               /* (its notes ended otherwise: trk_all_off) */
 {
@@ -281,9 +301,9 @@ static void arp_silence(track_t *t)              /* the sounding arp note(s) end
 static void arp_off(track_t *t)                  /* the sounding arp note(s) end (a recorded one too) */
 {
     if (t->arp_ch[0] | t->arp_ch[1] | t->arp_ch[2])
-        arp_chord_off(t, rec_on(t));
+        arp_chord_off(t, rec_on(t) && !FELUCCA_SIMPLE);
     trk_note_off(t, t->arp_note);
-    if (rec_on(t))
+    if (rec_on(t) && !FELUCCA_SIMPLE)
         rec_release(t, t->arp_note);
     t->arp_note = 0;
 }
@@ -291,7 +311,7 @@ static void arp_off(track_t *t)                  /* the sounding arp note(s) end
 /* the place in the note list (len notes) the step arp_idx plays (not inlined, as arp_chord); UP+8 adds its note */
 static __attribute__((noinline)) uint32_t arp_pick(track_t *t, uint32_t *list, uint32_t len)
 {
-    uint32_t i = t->arp_idx, m = (uint32_t)t->p[P_AMODE], cyc, k, w;
+    uint32_t i = t->arp_idx, m = (uint32_t)arp_am(t), cyc, k, w;
     if (m == AM_UP8 && len < 64u)                   /* UP+8: the first note again over the top */
         list[len++] = (uint32_t)clamp((int32_t)list[0] + 12 * t->p[P_AOCT], 0, 127);
     cyc = len > 1u ? 2u * len - 2u : 1u;
@@ -305,6 +325,21 @@ static __attribute__((noinline)) uint32_t arp_pick(track_t *t, uint32_t *list, u
         return k < len ? len - 1u - k : k - (len - 1u);
     case AM_RND:
         return rng() % len;
+    case AM_PAT: {                                  /* a shuffle of the list by the track's seed: the same each pass */
+        uint8_t pm[64];
+        uint32_t sd = arp_seed[trk_index(t)];
+        for (k = 0; k < len; k++)
+            pm[k] = (uint8_t)k;
+        for (k = len - 1u; k > 0u; k--) {
+            uint8_t x;
+            sd = sd * 1664525u + 1013904223u;
+            w = (sd >> 8) % (k + 1u);
+            x = pm[k];
+            pm[k] = pm[w];
+            pm[w] = x;
+        }
+        return pm[i % len];
+    }
     case AM_CONV:
     case AM_DIVG:
         k = i % len;
@@ -384,7 +419,7 @@ static uint32_t arp_list(const track_t *t, uint32_t *list, uint32_t *cnt)
             list[n++] = x;
     }
     *cnt = n;
-    if (!t->p[P_AORDER] && t->p[P_AMODE] != AM_ORD)   /* (ORD: as pressed, held[] keeps that order) */
+    if (!t->p[P_AORDER] && arp_am(t) != AM_ORD)   /* (ORD: as pressed, held[] keeps that order) */
         for (i = 1; i < n; i++)
             for (j = i; j > 0 && list[j - 1] > list[j]; j--) {
                 x = list[j];
@@ -394,7 +429,7 @@ static uint32_t arp_list(const track_t *t, uint32_t *list, uint32_t *cnt)
     for (o = 0; o < (uint32_t)t->p[P_AOCT]; o++)
         for (i = 0; i < n && len < 64u; i++)
             list[len++] = clamp((int32_t)list[i] + 12 * (int32_t)o, 0, 127);
-    if (n && t->p[P_AMODE] == AM_REPEAT) { list[0] = last; len = 1; } /* REPEAT: last played note, no octave traversal */
+    if (n && arp_am(t) == AM_REPEAT) { list[0] = last; len = 1; } /* REPEAT: last played note, no octave traversal */
     return len;
 }
 
@@ -409,12 +444,22 @@ static __attribute__((noinline)) void arp_fire(track_t *t, uint32_t period)
         return;
     }
     t->arp_idx++;
-    j = t->p[P_AMODE] == AM_CHORD ? 0u : arp_pick(t, list, len);
+    j = arp_am(t) == AM_CHORD ? 0u : arp_pick(t, list, len);
     if (t->arp_note)
         arp_off(t);
+    if (FELUCCA_SIMPLE) {                           /* FADE: each note quieter; nothing recorded (the keys' notes are) */
+        uint32_t ti = trk_index(t), vel = arp_lv[ti] >> 8;
+        arp_lv[ti] = (uint16_t)(arp_lv[ti] * (uint32_t)(200 - clamp(t->p[P_ASWING], 0, 100)) / 200u);
+        if (!vel)
+            return;
+        t->arp_off = period * (uint32_t)t->p[P_AGATE] / 128u;
+        t->arp_note = (uint8_t)list[j];
+        trk_note_on(t, t->arp_note, vel);
+        return;
+    }
     if ((uint32_t)(rng() & 127u) <= (uint32_t)t->p[P_APROB]) {
         t->arp_off = period * (uint32_t)t->p[P_AGATE] / 128u;
-        if (t->p[P_AMODE] == AM_CHORD) {            /* CHORD: the first 4 notes, an octave up each step */
+        if (arp_am(t) == AM_CHORD) {            /* CHORD: the first 4 notes, an octave up each step */
             arp_chord(t, list, cnt);
             return;
         }
@@ -435,13 +480,13 @@ static void arp_step(track_t *t, uint32_t n, uint32_t gate_n)
         else
             t->arp_off -= gate_n;
     }
-    if (!t->p[P_AMODE] || !t->nheld) {
+    if (!arp_am(t) || !t->nheld) {
         if (!t->nheld && t->arp_note)
             arp_off(t);
         return;
     }
-    period = div_samples((uint32_t)t->p[P_ARATE]);
-    sw = t->p[P_ASWING] * (int32_t)period / 250;
+    period = div_samples(FELUCCA_SIMPLE ? ARP_DIV[clamp(t->p[P_ARATE], 0, 6)] : (uint32_t)t->p[P_ARATE]);
+    sw = FELUCCA_SIMPLE ? 0 : t->p[P_ASWING] * (int32_t)period / 250;
     t->arp_pos += n;
     if (t->arp_pos < period + (uint32_t)((t->arp_idx & 1u) ? sw : -sw) && t->arp_pos != 0xFFFFFFF + n)
         return;
@@ -569,7 +614,7 @@ static void rec_release(track_t *t, uint32_t note)
 static __attribute__((noinline)) void cin_keep(track_t *t, uint32_t note, uint32_t vel)
 {
     uint32_t i = trk_index(t), k;
-    if (cin_left != 1u || cin_pos < click_beat_len() / 2u || !((song.rec >> i) & 1u) || t->p[P_AMODE])
+    if (cin_left != 1u || cin_pos < click_beat_len() / 2u || !((song.rec >> i) & 1u) || arp_am(t))
         return;
     for (k = 0; k < cin_n[i] && cin_note[i][k] != note; k++)
         ;
@@ -588,9 +633,9 @@ static void input_on(track_t *t, uint32_t note, uint32_t vel)
     last_note = (uint8_t)note;
     if (cin_left)
         cin_keep(t, note, vel);
-    if (rec_on(t) && !t->p[P_AMODE])               /* (ARP on: arp_tick records its notes) */
+    if (rec_on(t) && (FELUCCA_SIMPLE || !arp_am(t)))   /* (ARP on: arp_tick records its notes; SIMPLE: the key's note) */
         rec_note(t, note, vel);
-    if (t->p[P_AMODE])
+    if (arp_am(t))
         arp_add(t, note);
     else
         trk_note_on(t, note, vel);
@@ -864,11 +909,25 @@ static void seq_start(void)
     perf_start();                                  /* perform.c: its 1/16 grid too */
 }
 
+/* SIMPLE: a step's note on / off, through the ARP when it is on (a ratchet at its RATE for the step's gate) */
+static void seq_note_on(track_t *t, uint32_t note, uint32_t vel)
+{
+    if (FELUCCA_SIMPLE && arp_am(t))
+        arp_add(t, note);
+    else
+        trk_note_on(t, note, vel);
+}
+static void seq_note_off(track_t *t, uint32_t note)
+{
+    if (FELUCCA_SIMPLE)
+        arp_remove(t, note);                        /* (not held: nothing) */
+    trk_note_off(t, note);
+}
 static void seq_release(track_t *t)
 {
     uint32_t i;
     for (i = 0; i < t->seq_n; i++)
-        trk_note_off(t, t->seq_notes[i]);
+        seq_note_off(t, t->seq_notes[i]);
     t->seq_n = 0;
     t->seq_hold = 0;
     t->slide_glide = 0;                             /* live MONO / LEG keys must not glide after it */
@@ -976,6 +1035,8 @@ static __attribute__((noinline)) void seq_step(track_t *t, const step_t *s, uint
         seq_release(t);
         return;
     }
+    if (FELUCCA_SIMPLE && arp_am(t))                /* SIMPLE, ARP on: the step's notes held all through it (its ratchet) */
+        gate = step_samples(t, period, idx) - 1u;
     if (hits > 1u) {                                /* RATCH: the gate of a part, no slide or tie out */
         gate = step_samples(t, period, idx) / hits * (uint32_t)t->p[P_SGATE] / 128u;
         if (!(skip & SEQ_REP))
@@ -1000,13 +1061,13 @@ static __attribute__((noinline)) void seq_step(track_t *t, const step_t *s, uint
         seq_release(t);
     for (i = 0; i < m; i++)
         if (!((sk >> i) & 1u))
-            trk_note_on(t, nn[i], vv[i]);
+            seq_note_on(t, nn[i], vv[i]);
     if (slide_in)                                   /* release what is not held over */
         for (i = 0; i < t->seq_n; i++) {
             for (j = 0; j < m && nn[j] != t->seq_notes[i]; j++)
                 ;
             if (j == m)
-                trk_note_off(t, t->seq_notes[i]);
+                seq_note_off(t, t->seq_notes[i]);
         }
     t->seq_n = 0;
     for (i = 0; i < m; i++)
@@ -1356,15 +1417,15 @@ static void events_block(uint32_t n)
         }
         engine_block(t);                              /* engine switch: fade, then switch (voice.c) */
         /* ARP turned off, or HOLD released with no key down: drop the latched chord */
-        if ((t->armp && !t->p[P_AMODE]) || (t->aholdp && !t->p[P_AHOLD] && !t->arp_phys)) {
+        if ((t->armp && !arp_am(t)) || (t->aholdp && !arp_latch(t) && !t->arp_phys)) {
             t->nheld = 0;
-            if (!t->p[P_AMODE])
+            if (!arp_am(t))
                 t->arp_phys = 0;
             if (t->arp_note)
                 arp_silence(t);
         }
-        t->armp = t->p[P_AMODE];
-        t->aholdp = t->p[P_AHOLD];
+        t->armp = arp_am(t);
+        t->aholdp = arp_latch(t);
     }
     keyboard_block();
     while (mi_r != mi_w) {                            /* USB-MIDI (and TRS) in */

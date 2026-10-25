@@ -122,7 +122,7 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   lights show which slots are used.
 - No Felucca screens: no layers (holding a button = tapping it, holds are free
   for groovebox features), no MENU (HOME hold does nothing). The groovebox has
-  its own PAGES table in params.c (16 pages).
+  its own PAGES table in params.c (17 pages).
 - Saves while playing apply at once but write to flash at stop (a flash erase
   stops the audio). Old Felucca projects / user presets are gone in this build:
   their flash sectors hold the sounds and kits.
@@ -151,6 +151,14 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   depth AND length (old PNCH + SWPT in one). FM is a second sine on the kick's
   sine at RATIO (.5 1 2 .. 16), not feedback. Kicks saved before this load with
   their knobs one place off.
+- ARP page (ARP button; seq.c ARP_*): ARP on/off, MODE (UP DOWN UPDN CYCLE RAND
+  PATRN), RATE (1/64 1/32 16T 1/16 8T 1/8 1/4), FADE (each note quieter).
+  CYCLE = the order the keys were pressed; PATRN = a random order picked when a
+  note is added, then repeated. Keys (KEY and PARAM mode) and the sequencer's
+  notes both go through it: in the sequencer a step ratchets at RATE for the
+  whole step (a chord step arps). Recording stores the key's note, not each
+  arp note. Stored in the old arp ids (ARP = P_AHOLD, FADE = P_ASWING); no
+  latch, swing or arp chance in this build.
 - Parameter ids (core.h P_*) never move: saved sounds map by count. New
   parameters go just before P_E0.
 - Machines (engines.c MACHINES): each is an engine + that engine's machine
