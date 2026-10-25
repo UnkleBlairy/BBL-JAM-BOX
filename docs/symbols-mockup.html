@@ -1,0 +1,358 @@
+<title>Symbol Screens</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;600&family=Silkscreen:wght@400;700&family=VT323&display=swap">
+<style>
+/* Layout: a control strip on top, then four live 240 x 240 screens side by side (stacked on a phone), each one a way to
+   put the pixel symbols on the groovebox. Look: the same black / cream / orange as the icon editor. */
+:root {
+  --bg: #0c0b0b; --panel: #151312; --cell: #1b1917; --line: #2d2926; --line2: #4a433d;
+  --ink: #f1e8da; --dim: #8d8478; --accent: #ff7a45; --accent-ink: #1a0d06;
+  --head: "Silkscreen", "Courier New", monospace; --body: "VT323", "Courier New", monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { background: var(--bg); }
+body { margin: 0; color: var(--ink); font: 20px/1.15 var(--body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 20px 48px; }
+.wrap { max-width: 1240px; margin: 0 auto; }
+h1 { font: 700 26px/1 var(--head); letter-spacing: 1px; margin: 0 0 6px; color: var(--accent); text-transform: uppercase; }
+.sub { color: var(--dim); margin-bottom: 18px; max-width: 70ch; }
+button, select { font: inherit; color: inherit; }
+.ctl { background: var(--panel); border: 2px solid var(--line2); padding: 12px 14px; display: flex; flex-wrap: wrap; gap: 14px 26px; align-items: flex-end; margin-bottom: 22px; }
+.g { display: grid; gap: 5px; }
+.lbl { font: 400 11px/1 var(--head); letter-spacing: 1px; color: var(--dim); text-transform: uppercase; }
+.row { display: flex; flex-wrap: wrap; gap: 6px; }
+.btn { background: var(--cell); border: 2px solid var(--line2); padding: 5px 9px 4px; font: 400 12px/1.1 var(--head); letter-spacing: .5px; text-transform: uppercase; min-height: 32px; cursor: pointer; }
+.btn:hover { border-color: var(--ink); }
+.btn[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.btn.go { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+.btn.go:hover { background: var(--ink); border-color: var(--ink); }
+.btn:focus-visible, select:focus-visible, .sw:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+select { background: var(--cell); border: 2px solid var(--line2); padding: 5px 8px; font: 400 12px/1.1 var(--head); text-transform: uppercase; min-height: 32px; }
+.sw { width: 28px; height: 28px; border: 2px solid var(--line2); padding: 0; cursor: pointer; }
+.sw[aria-pressed="true"] { border-color: var(--ink); box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--ink); }
+.screens { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 26px 22px; }
+.card { display: grid; gap: 10px; align-content: start; min-width: 0; }
+.card h2 { font: 700 14px/1.1 var(--head); letter-spacing: 1px; margin: 0; text-transform: uppercase; display: flex; gap: 10px; align-items: baseline; }
+.card h2 b { color: var(--accent); font-size: 22px; }
+.card p { margin: 0; color: var(--dim); font-size: 19px; max-width: 46ch; }
+.card p b { color: var(--ink); font-weight: 400; }
+.scr { width: 100%; max-width: 480px; aspect-ratio: 1; border: 2px solid var(--line2); touch-action: none; cursor: ns-resize; background: #000; }
+canvas { display: block; }
+.hint { color: var(--dim); font-size: 19px; margin-top: 18px; max-width: 80ch; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <h1>Symbol Screens</h1>
+  <div class="sub">Four ways to put the pixel symbols on the groovebox. Drag up and down on a column of any screen to turn that knob (or use the mouse wheel). Pick the page, the machine and the track colour above and watch all four change.</div>
+
+  <div class="ctl">
+    <div class="g"><div class="lbl">Page</div><div class="row" id="pages"></div></div>
+    <div class="g"><div class="lbl">Track colour</div><div class="row" id="tracks"></div></div>
+    <div class="g"><div class="lbl">Machine</div><select id="selM" aria-label="Machine"></select></div>
+    <div class="g"><div class="lbl">Filter type</div><select id="selF" aria-label="Filter type"></select></div>
+    <div class="g"><div class="lbl">LFO wave</div><select id="selW" aria-label="LFO wave"></select></div>
+    <div class="g"><div class="lbl">Text</div><div class="row" id="fonts">
+      <button class="btn" data-f="cur" aria-pressed="false">Current</button>
+      <button class="btn" data-f="pixel" aria-pressed="true">Pixel</button></div></div>
+    <div class="g"><div class="lbl">&nbsp;</div><button class="btn go" id="wig">Wiggle the knobs</button></div>
+  </div>
+
+  <div class="screens" id="screens"></div>
+
+  <p class="hint">A shows a big symbol until you touch a knob. B keeps a small symbol in the header all the time. C swaps the value of machine, filter type and wave for its symbol. D adds a page rail down the left and hides the numbers until you turn that knob. Tell me which parts you like and I'll combine them.</p>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var N = 16, LEN = 256;
+  /* ---------- the icons (the same drawings as the editor) ---------- */
+  function mk(fn) {
+    var g = new Uint8Array(LEN);
+    function P(x, y) { x = Math.round(x); y = Math.round(y); if (x >= 0 && x < N && y >= 0 && y < N) g[y * N + x] = 1; }
+    function L(x0, y0, x1, y1) { var dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1, e = dx + dy; for (;;) { P(x0, y0); if (x0 === x1 && y0 === y1) break; var e2 = 2 * e; if (e2 >= dy) { e += dy; x0 += sx; } if (e2 <= dx) { e += dx; y0 += sy; } } }
+    function poly(p) { for (var i = 0; i < p.length - 1; i++) L(p[i][0], p[i][1], p[i + 1][0], p[i + 1][1]); }
+    function H(x0, x1, y) { for (var x = x0; x <= x1; x++) P(x, y); }
+    function V(x, y0, y1) { for (var y = y0; y <= y1; y++) P(x, y); }
+    function R(x, y, w, h) { H(x, x + w - 1, y); H(x, x + w - 1, y + h - 1); V(x, y, y + h - 1); V(x + w - 1, y, y + h - 1); }
+    function F(x, y, w, h) { for (var j = 0; j < h; j++) H(x, x + w - 1, y + j); }
+    function C(cx, cy, r) { for (var y = 0; y < N; y++) for (var x = 0; x < N; x++) { var d = Math.sqrt((x - cx) * (x - cx) + (y - cy) * (y - cy)); if (d >= r - 0.6 && d < r + 0.45) P(x, y); } }
+    function A(cx, cy, r, a0, a1) { for (var a = a0; a <= a1; a += 1) { var t = a * Math.PI / 180; P(cx + r * Math.cos(t), cy + r * Math.sin(t)); } }
+    fn({ P: P, L: L, poly: poly, H: H, V: V, R: R, F: F, C: C, A: A });
+    return g;
+  }
+  var EX = {
+    syn: function (d) { d.R(1, 3, 14, 10); d.F(5, 4, 3, 5); d.F(9, 4, 3, 5); d.V(6, 9, 12); d.V(10, 9, 12); },
+    kick: function (d) { d.C(7.5, 7.5, 6.5); d.C(7.5, 7.5, 3); d.F(7, 7, 2, 2); },
+    snare: function (d) { d.H(3, 12, 3); d.H(3, 12, 6); d.P(2, 4); d.P(2, 5); d.P(13, 4); d.P(13, 5); d.V(2, 6, 12); d.V(13, 6, 12); d.H(3, 12, 13); d.poly([[3, 9], [5, 11], [7, 9], [9, 11], [11, 9], [12, 10]]); },
+    hats: function (d) { d.V(8, 0, 3); d.H(2, 13, 4); d.H(1, 14, 5); d.H(1, 14, 8); d.H(2, 13, 9); d.V(8, 10, 14); d.H(5, 11, 15); },
+    cymbal: function (d) { d.poly([[1, 7], [4, 5], [8, 4], [12, 5], [15, 7]]); d.poly([[1, 7], [4, 8], [8, 9], [12, 8], [15, 7]]); d.P(8, 3); d.V(8, 10, 14); d.H(6, 10, 15); d.L(3, 3, 1, 1); d.L(13, 3, 15, 1); d.L(8, 1, 8, 0); },
+    perc: function (d) { d.H(5, 10, 2); d.P(4, 3); d.P(11, 3); d.H(5, 10, 4); d.L(4, 4, 5, 13); d.L(11, 4, 10, 13); d.H(5, 10, 13); d.H(4, 11, 8); },
+    lp: function (d) { d.V(1, 1, 14); d.H(1, 15, 14); d.poly([[3, 4], [9, 4], [11, 5], [12, 8], [13, 11], [15, 13]]); },
+    hp: function (d) { d.V(1, 1, 14); d.H(1, 15, 14); d.poly([[3, 13], [5, 12], [6, 9], [7, 5], [8, 4], [15, 4]]); },
+    bp: function (d) { d.V(1, 1, 14); d.H(1, 15, 14); d.poly([[3, 13], [5, 13], [6, 9], [7, 5], [8, 4], [9, 4], [10, 5], [11, 9], [12, 13], [15, 13]]); },
+    sine: function (d) { var py = null; for (var x = 0; x < N; x++) { var y = Math.round(8 - 5 * Math.sin(x / 15 * 2 * Math.PI)); if (py !== null) d.L(x - 1, py, x, y); d.P(x, y); py = y; } },
+    tri: function (d) { d.poly([[0, 8], [4, 3], [12, 13], [15, 9]]); },
+    saw: function (d) { d.poly([[1, 13], [7, 3], [7, 13], [14, 3], [14, 13]]); },
+    sqr: function (d) { d.poly([[0, 12], [1, 12], [1, 4], [7, 4], [7, 12], [13, 12], [13, 4], [15, 4]]); },
+    sh: function (d) { var h = [9, 4, 11, 6, 12, 3, 8], x = 1; for (var i = 0; i < h.length; i++) { d.H(x, x + 2, h[i]); if (i + 1 < h.length) d.V(x + 2, Math.min(h[i], h[i + 1]), Math.max(h[i], h[i + 1])); x += 2; } },
+    delay: function (d) { d.V(2, 2, 13); d.V(6, 4, 11); d.V(10, 6, 9); d.V(14, 7, 8); },
+    verb: function (d) { d.V(1, 5, 10); d.A(1, 7.5, 5, -50, 50); d.A(1, 7.5, 9, -50, 50); d.A(1, 7.5, 13, -50, 50); }
+  };
+  var IC = {};
+  Object.keys(EX).forEach(function (k) { IC[k] = mk(EX[k]); });
+
+  var MACH = [["syn", "SYN", "SYNTH"], ["kick", "KICK", "KICK"], ["snare", "SNR", "SNARE"], ["hats", "HATS", "HATS"], ["cymbal", "CYM", "CYMBAL"], ["perc", "PERC", "PERC"]];
+  var FILT = [["lp", "LP", "LOW PASS"], ["bp", "BP", "BAND PASS"], ["hp", "HP", "HIGH PASS"]];
+  var WAVE = [["sine", "SIN", "SINE"], ["tri", "TRI", "TRIANGLE"], ["saw", "SAW", "SAW"], ["sqr", "SQR", "SQUARE"], ["sh", "S&H", "RANDOM"]];
+  var TRACKS = [["#ff5a36", "KICK track"], ["#ffd60a", "SNARE track"], ["#2ec4ff", "HATS track"], ["#b388ff", "PERC track"]];
+  var MPARAMS = {
+    syn: ["ALGO", "R1", "R2", "FB"], kick: ["TUNE", "PNCH", "SWPT", "CLIK"], snare: ["TUNE", "NOIS", "NDEC", "O2"],
+    hats: ["TUNE", "METL", "TONE", "R2"], cymbal: ["TUNE", "METL", "TONE", "R2"], perc: ["TUNE", "RATIO", "IDX", "IDEC"]
+  };
+
+  /* ---------- state ---------- */
+  var st = { page: "osc", track: 0, m: 1, f: 0, w: 0, font: "pixel" };
+  var vals = { osc: [64, 40, 70, 30], flt: [64, 90, 35, 20], lfo: [64, 50, 60, 0], dly: [40, 63, 47, 50], vrb: [22, 71, 47, 0] };
+  var PAGES = [["osc", "OSC 1"], ["flt", "FILTER"], ["lfo", "LFO"], ["dly", "DELAY"], ["vrb", "VERB"]];
+
+  function pageInfo(p) {
+    var m = MACH[st.m];
+    if (p === "osc") return { title: "OSC 1", hero: m[0], heroName: m[2], enumFirst: { list: MACH, key: "m", label: "MACH" }, labels: ["MACH"].concat(MPARAMS[m[0]].slice(0, 3)) };
+    if (p === "flt") return { title: "FILTER", hero: FILT[st.f][0], heroName: FILT[st.f][2], enumFirst: { list: FILT, key: "f", label: "TYPE" }, labels: ["TYPE", "FREQ", "RES", "DRV"] };
+    if (p === "lfo") return { title: "LFO", hero: WAVE[st.w][0], heroName: WAVE[st.w][2], enumFirst: { list: WAVE, key: "w", label: "WAVE" }, labels: ["WAVE", "SPD", "DEPTH", "FADE"] };
+    if (p === "dly") return { title: "DELAY", hero: "delay", heroName: "DELAY", labels: ["DLY", "TIME", "FDBK", "TONE"] };
+    return { title: "VERB", hero: "verb", heroName: "REVERB", labels: ["REV", "SIZE", "DAMP", "TONE"] };
+  }
+  function pageIcon(p) { return p === "osc" ? MACH[st.m][0] : p === "flt" ? FILT[st.f][0] : p === "lfo" ? WAVE[st.w][0] : p === "dly" ? "delay" : "verb"; }
+
+  /* ---------- drawing, in 240 x 240 space on a 2x canvas ---------- */
+  var W = "#ffffff";
+  function Ctx(cv) {
+    var c = cv.getContext("2d"); c.imageSmoothingEnabled = false;
+    return c;
+  }
+  function rect(c, x, y, w, h, col) { c.fillStyle = col; c.fillRect(x, y, w, h); }
+  function icon(c, bits, x, y, s, col) {
+    c.fillStyle = col;
+    for (var i = 0; i < LEN; i++) if (bits[i]) c.fillRect(x + (i % N) * s, y + ((i / N) | 0) * s, s, s);
+  }
+  function fam() { return st.font === "pixel" ? '"Silkscreen"' : '"Inter Tight"'; }
+  function wt() { return st.font === "pixel" ? "400" : "600"; }
+  function text(c, s, x, y, size, col, align) {
+    c.font = wt() + " " + size + "px " + fam() + ", monospace";
+    c.textBaseline = "top"; c.textAlign = align || "left"; c.fillStyle = col;
+    c.fillText(s, x, y);
+  }
+  function tw(c, s, size) { c.font = wt() + " " + size + "px " + fam() + ", monospace"; return c.measureText(s).width; }
+  function oval(c, x, y, w, h, col, filled, bg) {
+    var r = h / 2;
+    function rows(xx, yy, ww, hh, cc) {
+      var rr = hh / 2;
+      for (var j = 0; j < hh; j++) { var d2 = 2 * j + 1 - hh, dx = Math.floor(Math.sqrt(Math.max(0, rr * rr * 4 - d2 * d2))), inn = Math.round(rr - (dx + 1) / 2); c.fillStyle = cc; c.fillRect(xx + inn, yy + j, ww - 2 * inn, 1); }
+    }
+    rows(x, y, w, h, col);
+    if (!filled) rows(x + 2, y + 2, w - 4, h - 4, bg);
+  }
+  function dial(c, cx, cy, ratio, col, r) {
+    r = r || 22;
+    c.fillStyle = col;
+    for (var a = 0; a < 360; a++) { var t = a * Math.PI / 180; c.fillRect(Math.round(cx + r * Math.sin(t)) - 1, Math.round(cy - r * Math.cos(t)) - 1, 3, 3); }
+    var ang = (225 + ratio * 270) * Math.PI / 180, tx = Math.round(cx + (r - 5) * Math.sin(ang)), ty = Math.round(cy - (r - 5) * Math.cos(ang));
+    var dx = Math.abs(tx - cx), dy = -Math.abs(ty - cy), sx = cx < tx ? 1 : -1, sy = cy < ty ? 1 : -1, e = dx + dy, x0 = cx, y0 = cy;
+    for (;;) { c.fillRect(x0 - 1, y0 - 1, 3, 3); if (x0 === tx && y0 === ty) break; var e2 = 2 * e; if (e2 >= dy) { e += dy; x0 += sx; } if (e2 <= dx) { e += dx; y0 += sy; } }
+  }
+  function enumInfo(info, k) { return k === 0 && info.enumFirst ? info.enumFirst : null; }
+  function valText(info, k) {
+    var e = enumInfo(info, k);
+    if (e) return e.list[st[e.key]][1];
+    if (info.title === "VERB" && k === 3) return "HALL";
+    return String(vals[st.page][k]);
+  }
+  function ratioOf(info, k) { var e = enumInfo(info, k); if (e) return st[e.key] / (e.list.length - 1); return vals[st.page][k] / 127; }
+
+  /* shared pieces */
+  function bpm(c, bg) { text(c, "120", 232, 12, st.font === "pixel" ? 16 : 15, W, "right"); }
+  function pill(c, bg, withIcon) {
+    var info = pageInfo(st.page), nm = MACH[st.m][2], size = st.font === "pixel" ? 16 : 15;
+    var w = Math.round(tw(c, nm, size)) + 18 + (withIcon ? 20 : 0); w &= ~1;
+    oval(c, 232 - w, 198, w, 26, W, false, bg);
+    var x = 232 - w + 9;
+    if (withIcon) { icon(c, IC[MACH[st.m][0]], x - 1, 203, 1, W); x += 20; }
+    text(c, nm, x, st.font === "pixel" ? 204 : 202, size, W, "left");
+  }
+  function dots(c, bg) {
+    var n = st.page === "dly" || st.page === "vrb" ? 2 : 2;
+    var order = ["osc", "flt", "lfo", "dly", "vrb"], idx = 0;
+    for (var k = 0; k < 2; k++) { if (k === idx) oval(c, 8 + k * 20, 206, 16, 8, W, true, bg); else oval(c, 8 + k * 20, 206, 8, 8, W, false, bg); }
+  }
+  function column(c, info, k, o) {
+    /* o: {cx, labelY, cy, r, valY, showLabel, showDial, showVal, iconVal, alpha, big} */
+    var size = st.font === "pixel" ? 16 : 15, vsize = st.font === "pixel" ? 24 : 28;
+    c.globalAlpha = o.alpha === undefined ? 1 : o.alpha;
+    if (o.showLabel !== false) text(c, info.labels[k], o.cx, o.labelY, size, o.labelCol || W, "center");
+    if (o.showDial !== false) dial(c, o.cx, o.cy, ratioOf(info, k), o.dialCol || W, o.r);
+    if (o.showVal !== false) {
+      var e = enumInfo(info, k);
+      if (e && o.iconVal) icon(c, IC[e.list[st[e.key]][0]], o.cx - 16, o.valY, 2, W);
+      else {
+        var v = valText(info, k), s = vsize;
+        if (tw(c, v, s) > 54) s = size;
+        text(c, v, o.cx, o.valY + (s === vsize ? 0 : 8), s, W, "center");
+      }
+    }
+    c.globalAlpha = 1;
+  }
+
+  /* ---------- the four screens ---------- */
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  var VARS = {
+    A: function (c, bg, S) {                                  /* a big symbol until a knob is touched */
+      var info = pageInfo(st.page), r = S.r;
+      c.globalAlpha = 1 - r;
+      if (r < 0.98) {
+        icon(c, IC[info.hero], 80, 38, 5, W);
+        text(c, info.heroName, 120, 128, st.font === "pixel" ? 24 : 28, W, "center");
+        text(c, info.title, 120, 166, st.font === "pixel" ? 16 : 15, W, "center");
+      }
+      c.globalAlpha = r;
+      if (r > 0.02) {
+        icon(c, IC[info.hero], 8, 6, 2, W);
+        text(c, info.title, 48, st.font === "pixel" ? 10 : 6, st.font === "pixel" ? 24 : 28, W, "left");
+        for (var k = 0; k < 4; k++) column(c, info, k, { cx: 8 + k * 56 + 28, labelY: 60, cy: 108, valY: 142 });
+      }
+      c.globalAlpha = 1;
+      bpm(c, bg); pill(c, bg, false);
+    },
+    B: function (c, bg) {                                     /* a small symbol in the header, always */
+      var info = pageInfo(st.page);
+      icon(c, IC[info.hero], 8, 6, 2, W);
+      text(c, info.title, 48, st.font === "pixel" ? 10 : 6, st.font === "pixel" ? 24 : 28, W, "left");
+      for (var k = 0; k < 4; k++) column(c, info, k, { cx: 8 + k * 56 + 28, labelY: 60, cy: 108, valY: 142 });
+      bpm(c, bg); dots(c, bg); pill(c, bg, true);
+    },
+    C: function (c, bg) {                                     /* the machine, type and wave values are symbols */
+      var info = pageInfo(st.page);
+      text(c, info.title, 8, st.font === "pixel" ? 10 : 6, st.font === "pixel" ? 24 : 28, W, "left");
+      for (var k = 0; k < 4; k++) column(c, info, k, { cx: 8 + k * 56 + 28, labelY: 60, cy: 108, valY: 134, iconVal: true });
+      bpm(c, bg); dots(c, bg); pill(c, bg, false);
+    },
+    D: function (c, bg, S) {                                  /* a page rail on the left, numbers only on touch */
+      var info = pageInfo(st.page), size = st.font === "pixel" ? 16 : 15, now = performance.now();
+      PAGES.forEach(function (p, i) {
+        var y = 10 + i * 36, on = p[0] === st.page;
+        if (on) oval(c, 2, y - 3, 30, 26, W, true, bg);
+        icon(c, IC[pageIcon(p[0])], 9, y + 1, 1, on ? bg : W);
+      });
+      text(c, info.title, 42, st.font === "pixel" ? 10 : 6, st.font === "pixel" ? 24 : 28, W, "left");
+      for (var k = 0; k < 4; k++) {
+        var t = Math.max(0, 1 - (now - (S.cols[k] || -1e9)) / 1800), cx = 40 + k * 49 + 24, hot = t > 0;
+        var e = enumInfo(info, k);
+        text(c, info.labels[k], cx, 62, size, W, "center");
+        dial(c, cx, 108, ratioOf(info, k), W, 19);
+        c.globalAlpha = Math.min(1, t * 3);
+        if (hot) {
+          if (e) icon(c, IC[e.list[st[e.key]][0]], cx - 16, 140, 2, W);
+          else { var v = valText(info, k), s = st.font === "pixel" ? 24 : 28; if (tw(c, v, s) > 48) s = size; text(c, v, cx, 142 + (s === size ? 8 : 0), s, W, "center"); }
+        }
+        c.globalAlpha = 1;
+      }
+      bpm(c, bg); pill(c, bg, true);
+    }
+  };
+  var INFO = {
+    A: ["A", "Hero symbol", "A big symbol and its name sit alone on the screen. <b>Touch a knob</b> and the four dials slide in, the symbol shrinks into the header, then it all drifts back after two seconds."],
+    B: ["B", "Header symbol", "The simplest one. A <b>small symbol sits beside the page name</b> and the machine pill gets its own icon. Nothing hides, nothing moves."],
+    C: ["C", "Symbol as value", "The knobs that pick something (<b>machine, filter type, wave</b>) show the symbol where the number would be. Every other knob stays numeric."],
+    D: ["D", "Rail + touch values", "A <b>rail of page symbols</b> down the left shows where you are. Dials sit quiet, and a column's <b>value only appears while you turn it</b>."]
+  };
+
+  /* ---------- wiring ---------- */
+  var screens = [];
+  var host = document.getElementById("screens");
+  ["A", "B", "C", "D"].forEach(function (key) {
+    var card = document.createElement("div"); card.className = "card";
+    card.innerHTML = '<h2><b></b><span></span></h2><canvas class="scr" width="480" height="480" aria-label="Screen mock-up"></canvas><p></p>';
+    card.querySelector("b").textContent = INFO[key][0]; card.querySelector("span").textContent = INFO[key][1]; card.querySelector("p").innerHTML = INFO[key][2];
+    host.appendChild(card);
+    var cv = card.querySelector("canvas"), c = Ctx(cv);
+    var S = { key: key, cv: cv, c: c, r: 0, touch: -1e9, cols: [] };
+    screens.push(S);
+    var drag = null;
+    function colAt(e) {
+      var rc = cv.getBoundingClientRect(), x = (e.clientX - rc.left) / rc.width * 240;
+      if (key === "D") return Math.max(0, Math.min(3, Math.floor((x - 40) / 49)));
+      return Math.max(0, Math.min(3, Math.floor((x - 8) / 56)));
+    }
+    cv.addEventListener("pointerdown", function (e) { e.preventDefault(); cv.setPointerCapture(e.pointerId); drag = { k: colAt(e), y: e.clientY, acc: 0 }; touch(S, drag.k); });
+    cv.addEventListener("pointermove", function (e) {
+      if (!drag) return;
+      drag.acc += drag.y - e.clientY; drag.y = e.clientY;
+      var info = pageInfo(st.page), step = enumInfo(info, drag.k) ? 22 : 3, n = Math.trunc(drag.acc / step);
+      if (n) { drag.acc -= n * step; turn(S, drag.k, n); }
+    });
+    function up() { drag = null; }
+    cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up);
+    cv.addEventListener("wheel", function (e) { e.preventDefault(); turn(S, colAt(e), e.deltaY < 0 ? 1 : -1); }, { passive: false });
+  });
+  function touch(S, k) { S.touch = performance.now(); S.cols[k] = S.touch; }
+  function turn(S, k, n) {
+    var info = pageInfo(st.page), e = enumInfo(info, k);
+    touch(S, k);
+    if (e) { st[e.key] = (st[e.key] + (n > 0 ? 1 : -1) + e.list.length) % e.list.length; syncSel(); }
+    else vals[st.page][k] = Math.max(0, Math.min(127, vals[st.page][k] + n));
+  }
+  function bgNow() { return TRACKS[st.track][0]; }
+  function frame() {
+    var now = performance.now();
+    screens.forEach(function (S) {
+      var target = now - S.touch < 2000 ? 1 : 0;
+      S.r += (target - S.r) * 0.18; if (Math.abs(target - S.r) < 0.01) S.r = target;
+      var c = S.c, bg = bgNow();
+      c.setTransform(2, 0, 0, 2, 0, 0);
+      c.globalAlpha = 1; c.fillStyle = bg; c.fillRect(0, 0, 240, 240);
+      VARS[S.key](c, bg, S);
+    });
+    requestAnimationFrame(frame);
+  }
+  /* controls */
+  var pg = document.getElementById("pages");
+  PAGES.forEach(function (p) {
+    var b = document.createElement("button"); b.className = "btn"; b.type = "button"; b.textContent = p[1]; b.setAttribute("aria-pressed", p[0] === st.page ? "true" : "false");
+    b.addEventListener("click", function () { st.page = p[0]; pg.querySelectorAll(".btn").forEach(function (o) { o.setAttribute("aria-pressed", o === b ? "true" : "false"); }); });
+    pg.appendChild(b);
+  });
+  var tr = document.getElementById("tracks");
+  TRACKS.forEach(function (t, i) {
+    var b = document.createElement("button"); b.className = "sw"; b.type = "button"; b.style.background = t[0]; b.setAttribute("aria-label", t[1]); b.setAttribute("aria-pressed", i === st.track ? "true" : "false");
+    b.addEventListener("click", function () { st.track = i; tr.querySelectorAll(".sw").forEach(function (o) { o.setAttribute("aria-pressed", o === b ? "true" : "false"); }); });
+    tr.appendChild(b);
+  });
+  function fill(sel, list, key) {
+    list.forEach(function (m, i) { var o = document.createElement("option"); o.value = i; o.textContent = m[2]; sel.appendChild(o); });
+    sel.value = st[key];
+    sel.addEventListener("change", function () { st[key] = +sel.value; });
+  }
+  var sM = document.getElementById("selM"), sF = document.getElementById("selF"), sW = document.getElementById("selW");
+  fill(sM, MACH, "m"); fill(sF, FILT, "f"); fill(sW, WAVE, "w");
+  function syncSel() { sM.value = st.m; sF.value = st.f; sW.value = st.w; }
+  document.querySelectorAll("#fonts .btn").forEach(function (b) {
+    b.addEventListener("click", function () { st.font = b.getAttribute("data-f"); document.querySelectorAll("#fonts .btn").forEach(function (o) { o.setAttribute("aria-pressed", o === b ? "true" : "false"); }); });
+  });
+  document.getElementById("wig").addEventListener("click", function () {
+    var i = 0, iv = setInterval(function () {
+      var k = i % 4;
+      screens.forEach(function (S) { touch(S, k); });
+      if (!(enumInfo(pageInfo(st.page), k))) vals[st.page][k] = Math.max(0, Math.min(127, vals[st.page][k] + (i < 8 ? 18 : -18)));
+      if (++i >= 16) clearInterval(iv);
+    }, 280);
+  });
+  var fontsReady = document.fonts && document.fonts.load ? Promise.all([document.fonts.load('16px "Silkscreen"'), document.fonts.load('600 16px "Inter Tight"')]) : Promise.resolve();
+  fontsReady.catch(function () {}).then(function () { requestAnimationFrame(frame); });
+  setTimeout(function () { requestAnimationFrame(frame); }, 1200);
+})();
+</script>
