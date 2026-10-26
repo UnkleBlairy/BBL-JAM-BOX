@@ -1,4 +1,5 @@
-/* SPDX-License-Identifier: GPL-3.0-only */
+/* SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Blair (blairysbeatlab), FM-1 Groovebox; based on Felucca by Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* gb_store.c - the groovebox's sounds and kits (FELUCCA_SIMPLE). Patterns are never saved: it is for jamming.
  *   SOUND  16 slots a track (96): a track's sound (any machine, FM or 808), its sequencer and mixer settings left out.
  *          (Up to the 808s the slots were a machine's: SYN BD SD HH CYM PERC's are now tracks 1..6's)

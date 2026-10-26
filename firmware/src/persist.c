@@ -1,4 +1,5 @@
-/* SPDX-License-Identifier: GPL-3.0-only */
+/* SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Blair (blairysbeatlab), FM-1 Groovebox; based on Felucca by Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* The device's own settings in flash (OBJ_SETTINGS): the panel's calibration (panel_t), the palette, HOLD and LEDS.
  * The layout is Felucca's PER4 (the bytes the groovebox does not use are kept as they were saved), so a unit that
  * ran Felucca keeps its calibration. No music is kept here: a jam starts from scratch (the sounds and kits: gb_store.c). */

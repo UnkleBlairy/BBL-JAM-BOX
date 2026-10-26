@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Blair (blairysbeatlab), FM-1 Groovebox: the icons are Blair's drawings */
 /* Pixel icons for the groovebox UI: 16 x 16, one uint16_t per row, the left pixel is the top bit (0x8000).
  * Drawn in the Pixel Slots editor. Draw with a 1 = ink, 0 = background. */
 #pragma once

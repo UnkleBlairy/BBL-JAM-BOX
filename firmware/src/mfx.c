@@ -1,4 +1,5 @@
-/* SPDX-License-Identifier: GPL-3.0-only */
+/* SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Blair (blairysbeatlab), FM-1 Groovebox */
 /* The two master effects of the groovebox (SIMPLE), on the master bus after the level and the FX layer:
  *   DJ    one knob: left of centre a resonant low-pass closing, right of centre a resonant high-pass opening, the
  *         middle no filter at all (song.g[G_MIDI], -64..63)

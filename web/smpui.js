@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Blair (blairysbeatlab), FM-1 Groovebox
 // The sample uploader's panel (the emulator page and the FM-1 samples page share it): pick a sound file, choose a
 // part, Write it to the list, Upload the list. The page has the markup (ids sfile sfinfo swave sA sB spv srate snorm
 // swr swmsg smbar smtxt slist sup sclr sumsg). opts:

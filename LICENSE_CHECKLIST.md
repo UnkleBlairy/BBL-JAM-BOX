@@ -36,16 +36,16 @@ giving a relevant date".
 - ☑ The home page says "A modified version of Felucca by Leo Kuroshita (@kurogedelic), Hügelton
   Instruments", and the guide ends with the same line.
 - ☑ Leo's copyright lines are kept in the files he wrote.
-- ☐ **Add a notice to the files we changed or wrote** (for example
+- ☑ **Add a notice to the files we changed or wrote** (for example
   `Modified 2026 by Blair (blairysbeatlab): FM-1 Groovebox`). These files have **no licence header at all**
   yet: `firmware/src/eng_sampler.c`, `smp_usb.c`, `ui_gb.c`, `icons_gb.h`, `icons_808.h`,
   `web/fm1smp.js`, `web/smpui.js`, `web/smpimg.js`, `tools/gen_icons_808.py`.
-- ☐ **Update `README.md` and `LICENSING.md`** to say this is FM-1 Groovebox, a fork of Felucca, with its
+- ☑ **Update `README.md` and `LICENSING.md`** to say this is FM-1 Groovebox, a fork of Felucca, with its
   own copyright line added beside Leo's. Both still describe Leo's Felucca 1.6.1 (and the README still has
   Leo's "Maintenance Notice").
-- ☐ **⚑ The FM-1's start-up screen still says "Felucca / v0.1-beta / Hügelton Instruments"**
-  (`firmware/src/ui_draw.c`, `SPLASH_LINES`). That presents our modified build as Leo's product. Suggest:
-  "FM-1 Groovebox / v0.1-beta / based on Felucca". (Same reason as the file notices above: a modified
+- ☑ **Fixed: the FM-1's start-up screen said "Felucca / v0.1-beta / Hügelton Instruments"**
+  (`firmware/src/ui_draw.c`, `SPLASH_LINES`). That presents our modified build as Leo's product. It now shows
+  Blair's logo, the version and "BASED ON FELUCCA". (Same reason as the file notices above: a modified
   version should be clearly marked as modified, not passed off as the original.)
 - ⚑ **The name "Felucca".** `LICENSING.md`: "'Felucca' and 'Hügelton Instruments' are names of Hügelton
   Instruments." Saying "based on Felucca" is fine; calling our build "Felucca" is not. The package file is
@@ -69,7 +69,7 @@ isn't (over-crediting is harmless legally but confusing).
 |---|---|---|
 | Felucca itself (Leo Kuroshita, Hügelton Instruments) | GPL-3.0-only | ☑ `LICENSE` shipped |
 | Felucca-Engines shared code: `firmware/src/dsp.c`, `engine.h`, `tools/gen_engine_tables.py` | MIT | ☑ `LICENSES/MIT-Felucca-Engines.txt` shipped |
-| Second core, from X0X (charlesvestal), Melodee (keremimo) and Jangada (zednaked): `firmware/hal/fm1_cpu1.*`, `fx.c` | GPL-3.0 | ☑ credited in file headers; ☐ keep in CREDITS |
+| Second core, from X0X (charlesvestal), Melodee (keremimo) and Jangada (zednaked): `firmware/hal/fm1_cpu1.*`, `fx.c` | GPL-3.0 | ☑ credited in file headers and CREDITS |
 | Inter Tight font (on-screen text) | SIL OFL 1.1 | ☑ `LICENSES/OFL-InterTight.txt` shipped |
 | Fukiai icon font (Hügelton): the firmware's icons | MIT | ☑ `LICENSES/MIT-Fukiai.txt` shipped |
 | JieLi AC79 SDK: `uboot.boot`, `cfg_tool.bin`, `eq_cfg_hw.bin` inside every `.fwsc` | Apache-2.0 | ☑ `LICENSES/Apache-2.0.txt` shipped, credited on the installer |
@@ -79,15 +79,18 @@ isn't (over-crediting is harmless legally but confusing).
 
 | Part | Licence | What to do |
 |---|---|---|
-| PHYS engine: DaisySP (MIT), Rings (MIT) | MIT | ☐ remove from installer credits and CREDITS |
-| FM6 engine: msfa from Dexed | Apache-2.0 | ☐ remove from the installer credits ("FM6 engine: msfa...") |
-| PHASE engine, DRUM voices, Hügelton Sample Pack | GPL / CC0 | ☐ remove from the installer credits |
-| VSCO-2 / VCSL samples | CC0 1.0 | ☐ remove (the samples were taken out) |
-| VOICE engine reference (klattsch) | MIT, credit only | ☐ remove |
+| PHYS engine: DaisySP (MIT), Rings (MIT) | MIT | ☑ remove from installer credits and CREDITS |
+| FM6 engine: msfa from Dexed | Apache-2.0 | ☑ remove from the installer credits ("FM6 engine: msfa...") |
+| PHASE engine, DRUM voices, Hügelton Sample Pack | GPL / CC0 | ☑ remove from the installer credits |
+| VSCO-2 / VCSL samples | CC0 1.0 | ☑ remove (the samples were taken out) |
+| VOICE engine reference (klattsch) | MIT, credit only | ☑ remove |
 
 - ⚑ Our own sound engines (the 808 port of `docs/808lab.html`, the sampler, the FM engine changes) are our
   work under GPL-3.0. Check that nothing in `docs/808lab.html` or `docs/samplelab.html` was copied from
   someone else's code or samples.
+
+- ⚑ **Your logo** is in the source and the firmware but marked "all rights reserved, not under the GPL"
+  (`LICENSING.md`). Mixing a non-GPL image into a GPL firmware is common for logos, but confirm it's fine.
 
 ## 4. CC0 samples
 - ☑ No CC0 sample files are in this build (removed in commit `d070f74`). Samples users upload are their

@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Blair (blairysbeatlab), FM-1 Groovebox */
 /* smp_usb.c - the sample uploader's transfer into the sample memory (eng_sampler.c has its layout), over the update's
  * SysEx frames (ota.c: F0 pack7(00 59 cmd len24 body chk) F7, both ways). Every request gets one reply, the same cmd:
  *   0x60 BEGIN  {}                          -> {rc, cap u32}              a session starts: no chunk plays from here
