@@ -1,0 +1,47 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-only
+     The site's front page (web/make_site.py copies it to index.html): the beta warning and the two tools. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BBL JAM BOX</title>
+<style>
+  :root { --bg: #fff; --fg: #000; --dim: #777; --warn: #b3261e; --warnbg: #fdecea; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg: #000; --fg: #fff; --dim: #888; --warn: #ff8a80; --warnbg: #2a1414; }
+  }
+  :root[data-theme="dark"] { --bg: #000; --fg: #fff; --dim: #888; --warn: #ff8a80; --warnbg: #2a1414; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; }
+  main { max-width: 520px; margin: 0 auto; padding: 48px 16px; }
+  h1 { font-size: 24px; font-weight: 600; margin: 0 0 8px; }
+  p { margin: 0 0 16px; }
+  .warn { border: 2px solid var(--warn); background: var(--warnbg); color: var(--warn); padding: 12px 16px; margin: 24px 0; }
+  .warn b { display: block; font-size: 18px; }
+  a.big { display: block; background: var(--fg); color: var(--bg); text-decoration: none; padding: 14px 20px;
+          margin: 0 0 12px; font-weight: 600; }
+  a.big span { display: block; font-weight: 400; font-size: 14px; opacity: .8; }
+  .small { color: var(--dim); font-size: 13px; }
+  .small a { color: inherit; }
+</style>
+</head>
+<body>
+<main>
+  <h1>BBL JAM BOX</h1>
+  <p>A free beta firmware from blairysbeatlab that turns the M-VAVE FM-1 into a 6-track groovebox: FM drums and synth, 808 drums and a sampler.</p>
+  <div class="warn"><b>BETA: flash at your own risk</b>
+    This is test firmware. It may have bugs. Before you start, download the official FM-1 V15 firmware from M-VAVE
+    so you can go back to it.</div>
+  <a class="big" href="webapp/installer/">1. Install the firmware<span>Connect the FM-1 by USB, open in Chrome or Edge</span></a>
+  <a class="big" href="webapp/samples/">2. Load samples<span>Put your own sounds on the FM-1 (after installing)</span></a>
+  <p class="small">You need a computer with Chrome or Edge. Close any other music apps that use the FM-1 first.
+    New to this? Read the <a href="https://github.com/UnkleBlairy/BBL-JAM-BOX/blob/main/FLASHING_GUIDE.md">step-by-step guide</a>
+    (<a href="FLASHING_GUIDE.txt">plain text</a>) first: it explains how to go back to the official firmware.</p>
+  <p class="small">A modified version of Felucca by Leo Kuroshita (@kurogedelic), Hügelton Instruments. Not made or
+    supported by M-VAVE. M-VAVE and FM-1 are trademarks of their respective owners.<br>
+    Free software (GPL-3.0): <a href="https://github.com/UnkleBlairy/BBL-JAM-BOX">source code</a> ·
+    <a href="firmware/LICENSING.md">licences</a></p>
+</main>
+</body>
+</html>
