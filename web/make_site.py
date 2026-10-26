@@ -82,6 +82,7 @@ def main(pkg, version, out):
         shutil.copy(HERE.parent / doc, fw / doc)
     shutil.copy(HERE / "home.html", out / "index.html")   # the front page: the beta warning and the two tools
     shutil.copy(HERE.parent / "FLASHING_GUIDE.txt", out / "FLASHING_GUIDE.txt")   # the guide, linked from it
+    (out / ".nojekyll").write_text("")              # GitHub Pages: serve the files as they are
     print(f"site: {out}: webapp/installer ({len(html)} B), firmware/{name} ({len(raw)} B, {product})")
 
 
