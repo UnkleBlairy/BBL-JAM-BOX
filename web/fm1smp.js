@@ -21,7 +21,7 @@ const rd32 = (d, i) => (d[i] | d[i + 1] << 8 | d[i + 2] << 16 | d[i + 3] << 24) 
 async function ask(link, cmd, body, ms = 3000, tries = 3) {
   for (let t = 0; t < tries; t++) {
     link.drain();
-    if (!link.send(frame(cmd, body))) throw new Error("The FM-1 was disconnected.");
+    if (!link.send(frame(cmd, body))) throw new Error("The FM-1 was disconnected. Plug it back in and press Upload again: it carries on where it stopped.");
     const end = Date.now() + ms;
     while (Date.now() < end) {
       const p = await link.read(end - Date.now());
@@ -41,11 +41,11 @@ export async function uploadSamples(img, say) {
   catch { throw new Error("The browser did not allow MIDI access. Allow it (the lock icon by the address) and try again."); }
   say("Looking for the FM-1…");
   const dev = await new Updater(access).find((id) => !/^ota-/i.test(id.model));
-  if (!dev) throw new Error("FM-1 not found. Check the USB cable, and close other apps that use it (a DAW, the editor).");
+  if (!dev) throw new Error("FM-1 not found. Check the USB cable, and close other apps that use it (a DAW or another music app).");
   const link = dev.link;
   try {
     const b = await ask(link, BEGIN, []);
-    if (!b) throw new Error("The FM-1 did not answer. Is Felucca with the sampler installed? Update it first.");
+    if (!b) throw new Error("The FM-1 did not answer. Install the groovebox firmware first (the Install page), then try again.");
     if (b[0]) throw new Error("The FM-1 refused the upload (" + b[0] + ").");
     const n = Math.ceil(img.length / SECTOR), order = [];
     for (let s = SMP_TABLE / SECTOR; s < n; s++) order.push(s);
