@@ -81,6 +81,7 @@ def main(pkg, version, out):
     for doc in ("LICENSE", "LICENSING.md"):
         shutil.copy(HERE.parent / doc, fw / doc)
     shutil.copy(HERE / "home.html", out / "index.html")   # the front page: the beta warning and the two tools
+    shutil.copy(HERE.parent / "FLASHING_GUIDE.txt", out / "FLASHING_GUIDE.txt")   # the guide, linked from it
     print(f"site: {out}: webapp/installer ({len(html)} B), firmware/{name} ({len(raw)} B, {product})")
 
 
