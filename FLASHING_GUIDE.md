@@ -110,7 +110,7 @@ save a **complete backup** of your Felucca songs, sounds and samples to your com
 
 ## Getting help
 
-Report problems on the Patreon post or on GitHub (https://github.com/UnkleBlairy/Felucca). Tell us what
+Report problems on the Patreon post or on GitHub (https://github.com/UnkleBlairy/BBL-JAM-BOX). Tell us what
 the installer's status line said and what the FM-1's screen shows.
 
 *BBL JAM BOX is a modified version of Felucca by Leo Kuroshita (@kurogedelic), Hügelton Instruments.

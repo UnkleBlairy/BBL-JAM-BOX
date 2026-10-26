@@ -13,9 +13,9 @@ Key: ☑ done · ☐ to do · ⚑ check with someone
 The firmware is GPL-3.0-only (`LICENSE`). Anyone you give the firmware to must be able to get the complete
 source of **the exact version** they got, under the same licence.
 
-- ☐ **Put the source on GitHub** at `github.com/UnkleBlairy/Felucca` (public). The installer and home page
-  already link there. Easiest: fork `hugelton/Felucca` on GitHub, then push this project's `main` to
-  your fork (that keeps Leo's history and shows clearly it's a fork).
+- ☐ **Put the source on GitHub** at `github.com/UnkleBlairy/BBL-JAM-BOX` (public). The installer and home page
+  already link there. It's a new repository (your fork of Felucca is already
+  BBL-WaveCusher), pushed with this project's full history, so Leo's commits and credits come with it.
 - ☐ **Tag the release** (`v0.1-beta`) so the source matches the `.fwsc` people install. Do this for every
   release.
 - ☐ **Host the installer site from the same place** (GitHub Pages on the same repo) so the binary and its

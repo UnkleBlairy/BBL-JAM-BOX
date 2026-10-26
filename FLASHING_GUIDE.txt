@@ -195,7 +195,7 @@ GETTING HELP
 ------------
 
 Report problems on the Patreon post or on GitHub
-(https://github.com/UnkleBlairy/Felucca). Tell us what the installer's
+(https://github.com/UnkleBlairy/BBL-JAM-BOX). Tell us what the installer's
 status line said and what the FM-1's screen shows.
 
 
