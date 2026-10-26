@@ -22,7 +22,7 @@ typedef struct {
     uint8_t alt[4];
     int16_t dj, cmix, ctune;                 /* PERF: the master DJ filter and comb */
     uint8_t fill[8], rel, bpm_alt;           /* PERF: each held macro's tile filled 0..26 rows; the release fade; the tempo is held by a macro */                           /* a macro holds this value: its dial is drawn inverted */
-    uint8_t kmode, pk, fx;                   /* the keys: 1 SEQ 2 PARAM 3 KEY; PARAM's knob + 1 (0: the keys play); the FX lane */
+    uint8_t kmode, pk, fx;                   /* the keys: 1 SEQ 2 PARAM 3 KEY 4 KIT; PARAM's knob + 1 (0: the keys play); the FX lane */
     uint8_t rec;                             /* the selected track is armed (REC): a red REC by the BPM, 1 + its glow 0..15 */
     uint8_t thit, tmute;                     /* the track squares (the bottom): bit k track k just hit, is muted */
     uint16_t brd;                            /* the loop border: how far round (1..960 px, the selected track's loop); 0 stopped */
@@ -162,7 +162,7 @@ static void gb_fill(gb_view_t *v)
         v->rec = (uint8_t)(1u + (song.playing ? (ph < 16u ? 15u - ph : ph - 16u) : 15u));
     }
     str_cpy(v->title, pg->title, sizeof v->title);
-    v->kmode = (uint8_t)(ui.sgrid == 1u ? 1u : ui.sgrid == 2u ? 2u : 3u);
+    v->kmode = (uint8_t)(ui.sgrid == 1u ? 1u : ui.sgrid == 2u ? 2u : ui.sgrid == 3u ? 4u : 3u);
     v->pk = (uint8_t)(par_on() && par_id != 0xFFu ? par_k + 1u : 0u);
     v->fx = (uint8_t)fxl_on();
     for (k = 0; k < NTRK; k++)
@@ -697,8 +697,8 @@ static void gb_scene(const gb_view_t *v, uint16_t bgc)
     const char *nm = v->fx ? "FX" : MACHINES[v->mach % NMACH].pill;
     int32_t pw = (text_w(&AF_M, nm) + 17 + (v->picon ? 20 : 0)) & ~1;
     {                                                             /* what the keys are: between the dots and the pill */
-        static const char *const KM[4] = {"", "SEQ", "PARAM", "KEY"};
-        const char *km = KM[v->kmode & 3u];
+        static const char *const KM[5] = {"", "SEQ", "PARAM", "KEY", "KIT"};
+        const char *km = KM[v->kmode % 5u];
         int32_t x0 = 8 + (int32_t)v->npages * 20, x1 = 232 - pw - 4;
         const aafont_t *kf = text_w(&AF_M, km) <= x1 - x0 ? &AF_M : &AF_S;
         cv_text_in(x0, kf == &AF_M ? 201 : 203, x1 - x0, kf, km, c, bgc);

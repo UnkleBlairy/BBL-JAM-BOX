@@ -791,6 +791,64 @@ static __attribute__((noinline)) int par_key(uint32_t k, track_t *t)   /* 1: the
     return !kb_octup;
 }
 
+/* SIMPLE, the KIT keys (song.grid 7, ui.sgrid 3; ui_input.c kit_*): each white key of each track holds its own locks,
+ * up to KIT_N knobs, built up live (hold the key and turn knobs; not saved, like the macros). A key plays the track's
+ * step notes (grid_chord) with its locks on; the next key puts them back first (unless something moved them since: a
+ * knob, a step's lock, the next trig). Playing, they are marked as a lock's, so the track's next trig puts them back
+ * too. Recording: the step the note goes on gets the key's locks (as par_key) */
+#define KIT_N 8u
+typedef struct { uint8_t n, id[KIT_N]; int16_t v[KIT_N]; } kit_key_t;
+static kit_key_t kit[NTRK][16];
+static struct { uint8_t n, id[KIT_N]; int16_t v[KIT_N], base[KIT_N]; } kit_snd[NTRK];   /* sounding: each with what it replaced */
+static uint8_t kit_cur[NTRK];                       /* the key (+ 1) whose locks sound, 0 none */
+static void kit_undo(track_t *t)
+{
+    uint32_t tk = trk_index(t), i;
+    for (i = 0; i < kit_snd[tk].n; i++) {
+        int16_t *vp = motion_vp(t, kit_snd[tk].id[i]);
+        if (*vp == kit_snd[tk].v[i])
+            *vp = kit_snd[tk].base[i];
+    }
+    kit_snd[tk].n = 0;
+    kit_cur[tk] = 0;
+}
+static void kit_apply(track_t *t, uint32_t p)
+{
+    uint32_t tk = trk_index(t), i, id, b;
+    const kit_key_t *s = &kit[tk][p & 15u];
+    kit_undo(t);
+    for (i = 0; i < s->n; i++) {
+        id = s->id[i];
+        b = 1u << (id % 32u);
+        kit_snd[tk].id[i] = (uint8_t)id;
+        kit_snd[tk].base[i] = *motion_vp(t, id);
+        kit_snd[tk].v[i] = s->v[i];
+        if ((motion_base_valid >> tk) & 1u) {
+            motion_active[tk][id / 32u] |= b;
+            motion_locked[tk][id / 32u] |= b;
+        }
+        *motion_vp(t, id) = s->v[i];
+    }
+    kit_snd[tk].n = s->n;
+    kit_cur[tk] = (uint8_t)(p + 1u);
+}
+static __attribute__((noinline)) void kit_key(uint32_t k, track_t *t)   /* white key k down */
+{
+    uint32_t p = key_place(k) & 15u, len, period, idx, i;
+    const kit_key_t *s = &kit[trk_index(t)][p];
+    if (rec_on(t) && s->n) {                        /* the step the notes go on (as rec_note rounds) */
+        len = t->p[P_SLEN] > 0 ? (uint32_t)t->p[P_SLEN] : 1u;
+        period = div_samples((uint32_t)t->p[P_SDIV]);
+        idx = t->seq_idx % len;
+        if (t->seq_pos < 0x7FFFFFFFu && t->seq_pos > step_samples(t, period, t->seq_idx) / 2u)
+            idx = (idx + 1u) % len;
+        for (i = 0; i < s->n; i++)
+            if (motion_set_lock(t, idx, s->id[i], s->v[i]) == 2)
+                break;                              /* (full: ui_notices says so) */
+    }
+    kit_apply(t, p);
+}
+
 /* OCT+ held and one of the first six black keys (the track keys): that track's mute. A tap toggles it; held (350 ms) it is only for as
  * long as the key is down */
 static uint32_t mt_t0[NTRK];
@@ -814,8 +872,8 @@ static void keyboard_block(void)
             continue;
         if ((cur >> k) & 1u) {                    /* the selected track; the key-up goes to the same one */
             kb_trk[k] = song.sel;
-            kb_g[k] = (uint8_t)(song.grid == 1u || (song.grid == 6u && (key_black(k) || par_id != 0xFFu)));
-            if ((song.grid == 1u || song.grid == 6u) && key_black(k) && key_place(k) < NTRK)
+            kb_g[k] = (uint8_t)(song.grid == 1u || song.grid == 7u || (song.grid == 6u && (key_black(k) || par_id != 0xFFu)));
+            if ((song.grid == 1u || song.grid >= 6u) && key_black(k) && key_place(k) < NTRK)
                 kb_trk[k] = (uint8_t)key_place(k);          /* the step keys: black key n plays track n */
             if (kb_asleep) {                      /* (SCREEN OFF: the wake press is swallowed) */
                 kb_note[k] = KB_SILENT;
@@ -852,9 +910,14 @@ static void keyboard_block(void)
                     kb_layer |= 1u << k;
                     continue;
                 }
+            } else if (song.grid == 7u && !key_black(k)) {   /* KIT: the key's locks, the track's step notes */
+                uint8_t c[4];
+                kit_key(k, &trk[kb_trk[k]]);
+                grid_chord(&trk[kb_trk[k]], c);
+                kb_note[k] = c[0];
             } else if ((mute >> k) & 1u)          /* NAME (ui_name.c): every key types, none sounds; SONG: A..D */
                 kb_note[k] = KB_SILENT;
-            else if (song.grid == 1u || (song.grid == 6u && key_black(k)))             /* the DRUM grid: a lane key plays its lane, the rest are the UI's */
+            else if (song.grid == 1u || (song.grid >= 6u && key_black(k)))             /* the DRUM grid: a lane key plays its lane, the rest are the UI's */
                 kb_note[k] = grid_key_note(k);
             else
                 kb_note[k] = (uint8_t)kb_map(&trk[kb_trk[k]], k);

@@ -548,6 +548,11 @@ static int par_on(void)
     return FELUCCA_SIMPLE && ui.sgrid == 2u && !ui.confirm && !ui.home && !pm_page() && !pm_down() && !gbsv_keys_on() &&
            lock_page_ok(ui.page);
 }
+/* SIMPLE, KIT keys on (SEQ's fourth tap): each white key plays with its own locks, held + a knob sets them (seq.c kit_*) */
+static int kit_on(void)
+{
+    return FELUCCA_SIMPLE && ui.sgrid == 3u && !ui.confirm && !pm_page() && !pm_down() && !gbsv_keys_on();
+}
 /* the macro's parameter: track tr < NTRK, or tr == PM_G: a global (BPM, SWING, the master's) */
 #define PM_G 0xFFu
 static int16_t *pm_ptr(uint32_t tr, uint32_t id)

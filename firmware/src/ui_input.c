@@ -297,6 +297,7 @@ static uint32_t scale_leds(uint32_t *root)
 static uint32_t pm_leds(void);
 static uint32_t trk_keys(int playing);
 static uint32_t par_leds(void);
+static uint32_t kit_leds(void);
 static void layer_kill(void);                         /* (ui_buttons.c) */
 /* MENU > ANIM IDLE (1.2, Discussion #135): after IDLE_LEDS_MS without panel input (ui.c scrn.idle: a button or key
  * pressed or held, a knob turned; what SCREEN OFF counts) the LEDs play the idle animation (hal/fm1_led_anim.h
@@ -331,6 +332,7 @@ static uint32_t key_leds(uint32_t *br)                 /* (*br: a layer's keys t
     if (br)
         *br = 0;
     c = gbsv_keys_on() ? gbsv_leds() : sgrid_on() ? sgrid_leds(br) : par_on() ? par_leds() | (fm1_in.notes & ~kb_layer) :
+        kit_on() ? kit_leds() | (fm1_in.notes & ~kb_layer) :
                  (fm1_in.notes & ~kb_layer) | play_leds() | step_leds() | (pm_page() ? pm_leds() : 0u);
     if (FELUCCA_SIMPLE && kb_octup && !gbsv_keys_on())  /* OCT+ held (the mutes): the tracks not muted lit */
         c = (c & ~trk_keys(0)) | trk_keys(1);
@@ -983,6 +985,68 @@ static void lock_turn(uint32_t k, int32_t s, uint64_t held)
     motion_undo_done(t);
 }
 
+/* SIMPLE, KIT (seq.c kit_*): the white keys held (their places, bit p) */
+static uint32_t kit_held(void)
+{
+    uint32_t k, m = 0, keys = fm1_in.notes & ~kb_layer;
+    if (!kit_on())
+        return 0;
+    for (k = 0; k < 27u; k++)
+        if (((keys >> k) & 1u) && !key_black(k) && key_place(k) < 16u)
+            m |= 1u << key_place(k);
+    return m;
+}
+/* KNOB k turned s with the KIT keys `held` held: each key's lock of the page's knob changes (a new one starts from what
+ * sounds; KIT_N a key), and sounds at once. 0: the knob locks nothing here (it edits as ever) */
+static int kit_turn(uint32_t k, int32_t s, uint32_t held)
+{
+    track_t *t = TSEL;
+    uint32_t tk = song.sel, id = lock_page_ok(ui.page) ? lock_pid(cur_page(), k) : 0xFFu, p, i;
+    const param_desc_t *d;
+    if (id == 0xFFu)
+        return 0;
+    d = id < P_COUNT ? track_desc(t, id) : motion_desc(t, id);
+    s = accel(EN_K1 + k, s, d->fmt == F_ENUM ? 0 : d->max - d->min);
+    for (p = 0; p < 16u; p++) {
+        kit_key_t *kk = &kit[tk][p];
+        if (!((held >> p) & 1u))
+            continue;
+        for (i = 0; i < kk->n && kk->id[i] != id; i++)
+            ;
+        if (i == kk->n) {
+            if (kk->n == KIT_N) {
+                ui_message("KIT KEY FULL");
+                continue;
+            }
+            kk->id[kk->n] = (uint8_t)id;
+            kk->v[kk->n++] = kit_cur[tk] == p + 1u ? *motion_vp(t, id) : motion_base_value(t, id);
+        }
+        kk->v[i] = (int16_t)param_turn(d, kk->v[i], s);
+        if (kit_cur[tk] == p + 1u)
+            kit_apply(t, p);                            /* (sounding: the new value now) */
+    }
+    return 1;
+}
+/* KIT: a black key 1..6 picks the track */
+static void kit_keys(uint32_t pressed)
+{
+    uint32_t k;
+    for (k = 0; k < 27u; k++)
+        if (((pressed >> k) & 1u) && key_black(k) && key_place(k) < NTRK && !kb_octup)
+            track_select(key_place(k));
+}
+/* .. its LEDs: the white keys that hold locks, the selected track's black key */
+static uint32_t kit_leds(void)
+{
+    uint32_t k, m = 0, p;
+    for (k = 0; k < 27u; k++) {
+        p = key_place(k);
+        if (key_black(k) ? p == song.sel : p < 16u && kit[song.sel][p].n)
+            m |= 1u << k;
+    }
+    return m;
+}
+
 /* [EDIT] with the steps `held` held: their locks go */
 static void lock_clear(uint64_t held)
 {
@@ -1108,8 +1172,11 @@ static void enc_drop(void)                             /* knob turns nobody take
         panel_enc(k);
 }
 
-/* what the keys are (seq.c song.grid): 5 the SAVE screen's, 1 the steps, 4 PERF's macros, 6 PARAM, 0 notes */
-static uint32_t keys_mode(void) { return gbsv_keys_on() ? 5u : sgrid_on() ? 1u : pm_page() || pm_down() ? 4u : par_on() ? 6u : 0u; }
+/* what the keys are (seq.c song.grid): 5 the SAVE screen's, 1 the steps, 4 PERF's macros, 6 PARAM, 7 KIT, 0 notes */
+static uint32_t keys_mode(void)
+{
+    return gbsv_keys_on() ? 5u : sgrid_on() ? 1u : pm_page() || pm_down() ? 4u : par_on() ? 6u : kit_on() ? 7u : 0u;
+}
 
 /* the page buttons: ui_buttons.c (included after this file) */
 static void layer_arm(uint32_t pressed, uint32_t now);
@@ -1130,8 +1197,8 @@ static int page_tap(uint32_t b)
         return 1;
     }
     if (FELUCCA_SIMPLE && b == B_SEQ) {                  /* .. on the SEQ page: the step keys off / on */
-        ui.sgrid = (uint8_t)((ui.sgrid + 1u) % 3u);     /* SEQ -> PARAM -> KEY -> SEQ */
-        ui_message(ui.sgrid == 1u ? "SEQ" : ui.sgrid == 2u ? "PARAM" : "KEY");
+        ui.sgrid = (uint8_t)(ui.sgrid == 2u ? 0u : ui.sgrid == 0u ? 3u : ui.sgrid == 3u ? 1u : 2u);   /* SEQ -> PARAM -> KEY -> KIT -> SEQ */
+        ui_message(ui.sgrid == 1u ? "SEQ" : ui.sgrid == 2u ? "PARAM" : ui.sgrid == 3u ? "KIT" : "KEY");
         return 1;
     }
     for (f = FAM_HOME + 1u; f < FAM_COUNT; f++)        /* (GLO SEQ SAVE ..: HOME is ui_input's, home_tap) */
@@ -1317,6 +1384,17 @@ static void ui_input(void)
                 ui_message("MACRO CLEARED");
                 break;
             }
+            if (FELUCCA_SIMPLE && b == B_OCTDN && kit_held()) {   /* KIT keys held: OCT- empties them */
+                uint32_t h = kit_held(), p;
+                for (p = 0; p < 16u; p++)
+                    if ((h >> p) & 1u) {
+                        if (kit_cur[song.sel] == p + 1u)
+                            kit_undo(TSEL);
+                        kit[song.sel][p].n = 0;
+                    }
+                ui_message("KIT KEY CLEARED");
+                break;
+            }
             if (FELUCCA_SIMPLE && b == B_OCTUP && !sgrid_on())
                 break;                                   /* SIMPLE: OCT+ is a tap (the octave, on release) or a hold (the setup values) */
             if (FELUCCA_SIMPLE && sgrid_on()) {          /* the step keys: OCT- clears the track's steps, OCT- + OCT+ every track's */
@@ -1383,6 +1461,10 @@ static void ui_input(void)
     }
     par_poll();
     song.grid = (uint8_t)keys_mode();                 /* (seq.c: the keys are the grid's) */
+    if (song.grid != 7u)                               /* (out of KIT: the keys' locks sounding go back) */
+        for (k = 0; k < NTRK; k++)
+            if (kit_cur[k])
+                kit_undo(&trk[k]);
     pm_poll();
     sgrid_release();
     gb_store_poll();
@@ -1392,6 +1474,8 @@ static void ui_input(void)
         pm_keys(notes);
     } else if (song.grid == 6u) {
         par_keys(notes);
+    } else if (song.grid == 7u) {
+        kit_keys(notes);
     } else if (song.grid && sgrid_on()) {
         sgrid_keys(notes);
     }
@@ -1421,6 +1505,11 @@ static void ui_input(void)
             continue;
         if (mom_down())                                 /* (LFO + a knob, MOMENTARY or not: LFO's release opens no page) */
             ui.pg_down &= (uint16_t)~(1u << panel.btn[B_LFO]);
+        if (kit_held() && kit_turn(k, s, kit_held())) {   /* KIT: a key held, KNOB k sets its lock */
+            ui.hot_col = (uint8_t)k;
+            ui.hot_t = 40;
+            continue;
+        }
         if ((held = lock_held()) != 0u) {               /* a step held on STEP: KNOB k locks (parameter locks) */
             gbs_keep();                                 /* (SIMPLE: the step stays when let go) */
             lock_turn(k, s, held);
