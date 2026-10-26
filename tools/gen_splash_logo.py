@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
-# Copyright (C) 2026 Blair (blairysbeatlab), FM-1 Groovebox
+# Copyright (C) 2026 Blair (blairysbeatlab), BBL JAM BOX
 """Turn the power-on logo (a picture) into 1-bit pixel art for the splash: N x N pixels, the picture's dark lines lit
 (the UI's pixel style: one ink on the background), lone specks removed. Writes firmware/src/splash_logo.h: one row of
 N/8 bytes a line, the left pixel the top bit. Run again after changing the picture:

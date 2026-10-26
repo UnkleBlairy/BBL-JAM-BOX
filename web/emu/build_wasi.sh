@@ -1,6 +1,6 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-3.0-only
-# Copyright (C) 2026 Blair (blairysbeatlab), FM-1 Groovebox
+# Copyright (C) 2026 Blair (blairysbeatlab), BBL JAM BOX
 # The browser emulator without Emscripten: clang from wasi-sdk (downloaded once to ~/wasi-sdk), the same
 # sources as web/emu/build.sh. Run after one ./build.sh.   web/emu/build_wasi.sh  ->  build/emu/
 #   cd build/emu && python3 -m http.server 8123     then open  http://localhost:8123/

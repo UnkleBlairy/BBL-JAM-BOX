@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only
- * Copyright (C) 2026 Blair (blairysbeatlab), FM-1 Groovebox */
+ * Copyright (C) 2026 Blair (blairysbeatlab), BBL JAM BOX */
 /* ui_gb.c - the groovebox look (FELUCCA_SIMPLE): black and one colour, big text, four circle-and-line dials a page. The
  * colour is the selected track's machine's (SYN BD SD HH CYM PERC: GB_COL, to be set from the app later); on the
  * MIXER each dial wears its own track's. One screen = the page's title and the BPM, four dials with their short

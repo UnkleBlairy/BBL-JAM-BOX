@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Copyright (C) 2026 Blair (blairysbeatlab), FM-1 Groovebox
+// Copyright (C) 2026 Blair (blairysbeatlab), BBL JAM BOX
 // The sample uploader's transfer to the FM-1 over WebMIDI SysEx (firmware/src/smp_usb.c has the protocol): BEGIN, then
 // each 4 KiB sector of the region image whose CRC on the device differs: WRITE in 512-byte blocks (data first, the
 // table sector last), then END. A sector that fails is sent again from its start (3 tries). Unchanged sectors are

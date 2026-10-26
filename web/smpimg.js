@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Copyright (C) 2026 Blair (blairysbeatlab), FM-1 Groovebox
+// Copyright (C) 2026 Blair (blairysbeatlab), BBL JAM BOX
 // The sample memory image: what the sample uploader writes to the FM-1 (firmware/src/eng_sampler.c has the layout).
 // Flash 0xA0000..0xDBFFF: a 4 KiB table, then the chunks' data as 8-bit mu-law (G.711), one byte a sample.
 // Shared by the emulator page (web/emu/index.html) and the uploader. No DOM here.

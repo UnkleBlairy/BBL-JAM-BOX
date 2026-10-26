@@ -2,7 +2,7 @@
 
 ## 0.1 beta (2026-10-26)
 
-The first public beta of FM-1 Groovebox: a live-jamming groovebox for the M-VAVE FM-1, built from Leo Kuroshita's
+The first public beta of BBL JAM BOX: a live-jamming groovebox for the M-VAVE FM-1, built from Leo Kuroshita's
 Felucca 1.6.1. Most of Felucca was taken out and a new, simpler instrument built on what was left.
 
 ### The groovebox

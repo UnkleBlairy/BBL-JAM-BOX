@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only
- * Copyright (C) 2026 Blair (blairysbeatlab), FM-1 Groovebox */
+ * Copyright (C) 2026 Blair (blairysbeatlab), BBL JAM BOX */
 /* wasi has no processes: hostsim.c's fork/pipe/waitpid paths are never reached in the browser build */
 #pragma once
 static inline int fork(void) { return -1; }

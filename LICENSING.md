@@ -1,19 +1,19 @@
-# FM-1 Groovebox licensing
+# BBL JAM BOX licensing
 
-FM-1 Groovebox is free software, licensed under the GNU General Public License, version 3 only
+BBL JAM BOX is free software, licensed under the GNU General Public License, version 3 only
 (`GPL-3.0-only`, full text in `LICENSE`). It is a **modified version of Felucca** by Leo Kuroshita
 (@kurogedelic), Hügelton Instruments, which is under the same licence. A few bundled or ported parts keep
 their own licences; they are listed below, and their licence texts are in `LICENSES/`.
 
 Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments (Felucca)
-Copyright (C) 2026 Blair (blairysbeatlab) (the FM-1 Groovebox changes)
+Copyright (C) 2026 Blair (blairysbeatlab) (the BBL JAM BOX changes)
 
 ## This fork
 
-This tree started from Felucca 1.6.1 (commit `a53ecf4`). Everything since is the FM-1 Groovebox's work:
+This tree started from Felucca 1.6.1 (commit `a53ecf4`). Everything since is the BBL JAM BOX's work:
 most of Felucca was removed (its engines other than the FM one, the menus, the web editor, the samples,
 the tests) and the groovebox built on the rest. The git history records every change and its date. Files
-written for the groovebox carry `Copyright (C) 2026 Blair (blairysbeatlab), FM-1 Groovebox`; files
+written for the groovebox carry `Copyright (C) 2026 Blair (blairysbeatlab), BBL JAM BOX`; files
 changed from Felucca's keep Leo Kuroshita's copyright line.
 
 **Not under the GPL:** the logo on the power-on screen (`assets/logo/`, built into

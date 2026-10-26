@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only
- * Copyright (C) 2026 Blair (blairysbeatlab), FM-1 Groovebox */
+ * Copyright (C) 2026 Blair (blairysbeatlab), BBL JAM BOX */
 /* ANALOG: the 808 machines, KICK SNARE TOM RIM CLAP COWBELL HAT CYMBAL (E7 = MACH), and AGE. The spec is
  * docs/808lab.html: each machine is its WebAudio graph for one hit (the v* voices there), here in fixed point with
  * the same ranges and curves:

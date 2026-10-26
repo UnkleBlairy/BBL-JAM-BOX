@@ -1,6 +1,6 @@
 # Credits
 
-FM-1 Groovebox is Blair's (blairysbeatlab): a modified version of **Felucca** by Leo Kuroshita
+BBL JAM BOX is Blair's (blairysbeatlab): a modified version of **Felucca** by Leo Kuroshita
 ([@kurogedelic](https://github.com/kurogedelic), [Hügelton Instruments](https://hugelton.com)). It uses and thanks the
 work below; each keeps its own licence (see [LICENSE](LICENSE), [LICENSING.md](LICENSING.md) and [LICENSES/](LICENSES/)).
 
@@ -22,5 +22,5 @@ work below; each keeps its own licence (see [LICENSE](LICENSE), [LICENSING.md](L
   [ugai](https://github.com/ugai), [zednaked](https://github.com/zednaked), [jasonpersinger](https://github.com/jasonpersinger),
   [renebohne](https://github.com/renebohne), [gospodindilly-ops](https://github.com/gospodindilly-ops)
 
-FM-1 Groovebox's own work (Blair): the groovebox design, its screens and icons, the changes to Felucca's DIGITAL FM engine, the ANALOG
+BBL JAM BOX's own work (Blair): the groovebox design, its screens and icons, the changes to Felucca's DIGITAL FM engine, the ANALOG
 808 machines and AGE, the SAMPLER and its uploader, the master DJ filter and comb, the sound and kit saves, and the logo.

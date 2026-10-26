@@ -1,4 +1,4 @@
-# FM-1 Groovebox: how to install it (and how to go back)
+# BBL JAM BOX: how to install it (and how to go back)
 
 > ## ⚠️ BETA: flash at your own risk
 > This is test firmware for the M-VAVE FM-1. It may have bugs. It is not made or supported by M-VAVE.
@@ -113,5 +113,5 @@ save a **complete backup** of your Felucca songs, sounds and samples to your com
 Report problems on the Patreon post or on GitHub (https://github.com/UnkleBlairy/Felucca). Tell us what
 the installer's status line said and what the FM-1's screen shows.
 
-*FM-1 Groovebox is a modified version of Felucca by Leo Kuroshita (@kurogedelic), Hügelton Instruments.
+*BBL JAM BOX is a modified version of Felucca by Leo Kuroshita (@kurogedelic), Hügelton Instruments.
 Free software under GPL-3.0, with no warranty. M-VAVE and FM-1 are trademarks of their respective owners.*

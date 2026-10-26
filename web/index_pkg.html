@@ -5,7 +5,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>FM-1 Groovebox installer</title>
+<title>BBL JAM BOX installer</title>
 <style>
   :root { --bg: #fff; --fg: #000; --dim: #777; }
   @media (prefers-color-scheme: dark) {
@@ -29,7 +29,7 @@
 <body>
 <main>
   <button class="lang" id="lang"></button>
-  <h1>FM-1 Groovebox</h1>
+  <h1>BBL JAM BOX</h1>
   <p data-t="intro"></p>
   <p data-t="warn"></p>
   <p class="small" data-t="direct"></p>
@@ -50,7 +50,7 @@
   <p id="status"></p>
   <pre id="log"></pre>
   <p><a href="../samples/" style="color:inherit">Samples: upload sounds for the SAMPLE machine</a></p>
-  <p class="small">FM-1 Groovebox by Blair (blairysbeatlab): a modified version of Felucca by Leo Kuroshita (@kurogedelic), <a href="https://hugelton.com" target="_blank" rel="noopener" style="color:inherit">Hügelton Instruments</a>, with its shared engine code (Felucca-Engines, MIT) and Fukiai icons (MIT).<br>
+  <p class="small">BBL JAM BOX by Blair (blairysbeatlab): a modified version of Felucca by Leo Kuroshita (@kurogedelic), <a href="https://hugelton.com" target="_blank" rel="noopener" style="color:inherit">Hügelton Instruments</a>, with its shared engine code (Felucca-Engines, MIT) and Fukiai icons (MIT).<br>
     Second core: after X0X (charlesvestal), Melodee (keremimo) and Jangada (zednaked), GPL-3.0. Font: Inter Tight (The Inter Project Authors, SIL OFL 1.1).<br>
     The package also holds three JieLi AC79 SDK files, uboot.boot, cfg_tool.bin and eq_cfg_hw.bin (JieLi Technology, Apache-2.0). <a href="../../firmware/LICENSING.md" style="color:inherit">Licences</a>: <a href="../../firmware/LICENSE" style="color:inherit">GPL-3.0</a>, <a href="../../firmware/LICENSES/Apache-2.0.txt" style="color:inherit">Apache-2.0</a>, <a href="../../firmware/LICENSES/" style="color:inherit">all</a>.<br>
     Not made or supported by M-VAVE. M-VAVE and FM-1 are trademarks of their respective owners.<br>
@@ -67,7 +67,7 @@ const TEXT = {
     editor: "エディタ（インストール後、パソコンから音色やシーケンスを編集）",
     direct: "USB ケーブルはパソコンに直接つないでください。Probe や Transporter などの機材は不要です。",
     brick: "万一インストールに失敗して起動しなくなった場合は、復旧に Transporter が必要です:",
-    beta: "FM-1 Groovebox 0.1 は Felucca を元にしたベータ版です。不具合は GitHub で知らせてください。このカスタムファームウェアを使ったことで FM-1 が壊れたり不具合が起きたりしても、作者は一切の責任を負いません。自己責任でお使いください。",
+    beta: "BBL JAM BOX 0.1 は Felucca を元にしたベータ版です。不具合は GitHub で知らせてください。このカスタムファームウェアを使ったことで FM-1 が壊れたり不具合が起きたりしても、作者は一切の責任を負いません。自己責任でお使いください。",
     back: "M-VAVEから公式FM-1 V15を取得し、未変更のFM-1.fwscを選んでください。ファイルはこのブラウザ内で検証し、サーバーへ送りません。",
     stockTitle: "公式V15に戻す", stockFile: "公式FM-1.fwsc", stockGo: "バックアップして公式V15へ戻す",
     stockBackup: "現在の曲・保存曲・音色バンク・サンプル・設定を先に保存します。全体バックアップ非対応版は、Feluccaを更新してから行ってください。このベータ版自体はバックアップできないため、戻すと保存した音色・キット・サンプルは消えます。",
@@ -99,7 +99,7 @@ const TEXT = {
     editor: "Editor (after installing: edit sounds and sequences from the computer)",
     direct: "Connect the USB cable directly to the computer. No probe or Transporter is needed.",
     brick: "If an install fails and the FM-1 no longer starts, recovering it needs a Transporter:",
-    beta: "FM-1 Groovebox 0.1 is a beta, based on Felucca; please report problems on GitHub. The author accepts no responsibility if your FM-1 is damaged or misbehaves because of this custom firmware. Use it at your own risk.",
+    beta: "BBL JAM BOX 0.1 is a beta, based on Felucca; please report problems on GitHub. The author accepts no responsibility if your FM-1 is damaged or misbehaves because of this custom firmware. Use it at your own risk.",
     back: "Get official FM-1 V15 from M-VAVE and select the unmodified FM-1.fwsc. The browser validates it locally; it is not sent to a server.",
     stockTitle: "Return to official V15", stockFile: "Official FM-1.fwsc", stockGo: "Back up and return to official V15",
     stockBackup: "Current music, saved music, sound banks, samples and settings are saved first. Older firmware needs a Felucca update for complete backups. This beta has no backup of its own: going back erases its saved sounds, kits and samples.",
@@ -154,7 +154,7 @@ window.addEventListener("beforeunload", (e) => { if (writing) { e.preventDefault
     const pkg = new Uint8Array(await r.arrayBuffer());
     if (productOf(pkg) !== meta.product) { sayK("badpkg"); return; }
     image = logicalImage(pkg);
-    say(`FM-1 Groovebox ${meta.version}`);
+    say(`BBL JAM BOX ${meta.version}`);
     $("go").disabled = false;
   } catch (e) { sayK("loadfail", e.message); }
 })();

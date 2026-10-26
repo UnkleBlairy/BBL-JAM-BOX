@@ -1,4 +1,4 @@
-FM-1 GROOVEBOX: HOW TO INSTALL IT (AND HOW TO GO BACK)
+BBL JAM BOX: HOW TO INSTALL IT (AND HOW TO GO BACK)
 ======================================================
 
   !!! BETA: FLASH AT YOUR OWN RISK !!!
@@ -199,6 +199,6 @@ Report problems on the Patreon post or on GitHub
 status line said and what the FM-1's screen shows.
 
 
-FM-1 Groovebox is a modified version of Felucca by Leo Kuroshita
+BBL JAM BOX is a modified version of Felucca by Leo Kuroshita
 (@kurogedelic), Hugelton Instruments. Free software under GPL-3.0, with
 no warranty. M-VAVE and FM-1 are trademarks of their respective owners.

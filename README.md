@@ -1,4 +1,4 @@
-# FM-1 Groovebox
+# BBL JAM BOX
 
 [![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0--only-blue.svg)](LICENSE)
 

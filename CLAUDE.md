@@ -196,6 +196,10 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
 - A drum hit flashes the header icon inverted (white block) for ~90 ms; only the
   top strip redraws for it (voice.c trk_hit_ms).
 
+- Name: BBL JAM BOX (Blair = blairysbeatlab). "FM-1" only says what it runs on. Splash: Blair's logo
+  (assets/logo/MEE.jpg, tools/gen_splash_logo.py), "BBL JAM BOX v0.1-beta", "BASED ON FELUCCA". The logo is
+  not under the GPL. The site's package is bbl-jam-box-X.Y.fwsc.
+
 ## Workflow (after every change)
 
 1. Build firmware: `./build.sh`

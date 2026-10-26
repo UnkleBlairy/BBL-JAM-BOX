@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only
- * Copyright (C) 2026 Blair (blairysbeatlab), FM-1 Groovebox; based on Felucca by Leo Kuroshita (@kurogedelic), Hügelton Instruments */
+ * Copyright (C) 2026 Blair (blairysbeatlab), BBL JAM BOX; based on Felucca by Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* The panel's page buttons (EDIT GLO SCL FX SEQ REC ENV). A press arms the button; letting go is its tap, however long
  * it was held: the button's page (ui_input.c page_tap), REC arms recording (rec_tap). There are no layers: a held
  * button does nothing more, so the holds are free for the groovebox. (Felucca's quick layers were here: ui_layer.c.) */

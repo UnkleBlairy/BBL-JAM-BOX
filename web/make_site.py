@@ -4,7 +4,7 @@
 """Make the site (GitHub Pages):
 
   index.html                  home.html: the front page (beta warning, installer, samples)
-  firmware/felucca-VER.fwsc   the package (+ LICENSE, LICENSING.md, LICENSES/: the package holds
+  firmware/bbl-jam-box-VER.fwsc  the package (+ LICENSE, LICENSING.md, LICENSES/: the package holds
                               JieLi SDK files under Apache-2.0, see LICENSING.md)
   webapp/installer/index.html index_pkg.html, self-contained (fm1pkg.js, fm1ota.js, metadata inlined)
   src/                        not touched
@@ -48,7 +48,7 @@ def main(pkg, version, out):
     lib = strip_module((HERE / "fm1pkg.js").read_text(encoding="utf-8")) + "\n" + \
         strip_module((HERE / "fm1ota.js").read_text(encoding="utf-8")) + "\n" + \
         strip_module((HERE / "fm1backup.js").read_text(encoding="utf-8"))
-    name = f"felucca-{re.sub(r'[^A-Za-z0-9.-]', '-', version)}.fwsc"
+    name = f"bbl-jam-box-{re.sub(r'[^A-Za-z0-9.-]', '-', version)}.fwsc"
     meta = json.dumps({"version": version, "product": product, "pkg": "../../firmware/" + name})
     for mark in ("/*LIB*/", "/*META*/"):
         if html.count(mark) != 1:
@@ -57,7 +57,7 @@ def main(pkg, version, out):
     inst, fw = out / "webapp" / "installer", out / "firmware"
     for d in (inst, fw):
         d.mkdir(parents=True, exist_ok=True)
-    for old in fw.glob("felucca-*.fwsc"):          # one package: the current one
+    for old in [*fw.glob("felucca-*.fwsc"), *fw.glob("bbl-jam-box-*.fwsc")]:   # one package: the current one
         old.unlink()
     (inst / "index.html").write_text(html, encoding="utf-8")
     smp = (HERE / "samples.html").read_text(encoding="utf-8")   # the sample uploader (webapp/samples/)

@@ -1,4 +1,4 @@
-# Licensing checklist: FM-1 Groovebox 0.1 beta
+# Licensing checklist: BBL JAM BOX 0.1 beta
 
 **This is not legal advice.** It's a practical checklist drawn from `LICENSING.md`, `CREDITS.md`, the
 licence texts in `LICENSES/` and what is actually in this build (checked 2026-10-26). Items marked
@@ -37,10 +37,10 @@ giving a relevant date".
   Instruments", and the guide ends with the same line.
 - ☑ Leo's copyright lines are kept in the files he wrote.
 - ☑ **Add a notice to the files we changed or wrote** (for example
-  `Modified 2026 by Blair (blairysbeatlab): FM-1 Groovebox`). These files have **no licence header at all**
+  `Modified 2026 by Blair (blairysbeatlab): BBL JAM BOX`). These files have **no licence header at all**
   yet: `firmware/src/eng_sampler.c`, `smp_usb.c`, `ui_gb.c`, `icons_gb.h`, `icons_808.h`,
   `web/fm1smp.js`, `web/smpui.js`, `web/smpimg.js`, `tools/gen_icons_808.py`.
-- ☑ **Update `README.md` and `LICENSING.md`** to say this is FM-1 Groovebox, a fork of Felucca, with its
+- ☑ **Update `README.md` and `LICENSING.md`** to say this is BBL JAM BOX, a fork of Felucca, with its
   own copyright line added beside Leo's. Both still describe Leo's Felucca 1.6.1 (and the README still has
   Leo's "Maintenance Notice").
 - ☑ **Fixed: the FM-1's start-up screen said "Felucca / v0.1-beta / Hügelton Instruments"**
@@ -48,8 +48,9 @@ giving a relevant date".
   Blair's logo, the version and "BASED ON FELUCCA". (Same reason as the file notices above: a modified
   version should be clearly marked as modified, not passed off as the original.)
 - ⚑ **The name "Felucca".** `LICENSING.md`: "'Felucca' and 'Hügelton Instruments' are names of Hügelton
-  Instruments." Saying "based on Felucca" is fine; calling our build "Felucca" is not. The package file is
-  still named `felucca-0.1-beta.fwsc`, and the installer still credits Felucca's own engines. Consider
+  Instruments." Saying "based on Felucca" is fine; calling our build "Felucca" is not. ☑ It's now called
+  BBL JAM BOX, the site's file is `bbl-jam-box-0.1-beta.fwsc`, and the credits match the build. (Inside the
+  code, names like `felucca.c` and the build's own `felucca-X.Y.fwsc` stay: they're not shown to users.) Consider
   asking Leo if he's happy with how it's described; he's stepped back from the project but is reachable on
   GitHub.
 - ☐ **The on-device credits screen is gone.** Leo's build showed authors, licences and source links under
@@ -102,10 +103,9 @@ isn't (over-crediting is harmless legally but confusing).
   (`FELUCCA-LOADER-1`), and it accepted ours. The V15 file is **linked, not included**.
 - ☑ Disclaimer on the home page, installer and guide: "Not made or supported by M-VAVE. M-VAVE and FM-1 are
   trademarks of their respective owners."
-- ⚑ **The name "FM-1 Groovebox" contains M-VAVE's trademark "FM-1".** Describing what it runs on
-  ("a groovebox firmware for the M-VAVE FM-1") is normally fine; using "FM-1" as part of the product
-  name could suggest it's official. A safer name would be your own (e.g. "Blairy's Groovebox for FM-1").
-  Don't use M-VAVE's logo or product photos as if they were yours.
+- ☑ **The name.** It's now **BBL JAM BOX**, your own name. "FM-1" is only used to say what it runs on
+  ("for the M-VAVE FM-1"), which is the normal, safe way. Don't use M-VAVE's logo or product photos as if
+  they were yours.
 - ⚑ **V15 file licence.** M-VAVE's own repo (`github.com/m-vave/fm1_open`, `THIRD_PARTY.md`) says
   `FM-1_015.fwsc` is "distributed by M-VAVE under the Apache License, Version 2.0". We checked that file is
   byte-identical to the official V15 our installer expects (SHA-256 `db1642b2…edb8a`). Linking to it is
@@ -126,6 +126,5 @@ isn't (over-crediting is harmless legally but confusing).
 
 ### Things to ask someone (summary)
 1. **Lawyer:** is the website notice enough, or does the device need an ABOUT/credits screen (GPL 5(d))?
-2. **Lawyer / M-VAVE:** is "FM-1 Groovebox" OK as a name, or should "FM-1" only describe compatibility?
-3. **Leo Kuroshita:** is he happy with "based on Felucca" and how his work is credited?
-4. **M-VAVE:** confirm the V15 recovery file's Apache-2.0 status if you ever want to bundle it.
+2. **Leo Kuroshita:** is he happy with "based on Felucca" and how his work is credited?
+3. **M-VAVE:** confirm the V15 recovery file's Apache-2.0 status if you ever want to bundle it.

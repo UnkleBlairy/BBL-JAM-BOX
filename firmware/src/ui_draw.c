@@ -452,7 +452,7 @@ static card_span_t card_span;
 
 
 /* The power-on splash (main.c fm1_main, web/emu felucca_web.c): Blair's logo (splash_logo.h, tools/gen_splash_logo.py)
- * in pixels drawn 2 x 2, centred at the top, in the ink; under it the version and "BASED ON FELUCCA" in AF_S. A
+ * in pixels drawn 2 x 2, centred at the top, in the ink; under it the name and version and "BASED ON FELUCCA" in AF_S. A
  * placeholder until the final splash. In the saved palette (settings_init before it) */
 #include "splash_logo.h"
 #define SPL_S 2                                     /* a logo pixel on the screen: 2 x 2 */
@@ -470,7 +470,7 @@ static void draw_splash(void)
                 lcd_fill((uint32_t)(SPL_X0 + i * SPL_S), (uint32_t)(SPL_Y0 + j * SPL_S), (uint32_t)((r - i) * SPL_S),
                          SPL_S, T_TEXT);
         }
-    draw_text_box(0, (uint32_t)(y + 3), 240, &AF_S, FELUCCA_VERSION, T_TEXT, 1);
+    draw_text_box(0, (uint32_t)(y + 3), 240, &AF_S, "BBL JAM BOX " FELUCCA_VERSION, T_TEXT, 1);
     draw_text_box(0, (uint32_t)(y + 20), 240, &AF_S, "BASED ON FELUCCA", T_DIM, 1);
     lcd_sync();
 }

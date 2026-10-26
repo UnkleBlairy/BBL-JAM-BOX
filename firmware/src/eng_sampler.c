@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only
- * Copyright (C) 2026 Blair (blairysbeatlab), FM-1 Groovebox */
+ * Copyright (C) 2026 Blair (blairysbeatlab), BBL JAM BOX */
 /* SAMPLER: plays the chunks the sample uploader wrote to the flash (docs/samplelab.html is the spec: its render() and
  * stretchBuf() are the reference). One machine, one voice a track (a new hit takes over, its old sound fades in 4 ms).
  *
