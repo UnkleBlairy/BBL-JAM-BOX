@@ -130,7 +130,7 @@ static const param_desc_t TP[P_COUNT] = {
     [P_ROOT] = PD("ROOT", F_NOTE, 0, 11, 0),
     [P_SCALE] = PE("SCL", N_SCALE, 0),
     [P_QUANT] = PE("QNT", N_QUANT, 0),
-    [P_TRANS] = PD("TRN", F_SEMI, -24, 24, 0),
+    [P_TRANS] = PD("PITCH", F_SEMI, -24, 24, 0),
     [P_SLEN] = PD("LEN", F_STEPS, 1, 16, 16),           /* SIMPLE: 16 steps at most (steps 16..31 hold the TRIGs: core.h GB_TRIG) */
     [P_SDIV] = PE("DIV", N_SDIV, 2),
     [P_SSWING] = PD("SWG", F_PCT, 0, 100, 0),
@@ -516,11 +516,16 @@ static const uint8_t *alt_ids(const page_t *pg)
     (void)FX;
     return str_eq(pg->title, "LFO") ? LFO : str_eq(pg->title, "COMB") ? COMB : 0;
 }
-/* SIMPLE: LEVEL and AGE (P_LN0, P_LN1) are no knob on a track of an engine without them; SAMPLER's AGE page is GATE */
+/* SIMPLE: LEVEL and AGE (P_LN0, P_LN1) are no knob on a track of an engine without them; SAMPLER's AGE page is GATE.
+ * PITCH (P_TRANS, semitones): the sampler's OSC 1 KNOB 1, FM SYN's OSC 2 KNOB 4 (where the 808s have LEVEL) */
 static uint32_t page_id_an(const page_t *pg, uint32_t id)
 {
-    if (!FELUCCA_SIMPLE || pg->scope != SC_ENGINE || (id != P_LN0 && id != P_LN1))
+    if (!FELUCCA_SIMPLE || pg->scope != SC_ENGINE || (id != P_LN0 && id != P_LN1 && id != P_E0))
         return id;
+    if (id == P_E0)
+        return eng_idx(TSEL->eng_req) == ENGI_SAMPLER ? P_TRANS : id;
+    if (id == P_LN0 && eng_idx(TSEL->eng_req) == ENGI_DIGITAL && TSEL->p[P_E7] % 6 == 0)
+        return P_TRANS;
     if (id == P_LN1 && eng_idx(TSEL->eng_req) == ENGI_SAMPLER)
         return P_LN2;
     return ln_on(TSEL, id) ? id : 0xFFu;

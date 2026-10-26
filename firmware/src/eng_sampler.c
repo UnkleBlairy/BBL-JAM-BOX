@@ -237,8 +237,8 @@ static void sampler_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, con
     hv = *hp;
     if (h->gen != smp_gen)
         h->done = 1;
-    {                                                 /* PITCH (+-24 semitones) and the note: a resampling rate */
-        int32_t p16 = clamp(m->pitch16 + (p[P_E0] - 64) * 6, 0, 2047);
+    {                                                 /* the note (with PITCH, voice.c): a resampling rate */
+        int32_t p16 = m->pitch16;
         uint32_t r = (uint32_t)(((uint64_t)pitch_inc((uint32_t)p16) * smp_rcp) >> 24);   /* Q16 */
         step = (uint32_t)(((uint64_t)r * h->srq) >> 16);
     }

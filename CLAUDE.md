@@ -196,10 +196,14 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
 - A drum hit flashes the header icon inverted (white block) for ~90 ms; only the
   top strip redraws for it (voice.c trk_hit_ms).
 
-- KIT key mode (SEQ taps: SEQ -> PARAM -> KEY -> KIT; seq.c kit_*, ui_input.c kit_*): each white key of each track
-  holds up to 8 locks, built live (hold the key + turn knobs, heard at once; key + OCT- clears it). A key plays the
-  track's step note with its locks; the next key puts them back. Recording: the step gets the key's locks. Black keys
-  1-6 pick the track; keys with locks are lit. Not saved (like macros).
+- LOCKS key mode (SEQ taps: SEQ -> PARAM -> KEY -> LOCKS; seq.c kit_*, ui_input.c kit_*): each white key is a
+  playable trig-locked step. Unbaked keys play the sound as the knobs set it; hold a key + turn knobs = bake up to 8
+  locks into that key only (heard at once; key + OCT- clears it). The knobs and dials always show the sound's own
+  values (a held key shows its locks inverted); turning a knob edits the sound's own value. Recording: the step gets
+  the key's locks. Black keys 1-6 pick the track; keys with locks are lit. Not saved (like macros).
+- PITCH (semitones, -24..+24; P_TRANS, so no new id and old saves load): FM SYN's OSC 2 KNOB 4, the sampler's OSC 1
+  KNOB 1 (replaced its old fine PITCH; E0 is ignored). Taken as each note starts (voice.c voice_pitch16), so it locks
+  per step/key. Drums use TUNE. TRN no longer moves the keys (KB_TRN).
 - Name: BBL JAM BOX (Blair = blairysbeatlab). "FM-1" only says what it runs on. Splash: Blair's logo
   (assets/logo/MEE.jpg, tools/gen_splash_logo.py), "BBL JAM BOX v0.1-beta", "BASED ON FELUCCA". The logo is
   not under the GPL. The site's package is bbl-jam-box-X.Y.fwsc.

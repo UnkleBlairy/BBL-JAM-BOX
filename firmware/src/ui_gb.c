@@ -48,6 +48,7 @@ static int gbk_save(uint32_t k);
 static int gbk_load(uint32_t k);
 static void gb_store_poll(void);
 static uint64_t lock_held(void);                   /* (ui_input.c) .. on a sound page: its knobs lock */
+static int kit_shown(int16_t *vp, int16_t *cur);   /* (ui_input.c) LOCKS: a dial's value */
 static const uint8_t *smp_peaks(uint32_t sl);      /* (gb_store.c) SAMPLER: a chunk's waveform */
 static const uint8_t *smp_zpeaks(uint32_t sl, int32_t x0, uint32_t w);   /* .. zoomed */
 /* the SEQ page (ui_input.c gbseq_knob) */
@@ -359,6 +360,11 @@ static void gb_fill(gb_view_t *v)
             } else if (motion_param(id)) {
                 cur = motion_base_value(TSEL, id);
             }
+        } else if (FELUCCA_SIMPLE && !v->fx && kit_on()) {   /* LOCKS: a key held, its lock (inverted); else the sound's own */
+            int16_t kv = (int16_t)cur;
+            if (kit_shown(vp, &kv))
+                v->alt[k] = 1;
+            cur = kv;
         }
         param_format(d, cur, v->val[k], &u);
         if (smp && vp >= TSEL->p && vp < TSEL->p + P_COUNT)
@@ -697,7 +703,7 @@ static void gb_scene(const gb_view_t *v, uint16_t bgc)
     const char *nm = v->fx ? "FX" : MACHINES[v->mach % NMACH].pill;
     int32_t pw = (text_w(&AF_M, nm) + 17 + (v->picon ? 20 : 0)) & ~1;
     {                                                             /* what the keys are: between the dots and the pill */
-        static const char *const KM[5] = {"", "SEQ", "PARAM", "KEY", "KIT"};
+        static const char *const KM[5] = {"", "SEQ", "PARAM", "KEY", "LOCKS"};
         const char *km = KM[v->kmode % 5u];
         int32_t x0 = 8 + (int32_t)v->npages * 20, x1 = 232 - pw - 4;
         const aafont_t *kf = text_w(&AF_M, km) <= x1 - x0 ? &AF_M : &AF_S;

@@ -130,12 +130,13 @@ static int32_t kb_engine(const track_t *t, uint32_t k)
 
 /* key k's note with the octave buttons at oct: QNT, ROOT, SCALE, TRN (KB_SILENT: a black key under WHITE). The keys
  * (kb_map) and the arp's latched keys (arp_list, #191: as the keys play now, the octave they were pressed in) */
+#define KB_TRN(t) (FELUCCA_SIMPLE ? 0 : (t)->p[P_TRANS])   /* (SIMPLE: TRN is PITCH, the sound's: voice.c) */
 static uint32_t kb_pitch(const track_t *t, uint32_t k, int32_t oct)
 {
     static const int8_t DEGREE[12] = {0, -1, 1, -1, 2, 3, -1, 4, -1, 5, -1, 6};
     int32_t n = 53 + (int32_t)k;
     if (t->p[P_QUANT] == QN_SNAP || t->p[P_QUANT] >= QN_SEQ)   /* SNAP (and SEQ, SEQ+T): every key, rounded down */
-        return (uint32_t)clamp(scale_snap(t, n + 12 * oct + t->p[P_TRANS]), 0, 127);
+        return (uint32_t)clamp(scale_snap(t, n + 12 * oct + KB_TRN(t)), 0, 127);
     if (t->p[P_QUANT] == QN_WHITE) {                    /* WHITE: white keys walk the scale, black keys are silent */
         uint32_t mask = scale_mask(t), i;
         int32_t count = 0, degree = DEGREE[n % 12], wo;
@@ -160,7 +161,7 @@ static uint32_t kb_pitch(const track_t *t, uint32_t k, int32_t oct)
             }
         n = 60 + t->p[P_ROOT] + 12 * wo + (int32_t)i;
     }
-    return (uint32_t)clamp(n + 12 * oct + t->p[P_TRANS], 0, 127);
+    return (uint32_t)clamp(n + 12 * oct + KB_TRN(t), 0, 127);
 }
 
 static uint32_t kb_map(const track_t *t, uint32_t k)
@@ -791,11 +792,12 @@ static __attribute__((noinline)) int par_key(uint32_t k, track_t *t)   /* 1: the
     return !kb_octup;
 }
 
-/* SIMPLE, the KIT keys (song.grid 7, ui.sgrid 3; ui_input.c kit_*): each white key of each track holds its own locks,
- * up to KIT_N knobs, built up live (hold the key and turn knobs; not saved, like the macros). A key plays the track's
- * step notes (grid_chord) with its locks on; the next key puts them back first (unless something moved them since: a
- * knob, a step's lock, the next trig). Playing, they are marked as a lock's, so the track's next trig puts them back
- * too. Recording: the step the note goes on gets the key's locks (as par_key) */
+/* SIMPLE, the LOCKS keys (song.grid 7, ui.sgrid 3; ui_input.c kit_*): each white key of each track is a playable
+ * trig-locked step: it holds its own locks, up to KIT_N knobs, built up live (hold the key and turn knobs; not saved,
+ * like the macros). A key plays the track's step notes (grid_chord) with its locks on; the next key puts them back
+ * first (unless something moved them since: a step's lock, the next trig). The knobs and the screen stay the sound's
+ * own (kit_base; a knob turned puts its value back first: kit_drop). Playing, they are marked as a lock's, so the
+ * track's next trig puts them back too. Recording: the step the note goes on gets the key's locks (as par_key) */
 #define KIT_N 8u
 typedef struct { uint8_t n, id[KIT_N]; int16_t v[KIT_N]; } kit_key_t;
 static kit_key_t kit[NTRK][16];
@@ -811,6 +813,33 @@ static void kit_undo(track_t *t)
     }
     kit_snd[tk].n = 0;
     kit_cur[tk] = 0;
+}
+/* id's value under the sounding key's lock (1), else 0 */
+static int kit_base(const track_t *t, uint32_t id, int16_t *v)
+{
+    uint32_t tk = trk_index(t), i;
+    for (i = 0; i < kit_snd[tk].n; i++)
+        if (kit_snd[tk].id[i] == id) {
+            *v = kit_snd[tk].base[i];
+            return 1;
+        }
+    return 0;
+}
+/* id's knob turned: the sounding key's lock of it goes (the value back first: the turn starts from the sound's own) */
+static void kit_drop(track_t *t, uint32_t id)
+{
+    uint32_t tk = trk_index(t), i;
+    for (i = 0; i < kit_snd[tk].n; i++)
+        if (kit_snd[tk].id[i] == id) {
+            int16_t *vp = motion_vp(t, id);
+            if (*vp == kit_snd[tk].v[i])
+                *vp = kit_snd[tk].base[i];
+            kit_snd[tk].n--;
+            kit_snd[tk].id[i] = kit_snd[tk].id[kit_snd[tk].n];
+            kit_snd[tk].v[i] = kit_snd[tk].v[kit_snd[tk].n];
+            kit_snd[tk].base[i] = kit_snd[tk].base[kit_snd[tk].n];
+            return;
+        }
 }
 static void kit_apply(track_t *t, uint32_t p)
 {
@@ -1081,7 +1110,7 @@ static __attribute__((noinline)) void seq_step(track_t *t, const step_t *s, uint
      * the notes that sound: their note-offs match */
     const engine_t *e = ENGINES[eng_idx(t->eng_req)];
     uint32_t qseq = t->p[P_QUANT] >= QN_SEQ && !(e->keys && e->keys(t, 0) >= 0);
-    int32_t qtrn = qseq && t->p[P_QUANT] == QN_SEQT ? t->p[P_TRANS] : 0;
+    int32_t qtrn = qseq && t->p[P_QUANT] == QN_SEQT ? KB_TRN(t) : 0;
     if (!(skip & SEQ_REP)) {
         t->rat_left = 0;
         if ((skip & SEQ_MISS) || (!(skip & SEQ_ROLLED) && seq_miss(t, s, idx))) {

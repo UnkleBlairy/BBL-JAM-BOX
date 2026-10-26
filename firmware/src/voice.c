@@ -278,6 +278,16 @@ static void glide_set(track_t *t, voice_t *v, int glide)
     }
 }
 
+/* SIMPLE: PITCH (P_TRANS, semitones) of the synth and the sampler, taken as a note starts (a lock or a LOCKS key's
+ * own sounds that note only); the drums have their TUNE */
+static int32_t voice_pitch16(const track_t *t, uint32_t note)
+{
+    int32_t n = (int32_t)note;
+    if (FELUCCA_SIMPLE && (t->engine == ENGI_SAMPLER || (t->engine == ENGI_DIGITAL && t->p[P_E7] % 6 == 0)))
+        n = clamp(n + t->p[P_TRANS], 0, 127);
+    return n * 16;
+}
+
 static void voice_start(track_t *t, voice_t *v, uint32_t note, uint32_t vel, int glide)
 {
     const engine_t *e = ENGINES[t->engine];
@@ -291,7 +301,7 @@ static void voice_start(track_t *t, voice_t *v, uint32_t note, uint32_t vel, int
     v->active = 1;
     v->stage = 1;
     v->age = ++vage;
-    v->pitch16 = (int32_t)note * 16;
+    v->pitch16 = voice_pitch16(t, note);
     v->mvel = t->m_vel;                                 /* mod.c: the note's VEL and RAND */
     v->mrnd = t->m_rnd;
     t->m_vi = (uint8_t)(v - t->v);
@@ -346,7 +356,7 @@ static void mono_play(track_t *t, uint32_t note, uint32_t vel, int retrig, int g
             }
         } else {                                            /* legato: new pitch, same envelope */
             v->note = (uint8_t)note;
-            v->pitch16 = (int32_t)note * 16;
+            v->pitch16 = voice_pitch16(t, note);
             v->mvel = t->m_vel;
             v->mrnd = t->m_rnd;
             if (vel > v->vel && nv == 1u)

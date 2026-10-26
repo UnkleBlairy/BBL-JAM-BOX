@@ -282,9 +282,9 @@ static uint32_t scale_leds(uint32_t *root)
         if (t->p[P_QUANT] == QN_WHITE) {
             if ((note = kb_map(t, k)) > 127u)
                 continue;                               /* (a black key: silent) */
-            pc = (int32_t)note - t->p[P_TRANS];         /* (WHITE walks the scale before TRN) */
+            pc = (int32_t)note - KB_TRN(t);         /* (WHITE walks the scale before TRN) */
         } else {
-            pc = 53 + (int32_t)k + t->p[P_TRANS];
+            pc = 53 + (int32_t)k + KB_TRN(t);
         }
         pc = ((pc - t->p[P_ROOT]) % 12 + 12) % 12;
         m |= ((mask >> pc) & 1u) << k;
@@ -1015,7 +1015,7 @@ static int kit_turn(uint32_t k, int32_t s, uint32_t held)
             ;
         if (i == kk->n) {
             if (kk->n == KIT_N) {
-                ui_message("KIT KEY FULL");
+                ui_message("KEY LOCKS FULL");
                 continue;
             }
             kk->id[kk->n] = (uint8_t)id;
@@ -1027,7 +1027,32 @@ static int kit_turn(uint32_t k, int32_t s, uint32_t held)
     }
     return 1;
 }
-/* KIT: a black key 1..6 picks the track */
+/* LOCKS: what knob vp's dial shows: a key held, its lock (1: inverted) or the sound's own; else the sound's own (a key's
+ * lock may sound) */
+static int kit_shown(int16_t *vp, int16_t *cur)
+{
+    uint32_t id, held = kit_held(), p = 0, i;
+    if (vp >= TSEL->p && vp < TSEL->p + P_COUNT)
+        id = (uint32_t)(vp - TSEL->p);
+    else if (vp >= song.g && vp < song.g + G_COUNT && motion_gid((uint32_t)(vp - song.g)) != 0xFFu)
+        id = motion_gid((uint32_t)(vp - song.g));
+    else
+        return 0;
+    if (held) {
+        const kit_key_t *kk;
+        while (!((held >> p) & 1u))
+            p++;
+        kk = &kit[song.sel][p];
+        for (i = 0; i < kk->n; i++)
+            if (kk->id[i] == id) {
+                *cur = kk->v[i];
+                return 1;
+            }
+    }
+    (void)kit_base(TSEL, id, cur);
+    return 0;
+}
+/* LOCKS: a black key 1..6 picks the track */
 static void kit_keys(uint32_t pressed)
 {
     uint32_t k;
@@ -1107,6 +1132,12 @@ static void edit_param(uint32_t slot, int32_t steps)
     d = page_desc(pg, slot, &vp);
     if (!d || !vp || d->max == d->min)
         return;
+    if (FELUCCA_SIMPLE && kit_cur[song.sel]) {          /* LOCKS: a key's lock sounds: the knob is the sound's own */
+        if (vp >= TSEL->p && vp < TSEL->p + P_COUNT)
+            kit_drop(TSEL, (uint32_t)(vp - TSEL->p));
+        else if (vp >= song.g && vp < song.g + G_COUNT && motion_gid((uint32_t)(vp - song.g)) != 0xFFu)
+            kit_drop(TSEL, motion_gid((uint32_t)(vp - song.g)));
+    }
     v = param_turn(d, *vp, accel(EN_K1 + slot, steps, d->fmt == F_ENUM ? 0 : d->max - d->min));
     {
         int16_t was = *vp;
@@ -1198,7 +1229,7 @@ static int page_tap(uint32_t b)
     }
     if (FELUCCA_SIMPLE && b == B_SEQ) {                  /* .. on the SEQ page: the step keys off / on */
         ui.sgrid = (uint8_t)(ui.sgrid == 2u ? 0u : ui.sgrid == 0u ? 3u : ui.sgrid == 3u ? 1u : 2u);   /* SEQ -> PARAM -> KEY -> KIT -> SEQ */
-        ui_message(ui.sgrid == 1u ? "SEQ" : ui.sgrid == 2u ? "PARAM" : ui.sgrid == 3u ? "KIT" : "KEY");
+        ui_message(ui.sgrid == 1u ? "SEQ" : ui.sgrid == 2u ? "PARAM" : ui.sgrid == 3u ? "LOCKS" : "KEY");
         return 1;
     }
     for (f = FAM_HOME + 1u; f < FAM_COUNT; f++)        /* (GLO SEQ SAVE ..: HOME is ui_input's, home_tap) */
@@ -1392,7 +1423,7 @@ static void ui_input(void)
                             kit_undo(TSEL);
                         kit[song.sel][p].n = 0;
                     }
-                ui_message("KIT KEY CLEARED");
+                ui_message("KEY LOCKS CLEARED");
                 break;
             }
             if (FELUCCA_SIMPLE && b == B_OCTUP && !sgrid_on())

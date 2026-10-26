@@ -1240,6 +1240,7 @@ static void machine_defaults(track_t *t)
     uint32_t i;
     for (i = 0; i < 7u; i++)
         t->p[P_E0 + i] = (int16_t)pr->e[i];
+    t->p[P_TRANS] = 0;                                /* PITCH (SYN, SAMPLE): in tune */
     t->p[P_ATK] = pr->env[0];
     t->p[P_DEC] = pr->env[1];
     t->p[P_SUS] = pr->env[2];
