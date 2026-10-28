@@ -100,11 +100,13 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
 - Parameter locks: with step keys on, hold step(s) on any sound page and turn
   a knob = lock. Locked dials show inverted (like macros). Hold step + OCT-
   clears that step's locks. Every knob locks: all sound pages incl. machine,
-  every LFO setting, the OCT+-held second sets, and the master controls (DJ,
+  every LFO setting and the master controls (DJ,
   COMB, delay TIME/FDBK/TONE, reverb SIZE/DAMP/TYPE: motion.c MOTION_G, ids
   P_COUNT+j). Not the CLOCK page. Removing a step removes its locks.
-- COMB page with OCT+ held = DJ filter (so it can be locked; PERF's keys are the
-  macros, no step keys there).
+- No OCT+ second sets of knobs. OCT+ held + knob = a temporary change (ui_input.c
+  mom_*): let go of OCT+ and it snaps back; OCT- while OCT+ is held keeps it.
+- GLO pages: PERF, COMB, DJ (the DJ filter's own page, so it can be locked).
+- LFO pages: LFO (RATE WAVE PHASE FADE), SYNC (SYNC TRIG POL), LFO DEST.
 - Master FX must never click: DJ and COMB fade in/out over ~23 ms
   (MFX_CSLOPE), the comb loop soft-limits (mfx_soft), the DJ filter updates
   every 32 samples with smooth resonance. Test with a sine + 2nd-difference

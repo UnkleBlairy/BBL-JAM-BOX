@@ -79,7 +79,9 @@ static uint32_t gb_page_icon(const page_t *pg, uint32_t mach)
     if (pg->graph == GR_PERF)
         return IC_MACRO;
     if (str_eq(pg->title, "COMB"))
-        return alt_mode ? IC_DJ : IC_COMB;
+        return IC_COMB;
+    if (str_eq(pg->title, "DJ"))
+        return IC_DJ;
     if (str_eq(pg->title, "AGE"))                       /* (SAMPLER's GATE: the machine's) */
         return eng_idx(t->eng_req) == ENGI_SAMPLER ? MACHINES[mach % NMACH].icon : IC_AGE;
     if (str_eq(pg->title, "DELAY"))

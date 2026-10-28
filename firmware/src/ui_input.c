@@ -63,10 +63,11 @@ static int32_t accel(uint32_t role, int32_t s, int32_t range);
  * them back too. Up to MOM_N values at a time ("MOMENTARY FULL" past them: the turn does nothing). LFO held did
  * nothing (it is no layer; OCT- is the octave and a layer's UNDO, so not it), so no gesture changes: LFO + a knob
  * turned opened LFO's page on release before, and edited the page under it for good. The values: ui.c mom */
-static int mom_down(void)                              /* LFO held where its turns are momentary */
+static int mom_down(void)                              /* SIMPLE: OCT+ held (OCT- keeps); else LFO held (OCT+ keeps) */
 {
-    return ((fm1_in.buttons >> panel.btn[B_LFO]) & 1u) && !ui.confirm && !ui.uboot;
+    return ((fm1_in.buttons >> panel.btn[FELUCCA_SIMPLE ? B_OCTUP : B_LFO]) & 1u) && !ui.confirm && !ui.uboot;
 }
+#define MOM_KEEP (FELUCCA_SIMPLE ? B_OCTDN : B_OCTUP)
 /* KNOB k turned s with LFO held: 1 = taken (a momentary value, or refused full), 0 = not a momentary value (the turn
  * goes as ever: the column picks, steps, acts) */
 static int mom_turn(uint32_t k, int32_t s)
@@ -104,7 +105,7 @@ static int mom_turn(uint32_t k, int32_t s)
         mom.v[i] = *vp;
         mom.n++;
         if (i == 0u)
-            ui_message("MOMENTARY  [OCT+] KEEP");
+            ui_message(FELUCCA_SIMPLE ? "TEMP  [OCT-] KEEP" : "MOMENTARY  [OCT+] KEEP");
     }
     *vp = (int16_t)param_turn(d, *vp, accel(EN_K1 + k, s, d->fmt == F_ENUM ? 0 : d->max - d->min));
     return 1;
@@ -115,8 +116,8 @@ static uint32_t oct_leds(void)
 {
     if (ui.confirm)                                     /* a dialog: OCT- cancels, OCT+ (breathing) does it */
         return 1u | OCT_BREATH;
-    if (mom.n && mom_down())                            /* MOMENTARY: OCT+ keeps the changes */
-        return (song.octave < 0 ? 1u : 0u) | OCT_BREATH;
+    if (mom.n && mom_down())                            /* MOMENTARY: OCT+ (SIMPLE: OCT-) keeps the changes */
+        return FELUCCA_SIMPLE ? 2u | OCT_BREATH_DN : (song.octave < 0 ? 1u : 0u) | OCT_BREATH;
     return (song.octave < 0 ? 1u : 0u) | (song.octave > 0 ? 2u : 0u);
 }
 
@@ -1372,9 +1373,9 @@ static void ui_input(void)
         mom_restore();
         ui_message("BACK");
     }
-    if (mom.n && ((pressed >> panel.btn[B_OCTUP]) & 1u)) {   /* .. OCT+ with LFO held: kept (no octave) */
+    if (mom.n && ((pressed >> panel.btn[MOM_KEEP]) & 1u)) {   /* .. OCT+ with LFO held (SIMPLE: OCT- with OCT+): kept */
         mom.n = 0;
-        pressed &= ~(1u << panel.btn[B_OCTUP]);
+        pressed &= ~(1u << panel.btn[MOM_KEEP]);
         ui_message("KEPT");
     }
     home = btn_hold(&ui.home_t0, B_HOME, now, 1);
@@ -1528,12 +1529,12 @@ static void ui_input(void)
             !ui.confirm && !sgrid_on() && !par_on())
             song.octave += song.octave < 3 ? 1 : 0;
         kb_octup = (uint8_t)dn;                         /* (seq.c: OCT+ held + a track key = mute) */
-        if (mt_used) {
-            ou_used = 1;                               /* (a mute: not the octave up, not the setup values) */
+        if (mt_used || mom.n) {
+            ou_used = 1;                               /* (a mute, a temporary change: not the octave up) */
             mt_used = 0;
         }
         ou_dn = (uint8_t)dn;
-        alt_mode = (uint8_t)(dn && !ou_used && fm1_ms - ou_t0 >= 250u && !ui.home && !ui.confirm && !par_on());
+        alt_mode = 0;                                   /* (SIMPLE: no second sets) */
     }
     par_poll();
     song.grid = (uint8_t)keys_mode();                 /* (seq.c: the keys are the grid's) */

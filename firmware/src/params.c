@@ -485,7 +485,8 @@ typedef struct {
 static const page_t PAGES[] = {
     {"ENV", FAM_ENV, SC_TRACK, GR_ADSR, {P_ATK, P_DEC, P_SUS, P_REL}},
     {"ENV DEST", FAM_ENV, SC_TRACK, GR_NONE, {P_ED_FLT, P_ED_PIT, P_ED_SHP, P_ED_FX}},   /* (P_ED_FX: R2, eng_digital.c) */
-    {"LFO", FAM_LFO, SC_TRACK, GR_LFO, {P_LRATE, P_LWAVE, P_M1AMT, P_M1DST}},   /* RATE WAVE, the routing AMT DEST; OCT+: PHASE FADE SYNC TRIG */
+    {"LFO", FAM_LFO, SC_TRACK, GR_LFO, {P_LRATE, P_LWAVE, P_LPHASE, P_LFADE}},   /* (its DEST and AMT: hold LFO, ui_input.c) */
+    {"SYNC", FAM_LFO, SC_TRACK, GR_NONE, {P_LSYNC, P_LTRIG, P_LPOL, 0xFF}},
     {"LFO DEST", FAM_LFO, SC_TRACK, GR_NONE, {P_LD_PIT, P_LD_FLT, P_LD_SHP, P_LD_AMP}},
     {"DELAY", FAM_FX, SC_TRACK, GR_NONE, {P_DLY, 0x80 | G_DTIME, 0x80 | G_DFDBK, 0x80 | G_DCOLOR}},   /* the track's send, then the delay's own TIME FDBK TONE (0x80: a global) */
     {"VERB", FAM_FX, SC_TRACK, GR_NONE, {P_REV, 0x80 | G_RSIZE, 0x80 | G_RDAMP, 0x80 | G_RTYPE}},   /* the track's send, then the reverb's SIZE DAMP TYPE */
@@ -496,6 +497,7 @@ static const page_t PAGES[] = {
     {"FILTER ENV", FAM_FLT, SC_TRACK, GR_NONE, {P_FE_ATK, P_FE_DEC, P_FE_SUS, P_FE_REL}}, /* ATK DEC SUS REL */
     {"PERF", FAM_GLO, SC_GLOBAL, GR_PERF, {0xFF, 0xFF, 0xFF, 0xFF}},        /* GLO: the performance macros (ui.c perf_*) */
     {"COMB", FAM_GLO, SC_GLOBAL, GR_NONE, {G_SYNC, G_CRATE, G_CDEPTH, G_INFO}},   /* the master comb: MIX TUNE FDBK DAMP (mfx.c) */
+    {"DJ", FAM_GLO, SC_GLOBAL, GR_NONE, {G_MIDI, 0xFF, 0xFF, 0xFF}},             /* the DJ filter (a step locks it) */
     {"SEQ", FAM_SEQ, SC_TRACK, GR_GBSEQ, {P_SLEN, P_SDIV, P_APROB, 0xFF}},
     {"ARP", FAM_ARP, SC_TRACK, GR_NONE, {P_AHOLD, P_AMODE, P_ARATE, P_ASWING}},   /* ARP MODE RATE FADE (seq.c ARP_*) */   /* LEN SPEED CHANCE TRIG (ui_input.c gbseq_knob) */
     {"VOLUME 1-4", FAM_TRK, SC_TRK, GR_TRK, {0, 1, 2, 3}},   /* the tracks' levels, KNOB k track id[k] (0xFF: none) */
@@ -505,16 +507,12 @@ static const page_t PAGES[] = {
 #define NPAGES (sizeof(PAGES) / sizeof(PAGES[0]))
 static uint8_t mod_ui_slot;      /* the MOD page: the matrix slot (0..3) KNOB 2..4 edit */
 
-/* SIMPLE: OCT+ held shows a page's setup values in place of its four (ui_input.c sets alt_mode): FX its delay FDBK / TONE and the
- * reverb DAMP / TYPE, LFO its PHASE FADE SYNC TRIG. 0x80 | g: a global. 0 = the page has none */
+/* SIMPLE: no second sets any more (OCT+ held + a knob: the temporary change, ui_input.c mom_*); alt_mode stays 0 */
 static uint8_t alt_mode;
 static const uint8_t *alt_ids(const page_t *pg)
 {
-    static const uint8_t FX[4] = {0x80 | G_DFDBK, 0x80 | G_DCOLOR, 0x80 | G_RDAMP, 0x80 | G_RTYPE};
-    static const uint8_t LFO[4] = {P_LPHASE, P_LFADE, P_LSYNC, P_LTRIG};
-    static const uint8_t COMB[4] = {G_MIDI, 0xFF, 0xFF, 0xFF};   /* SIMPLE: OCT+ on COMB: the DJ filter (a step locks it) */
-    (void)FX;
-    return str_eq(pg->title, "LFO") ? LFO : str_eq(pg->title, "COMB") ? COMB : 0;
+    (void)pg;
+    return 0;
 }
 /* SIMPLE: LEVEL and AGE (P_LN0, P_LN1) are no knob on a track of an engine without them; SAMPLER's AGE page is GATE.
  * PITCH (P_TRANS, semitones): the sampler's OSC 1 KNOB 1, FM SYN's OSC 2 KNOB 4 (where the 808s have LEVEL) */
