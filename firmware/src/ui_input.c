@@ -62,6 +62,31 @@ static uint32_t tm_btn(uint32_t d)
     return 0xFFu;
 }
 
+/* SIMPLE, FILL MODE: PLAY pressed while playing arms it (fill_arm); held FILL_MS it is FILL (seq.c seq_fill: FILL trigs
+ * play, a step entered gets FILL, ui_gb.c's banner), let go sooner it stops as ever */
+#define FILL_MS 250u
+static uint8_t fill_arm;
+static uint32_t fill_t0;
+static void fill_poll(void)
+{
+    uint32_t dn = (fm1_in.buttons >> panel.btn[B_PLAY]) & 1u;
+    if (!fill_arm)
+        return;
+    if (dn && song.playing) {
+        if (!seq_fill && fm1_ms - fill_t0 >= FILL_MS) {
+            seq_fill = 1;
+            ui.force = 1;
+        }
+        return;
+    }
+    if (!seq_fill && song.playing)
+        transport_req = 2;                              /* (a tap: stop) */
+    if (seq_fill)
+        ui.force = 1;
+    seq_fill = 0;
+    fill_arm = 0;
+}
+
 /* SIMPLE, touch modulation (ui.c tm_*): every input pass, LFO held or not; OCT- with it takes the routing off */
 static void layer_kill(void);                         /* (ui_buttons.c) */
 static const uint8_t TM_BTN[3] = {B_LFO, B_ENV, B_SCL};
@@ -969,6 +994,8 @@ static void sgrid_keys(uint32_t pressed)
                 st->time = ST_NOTE;
                 st->n = (uint8_t)grid_chord(TSEL, st->note);
                 st->vel = 100;
+                if (seq_fill && p < GB_TRIG)            /* FILL MODE (PLAY held): a FILL trig */
+                    st[GB_TRIG].probability = (uint8_t)(GB_TC0 + GB_TC_FILL);
             }
         }
         cursor_set((int32_t)p);
@@ -992,8 +1019,8 @@ static void gbseq_knob(uint32_t slot, int32_t steps)
                 int32_t c = clamp(gb_own(s) + accel(EN_K1 + slot, steps, 101), -1, 100);
                 s->probability = (uint8_t)(c < 0 ? 0 : c == 0 ? 101 : c);
             } else {
-                int32_t g = clamp((int32_t)gb_trig(s) + (steps > 0 ? 1 : -1), 0, 4);
-                s[GB_TRIG].probability = (uint8_t)(g ? COND_FIRST + GB_TRIG_C0 + (uint32_t)g - 1u : 0u);
+                int32_t g = clamp((int32_t)gb_trig(s) + accel(EN_K1 + slot, steps, (int32_t)GB_NTC), 0, (int32_t)GB_NTC);
+                s[GB_TRIG].probability = (uint8_t)(g ? GB_TC0 + (uint32_t)g : 0u);
             }
         }
         ui.force = 1;
@@ -1451,6 +1478,7 @@ static void ui_input(void)
     if (scr_input(pressed, notes))                      /* MENU > SCREEN OFF: dark, or the wake gesture: swallowed */
         return;                                         /* (before the buttons' timers: no tap or hold after it) */
     pressed = tm_poll(pressed);                         /* SIMPLE: LFO held, touch modulation */
+    fill_poll();                                        /* .. PLAY held, FILL MODE */
     if (mom.n && !mom_down()) {                         /* MOMENTARY: LFO let go (or the menu, a layer ..): back */
         mom_restore();
         ui_message("BACK");
@@ -1521,6 +1549,11 @@ static void ui_input(void)
         b = panel_btn_of(id);
         switch (b) {
         case B_PLAY:
+            if (FELUCCA_SIMPLE && song.playing && !seq_counting()) {   /* SIMPLE: stops when let go; held: FILL (fill_poll) */
+                fill_arm = 1;
+                fill_t0 = fm1_ms;
+                break;
+            }
             if (song.playing || seq_counting())   /* (a count-in: PLAY stops it) */
                 transport_req = 2;
             else

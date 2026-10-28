@@ -69,14 +69,17 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   saved for a future use.
 - 16-step sequencer only (LEN 1..16). One SEQ page replaces Felucca's STEP /
   DETAIL / AUTOMATION (hidden, not deleted). Knobs: LEN, SPEED (x1/4 x1/2 x1
-  x2 x4), CHANCE, TRIG (- 1/4 2/4 3/4 4/4, Elektron-style). All per track.
+  x2 x4), CHANCE, TRIG (Elektron's list: - 1:2 2:2 1:3 .. 8:8 FILL !FILL PRE
+  !PRE NEI !NEI 1ST !1ST; core.h GB_TC0, seq.c gb_tc_miss). All per track.
+- FILL MODE: while playing, hold PLAY (250 ms) = fill on, a "FILL MODE / ENTER
+  TRIGS" banner; a step entered then gets the FILL trig. A quick PLAY tap
+  still stops (on release while playing). NEI = the track to the left.
 - CHANCE: nothing held = the track's chance for every step; step held = that
   step's own chance (TRK = follow the track). A step can have chance AND trig.
 - Step keys: empty step turns on at press; a lit step turns off on release,
   unless a knob was turned while holding it (hold-to-edit, like Elektron).
-- Storage: track CHANCE lives in P_APROB (no ARP in this build); step i's TRIG
-  lives in step[i+16]'s chance byte (core.h GB_TRIG) so the save format is
-  unchanged.
+- Storage: track CHANCE lives in P_APROB; step i's TRIG lives in step[i+16]'s
+  chance byte as GB_TC0 + n (core.h GB_TRIG; patterns are never saved).
 - SEQ button: a tap in SEQ mode = KEY mode (page stays); otherwise a tap opens
   the SEQ page in SEQ mode. Hold SEQ + turn a knob = PARAM mode for that knob;
   hold SEQ + white key = LOCKS mode (ui_input.c seq_knob / seq_white). The

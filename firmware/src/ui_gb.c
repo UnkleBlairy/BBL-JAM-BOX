@@ -36,6 +36,7 @@ typedef struct {
     int8_t tm_amt;                           /* .. its AMT, -64..63 */
     uint8_t tm_src;                          /* .. whose: 0 LFO, 1 ENV, 2 FENV (ui.c TM_NAME) */
     uint8_t temp;                            /* OCT+ held + a knob turned: the temporary change's banner */
+    uint8_t fillm;                           /* PLAY held: FILL MODE's banner */
     char tm_name[8];                         /* .. its DEST */
     char title[12], lab[4][8], val[4][12];
 } gb_view_t;
@@ -70,10 +71,22 @@ static int32_t gb_own(const step_t *s)                   /* a step's own CHANCE,
 {
     return s->probability && s->probability < COND_FIRST ? (int32_t)step_chance(s) : -1;
 }
-static uint32_t gb_trig(const step_t *s)                 /* a step's TRIG 0..4 (- 1/4 2/4 3/4 4/4) */
+static uint32_t gb_trig(const step_t *s) { return gb_tc(s + GB_TRIG); }   /* a step's TRIG 0..GB_NTC (core.h) */
+static void gb_trig_name(char *b, uint32_t c)            /* "-", "1:2" .. "8:8", "FILL" .. "!1ST" */
 {
-    uint32_t c = step_cond(s + GB_TRIG);
-    return c > GB_TRIG_C0 && c <= GB_TRIG_C0 + 4u ? c - GB_TRIG_C0 : 0u;
+    static const char *const NM[8] = {"FILL", "!FILL", "PRE", "!PRE", "NEI", "!NEI", "1ST", "!1ST"};
+    uint32_t a, n;
+    if (!c) {
+        str_cpy(b, "-", 4);
+    } else if (c <= GB_NAB) {
+        gb_tc_ab(c, &a, &n);
+        b[0] = (char)('0' + a);
+        b[1] = ':';
+        b[2] = (char)('0' + n);
+        b[3] = 0;
+    } else {
+        str_cpy(b, NM[(c - GB_TC_FILL) % 8u], 8);
+    }
 }
 static uint32_t gb_mach(uint32_t k) { return trk_mach(&trk[k % NTRK]); }
 
@@ -165,6 +178,7 @@ static void gb_fill(gb_view_t *v)
     v->sel = (uint8_t)song.sel;
     v->bpm = song.g[G_BPM];
     v->temp = (uint8_t)(FELUCCA_SIMPLE && mom.n != 0u);
+    v->fillm = (uint8_t)(FELUCCA_SIMPLE && seq_fill);
     if (tm_up) {                                  /* LFO / ENV / FILTER held: the pop-up */
         const int16_t *sp = tm_slot(TSEL);
         uint32_t d = sp[0] == TM_SRC[(tm_dn - 1u) % 3u] ? (uint32_t)sp[1] : 0u;
@@ -276,7 +290,6 @@ static void gb_fill(gb_view_t *v)
     }
     if (pg->graph == GR_GBSEQ) {                  /* LEN SPEED CHANCE TRIG; a step held: STEP n, its own CHANCE and TRIG */
         static const char *const SPN[5] = {"x1/4", "x1/2", "x1", "x2", "x4"};
-        static const char *const TRN[5] = {"-", "1/4", "2/4", "3/4", "4/4"};
         static const char *const LB[4] = {"LEN", "SPEED", "CHANCE", "TRIG"};
         const track_t *t = TSEL;
         uint32_t held = gbs_held(), p = 0, sp = gb_speed(t->p[P_SDIV]);
@@ -310,8 +323,8 @@ static void gb_fill(gb_view_t *v)
             v->val[2][i + 1u] = 0;
             v->ratio[2] = (int16_t)(ch * 10);
         }
-        str_cpy(v->val[3], TRN[tr < 0 ? 0 : tr], sizeof v->val[3]);
-        v->ratio[3] = (int16_t)((tr < 0 ? 0 : tr) * 250);
+        gb_trig_name(v->val[3], (uint32_t)(tr < 0 ? 0 : tr));
+        v->ratio[3] = (int16_t)((tr < 0 ? 0 : tr) * 1000 / (int32_t)GB_NTC);
         return;
     }
     lk = lock_held();
@@ -767,13 +780,13 @@ static void gb_popup(const gb_view_t *v, uint16_t bgc)
 }
 
 /* OCT+ held + a knob turned (ui_input.c mom_*): a banner at the bottom, the dials above it still seen */
-static void gb_temp(uint16_t bgc)
+static void gb_banner(uint16_t bgc, const char *a, const char *b)
 {
     const uint16_t bk = GB_RGB(16, 16, 20);
     cv_rrect(14, 172, 212, 46, 10, GB_W, bgc);
     cv_rrect(17, 175, 206, 40, 8, bk, GB_W);
-    cv_text_in(17, 178, 206, &AF_M, "TEMP CHANGE", GB_W, bk);
-    cv_text_in(17, 197, 206, &AF_S, "RELEASE TO REVERT  -  OCT- KEEPS", GB_W, bk);
+    cv_text_in(17, 178, 206, &AF_M, a, GB_W, bk);
+    cv_text_in(17, 197, 206, &AF_S, b, GB_W, bk);
 }
 
 /* the overlay, over every page: the loop border (3 px round the edge, clockwise from the top left, white as far as the
@@ -861,8 +874,10 @@ static void gb_draw(void)
         gb_scene(&gb_v, c);
         if (gb_v.tmod)
             gb_popup(&gb_v, c);
+        else if (gb_v.fillm)                      /* PLAY held: FILL MODE */
+            gb_banner(c, "FILL MODE", "ENTER TRIGS  -  FILL TRIGS PLAY");
         else if (gb_v.temp)
-            gb_temp(c);
+            gb_banner(c, "TEMP CHANGE", "RELEASE TO REVERT  -  OCT- KEEPS");
         gb_overlay(&gb_v, c, 0);
         cv_oy = 0;
         cv_blit(0, s * GB_STRIP);

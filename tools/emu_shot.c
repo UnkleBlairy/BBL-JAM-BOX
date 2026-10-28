@@ -1,7 +1,7 @@
 /* Screen pictures from the emulator, for checking layouts without the browser.
  *   cc -O1 -ffp-contract=off -w -Ibuild/gen -Ifirmware/src -Iweb/emu -o build/emu_shot tools/emu_shot.c -lm
  *   build/emu_shot tap:0 hold:9 enc:4,1 rel a.ppm   (tap:/hold: button number (panel.c B_*), rel, key:n, enc:role,steps,
- *   ms:n, any other word = save the screen there as PPM) */
+ *   keyd:n (held) keyu, playing? (prints), ms:n, any other word = save the screen there as PPM) */
 #include "felucca_web.c"
 static void run(double ms){ uint32_t n=(uint32_t)(ms*44.1), k; for(k=0;k<n;k+=128) web_render(128); }
 static void tap(uint32_t b){ web_buttons(1u<<b); run(80); web_buttons(0); run(150); }
@@ -14,6 +14,9 @@ int main(int argc,char**argv){
     else if(!strncmp(s,"hold:",5)) { web_buttons(1u<<atoi(s+5)); run(80);} 
     else if(!strcmp(s,"rel")) { web_buttons(0); run(150);} 
     else if(!strncmp(s,"key:",4)) { web_keys(1u<<atoi(s+4)); run(80); web_keys(0); run(100);} 
+    else if(!strncmp(s,"keyd:",5)) { web_keys(1u<<atoi(s+5)); run(100);} 
+    else if(!strcmp(s,"keyu")) { web_keys(0); run(100);} 
+    else if(!strcmp(s,"playing?")) printf("playing=%u\n", web_playing());
     else if(!strncmp(s,"enc:",4)) { int r,n; sscanf(s+4,"%d,%d",&r,&n); web_enc(r,n); run(100);} 
     else dump(s);
   }

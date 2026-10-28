@@ -176,7 +176,29 @@ typedef struct {                 /* a step as formats 1..4 (projects to FUN4) st
  * 4/4 (conditions 6..9: 1:4 .. 4:4): step i's TRIG is the condition in step i + GB_TRIG's byte (LEN is 16 at most
  * there, steps 16..31 never play), so the formats stay as they are (seq.c seq_miss, ui_input.c gbseq_knob) */
 #define GB_TRIG 16u
-#define GB_TRIG_C0 5u                    /* TRIG k (1..4) = condition GB_TRIG_C0 + k */
+/* .. its TRIG c (1..GB_NTC) is the byte GB_TC0 + c, Elektron's list: A:B (1:2 2:2 1:3 .. 8:8, plays on loop A of every
+ * B: a 16-step pattern that sounds up to 8 bars long), then FILL !FILL PRE !PRE NEI !NEI 1ST !1ST (seq.c gb_tc_miss).
+ * Patterns are never saved, so the byte is free to mean this */
+#define GB_TC0 150u
+#define GB_NAB 35u                       /* the A:B ones: 1..35 */
+#define GB_NTC (GB_NAB + 8u)
+#define GB_TC_FILL (GB_NAB + 1u)
+#define GB_LOOPS 840u                    /* (a multiple of 2..8) */
+static uint32_t gb_tc(const step_t *s)   /* step i + GB_TRIG's byte: its TRIG 1..GB_NTC, 0 none */
+{
+    return s->probability > GB_TC0 && s->probability <= GB_TC0 + GB_NTC ? s->probability - GB_TC0 : 0u;
+}
+static void gb_tc_ab(uint32_t c, uint32_t *a, uint32_t *b)   /* A:B TRIG c (1..GB_NAB): its A and B */
+{
+    uint32_t n = 2u;
+    c--;
+    while (c >= n) {
+        c -= n;
+        n++;
+    }
+    *a = c + 1u;
+    *b = n;
+}
 static uint32_t step_cond(const step_t *s)   /* its condition 1..NCOND, 0 none */
 {
     return s->probability >= COND_FIRST && s->probability < COND_FIRST + NCOND ? s->probability - COND_FIRST + 1u : 0u;
@@ -297,7 +319,9 @@ typedef struct track {
     int16_t m_rnd;               /* .. its RAND */
     int32_t m_env;               /* the amp envelope of voice m_vi, last block (Q15) */
     int32_t m_fenv;              /* .. its filter envelope (FENV, eng_digital.c / eng_sampler.c; Q15) */
-    uint8_t rsv_fe[12];          /* (sizeof(track_t) a multiple of 16) */
+    uint16_t gb_loop;            /* SIMPLE: the loop of its LEN playing (0..GB_LOOPS - 1: the TRIGs' A:B, 1ST) */
+    uint8_t tc_last;             /* .. the last TRIG it tested played (PRE; NEI reads the track to the left's) */
+    uint8_t rsv_fe[9];           /* (sizeof(track_t) a multiple of 16) */
 } track_t;
 /* the audio ISR indexes trk[] with a multiply by a small immediate and a shift while the size is a multiple of 16; 1.5's
  * new track parameters (the INSERT, the filter TYPE, ENV SYNC) and state would make it no multiple (the constant

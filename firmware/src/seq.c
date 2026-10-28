@@ -1077,6 +1077,24 @@ static __attribute__((noinline)) int seq_cond_miss(const track_t *t, const step_
     loop = t->cond_loop + (idx < t->seq_idx);       /* (an early play of step 1: the next loop's) */
     return loop % COND_B[c - 1u] != COND_A[c - 1u] - 1u;
 }
+/* SIMPLE: step idx's TRIG c (core.h gb_tc) fails. A:B, FILL and 1ST are remembered for PRE / NEI (tc_last) */
+static __attribute__((noinline)) int gb_tc_miss(const track_t *tc, uint32_t c, uint32_t idx)
+{
+    track_t *t = &trk[trk_index(tc)];
+    uint32_t loop = t->gb_loop + (idx < t->seq_idx), a, b, play, tk = trk_index(t);   /* (an early step 1: the next loop's) */
+    if (c <= GB_NAB) {
+        gb_tc_ab(c, &a, &b);
+        play = loop % b == a - 1u;
+    } else {
+        c -= GB_TC_FILL;
+        play = c < 2u ? seq_fill != 0u : c < 4u ? t->tc_last != 0u : c < 6u ? tk && trk[tk - 1u].tc_last : loop == 0u;
+        play ^= c & 1u;                                 /* (the NOT ones) */
+        if (c == 2u || c == 3u || c == 4u || c == 5u)
+            return !play;                               /* (PRE, NEI: not remembered) */
+    }
+    t->tc_last = (uint8_t)play;
+    return !play;
+}
 /* the step does not play: its condition fails, or its chance's roll */
 static int seq_miss(const track_t *t, const step_t *s, uint32_t idx)
 {
@@ -1084,7 +1102,7 @@ static int seq_miss(const track_t *t, const step_t *s, uint32_t idx)
     const step_t *tg = idx < GB_TRIG ? &t->step[idx + GB_TRIG] : 0;
     if (s->probability >= COND_FIRST && seq_cond_miss(t, s, idx))
         return 1;
-    if (tg && step_cond(tg) && seq_cond_miss(t, tg, idx))
+    if (tg && gb_tc(tg) && gb_tc_miss(t, gb_tc(tg), idx))
         return 1;
     c = s->probability && s->probability < COND_FIRST ? step_chance(s) : (uint32_t)t->p[P_APROB];
     return c < 100u && rng() % 100u >= c;
@@ -1313,8 +1331,12 @@ static __attribute__((noinline)) void seq_nd_start(track_t *t, uint32_t period, 
  * recorded note held ties into it (not inlined: once a step, off the audio ISR's loop) */
 static __attribute__((noinline)) void seq_enter(track_t *t, uint32_t top, uint32_t len)
 {
-    if (!t->seq_idx)
+    if (!t->seq_idx) {
         t->cond_loop = (uint8_t)(top || t->cond_loop + 1u >= COND_LOOPS ? 0u : t->cond_loop + 1u);
+        t->gb_loop = (uint16_t)(top || t->gb_loop + 1u >= GB_LOOPS ? 0u : t->gb_loop + 1u);
+        if (top)
+            t->tc_last = 0;
+    }
     rec_hold(t, t->seq_idx, len);
 }
 
