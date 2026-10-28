@@ -312,7 +312,12 @@ static void voice_start(track_t *t, voice_t *v, uint32_t note, uint32_t vel, int
         v->side = t->sp_alt;                            /* SPREAD: left, right, left .. (UNISON: mono_play); a */
         t->sp_alt ^= 1u;                                /* sounding voice keeps its side (no jump) */
     }                                                   /* sounding: the attack starts from the current level */
-    e->note_on(t, v);
+    if (FELUCCA_SIMPLE && !MOD(t).on && mod_begin(t)) { /* SIMPLE: the matrix's per-block values at the note's start too */
+        e->note_on(t, v);                               /* (a kick's RATIO, read only here: touch modulation reaches it) */
+        mod_end(t);
+    } else {
+        e->note_on(t, v);
+    }
     if (sounding && !e->sampled) {                     /* retrigger / steal: keep phases and filter */
         v->ph[0] = ph0;                                 /* states (resetting them clicks) */
         v->ph[1] = ph1;

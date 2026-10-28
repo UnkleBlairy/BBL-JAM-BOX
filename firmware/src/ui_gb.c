@@ -39,6 +39,7 @@ typedef struct {
     uint8_t fillm;                           /* PLAY held: FILL MODE's banner */
     uint8_t hint;                            /* a held button's hint (ui.c gb_hint) */
     char note[24];                           /* a message (ui_message) for the banner, while it shows */
+    uint8_t ban;                             /* a banner is up: no track squares under it */
     char tm_name[8];                         /* .. its DEST */
     char pname[8];                           /* PARAM: its knob's name */
     char title[12], lab[4][8], val[4][12];
@@ -185,10 +186,12 @@ static void gb_fill(gb_view_t *v)
     v->hint = gb_hint;
     if (ui.msg_t && ui.msg[0] > 1)                /* (not one led by an icon byte) */
         str_cpy(v->note, ui.msg, sizeof v->note);
+    v->ban = (uint8_t)(v->fillm || v->temp || v->hint || v->note[0]);
     if (tm_dn) {                                  /* picking a DEST: 1 the banner, 2 (a knob picked) the amount's pop-up */
         const int16_t *sp = tm_slot(TSEL);
         uint32_t d = sp[0] == TM_SRC[(tm_dn - 1u) % 3u] ? (uint32_t)sp[1] : 0u;
         v->tmod = (uint8_t)(tm_up && d ? 2u : 1u);
+        v->ban |= (uint8_t)(v->tmod == 1u);
         v->tm_src = (uint8_t)((tm_dn - 1u) % 3u);
         v->tm_amt = (int8_t)(d ? sp[2] : 0);
         if (d)
@@ -509,11 +512,11 @@ static void gb_header(const gb_view_t *v, const char *title, uint16_t bgc)
     } else
         cv_text_r(232, 6, &AF_L, bb, GB_W, bgc);
     if (v->rec) {                                                 /* armed: a red REC left of the BPM */
-        int32_t rw = text_w(&AF_S, "REC") + 12, rx = 232 - bw - 6 - rw;
+        int32_t rw = text_w(&AF_M, "REC") + 12, rx = 232 - bw - 6 - rw;
         cv_rrect(rx - 1, 9, rw + 2, 24, 7, GB_W, bgc);
         uint16_t rc = (uint16_t)((8u + 23u * (v->rec - 1u) / 15u) << 11);   /* dark red .. red */
         cv_rrect(rx, 10, rw, 22, 6, rc, GB_W);
-        cv_text_on(rx + 6, 15, &AF_S, "REC", GB_W, rc);
+        cv_text_on(rx + 6, 13, &AF_M, "REC", GB_W, rc);
         bw += rw + 6;
     }
     room = 232 - bw - 8 - tx;
@@ -523,7 +526,7 @@ static void gb_header(const gb_view_t *v, const char *title, uint16_t bgc)
         tg[1] = '/';
         tg[2] = (char)('0' + v->npages);
         tg[3] = 0;
-        gw = text_w(&AF_S, tg) + 8;
+        gw = text_w(&AF_M, tg) + 8;
     }
     if (!large_face_has(title) || text_w(tf, title) > room)    /* big with its n/N, else big alone, else smaller */
         tf = &AF_M;
@@ -532,7 +535,7 @@ static void gb_header(const gb_view_t *v, const char *title, uint16_t bgc)
         tg[0] = 0;
     cv_text_on(tx, tf == &AF_L ? 6 : 13, tf, title, GB_W, bgc);
     if (tg[0])
-        cv_text_on(tx + tw + 8, tf == &AF_L ? 20 : 16, &AF_S, tg, GB_W, bgc);
+        cv_text_on(tx + tw + 8, tf == &AF_L ? 17 : 13, &AF_M, tg, GB_W, bgc);
 }
 
 /* white mixed into the background: a (0..255) of white */
@@ -665,7 +668,7 @@ static void gb_scene(const gb_view_t *v, uint16_t bgc)
             dc = lc = bgc;
             bk = GB_W;
         }
-        cv_text_in(cx - 28, 48, 56, &AF_M, v->lab[k], lc, bk);
+        cv_text_in(cx - 28, 48, 56, &AF_M, v->lab[k], lc, bk);   /* (AF_L: 3 letters at most in 56 px) */
         for (a = 0; a < 360; a++) {
             dial_pt(cx, cy, 22, a, &px, &py);
             cv_rect(px - 1, py - 1, 3, 3, dc);
@@ -680,8 +683,7 @@ static void gb_scene(const gb_view_t *v, uint16_t bgc)
         cv_line_t(cx, cy, px, py, dc, 3);
         if (text_w(vf, v->val[k]) > 54 || !large_face_has(v->val[k]))
             vf = &AF_M;
-        if (text_w(vf, v->val[k]) > 54)
-            vf = &AF_S;
+        (void)0;                                                  /* (never smaller than AF_M) */
         if (v->vic[k])                                            /* (SAMPLER's MODE: its icon) */
             gb_icon(cx - 16, 126, 2, v->vic[k], dc);
         else
@@ -751,7 +753,7 @@ static void gb_scene(const gb_view_t *v, uint16_t bgc)
             str_cpy(kb + str_len(kb), v->pname, sizeof kb - str_len(kb));
         }
         if (!large_face_has(kb) || text_w(kf, kb) > x1 - x0)
-            kf = text_w(&AF_M, kb) <= x1 - x0 ? &AF_M : &AF_S;
+            kf = &AF_M;
         cv_text_on(x0, kf == &AF_L ? 180 : kf == &AF_M ? 186 : 188, kf, kb, c, bgc);
     }
     gb_pill(232 - pw, 182, pw, 24, c, v->an);                      /* the machine, bottom right: an oval (an 808: filled), */
@@ -794,12 +796,20 @@ static void gb_popup(const gb_view_t *v, uint16_t bgc)
 }
 
 /* OCT+ held + a knob turned (ui_input.c mom_*): a banner at the bottom, the dials above it still seen */
-static void gb_banner(uint16_t bgc, const char *a, const char *b)   /* a white box, the page's colour for its ink */
+static const aafont_t *gb_big(const char *s, int32_t w)   /* the title's size when it fits, else the next */
 {
-    cv_rrect(10, 166, 220, 44, 10, GB_W, bgc);
-    cv_text_in(10, b[0] ? 170 : 179, 220, &AF_M, a, bgc, GB_W);
-    if (b[0])
-        cv_text_in(10, 190, 220, &AF_S, b, bgc, GB_W);
+    return large_face_has(s) && text_w(&AF_L, s) <= w ? &AF_L : &AF_M;
+}
+static void gb_banner(uint16_t bgc, const char *a, const char *b)   /* a white box, the page's colour for its ink, */
+{                                                                 /* over the bottom line and the track squares */
+    const aafont_t *fa = gb_big(a, 212), *fb = gb_big(b, 212);
+    cv_rrect(8, 160, 224, 74, 12, GB_W, bgc);
+    if (!b[0]) {
+        cv_text_in(8, fa == &AF_L ? 183 : 189, 224, fa, a, bgc, GB_W);
+        return;
+    }
+    cv_text_in(8, fa == &AF_L ? 164 : 170, 224, fa, a, bgc, GB_W);
+    cv_text_in(8, fb == &AF_L ? 198 : 205, 224, fb, b, bgc, GB_W);
 }
 
 /* the overlay, over every page: the loop border (3 px round the edge, clockwise from the top left, white as far as the
@@ -828,7 +838,7 @@ static void gb_overlay(const gb_view_t *v, uint16_t bgc, int direct)
     gb_ovr(240 - GB_BRD, 0, GB_BRD, f[1], GB_W, direct);
     gb_ovr(240 - f[2], 240 - GB_BRD, f[2], GB_BRD, GB_W, direct);
     gb_ovr(0, 240 - f[3], GB_BRD, f[3], GB_W, direct);
-    for (k = 0; k < NTRK; k++) {
+    for (k = 0; !v->ban && k < NTRK; k++) {     /* (not under a banner) */
         uint32_t x = 62u + k * 20u, y = 214u, e = k == v->sel ? 3u : 1u, m = (v->tmute >> k) & 1u;
         uint16_t in = (v->thit >> k) & 1u ? GB_W : m ? 0u : gb_col[k];
         gb_ovr(x, y, 16, 16, GB_W, direct);
@@ -891,18 +901,19 @@ static void gb_draw(void)
         else if (gb_v.tmod) {                     /* picking: the banner, the pages still seen */
             char a[24], b[28], nb[8];
             str_cpy(a, TM_NAME[gb_v.tm_src % 3u], sizeof a);
-            str_cpy(a + str_len(a), ": PICK A DEST", sizeof a - str_len(a));
-            if (gb_v.tm_name[0]) {
-                str_cpy(b, "NOW ", sizeof b);
-                str_cpy(b + 4, gb_v.tm_name, sizeof b - 4u);
+            if (gb_v.tm_name[0]) {                /* "LFO CUT +20", SELECT: the amount */
                 fmt_int(nb + (gb_v.tm_amt > 0), gb_v.tm_amt);
                 if (gb_v.tm_amt > 0)
                     nb[0] = '+';
-                str_cpy(b + str_len(b), " ", sizeof b - str_len(b));
-                str_cpy(b + str_len(b), nb, sizeof b - str_len(b));
-                str_cpy(b + str_len(b), "   OCT- = OFF", sizeof b - str_len(b));
-            } else
-                str_cpy(b, "TURN ANY KNOB, ANY PAGE", sizeof b);
+                str_cpy(a + str_len(a), " ", sizeof a - str_len(a));
+                str_cpy(a + str_len(a), gb_v.tm_name, sizeof a - str_len(a));
+                str_cpy(a + str_len(a), " ", sizeof a - str_len(a));
+                str_cpy(a + str_len(a), nb, sizeof a - str_len(a));
+                str_cpy(b, "SELECT = AMOUNT", sizeof b);
+            } else {
+                str_cpy(a + str_len(a), " DEST", sizeof a - str_len(a));
+                str_cpy(b, "WIGGLE A PARAM", sizeof b);
+            }
             gb_banner(c, a, b);
         }
         else if (gb_v.fillm)                      /* PLAY held: FILL MODE */
@@ -910,11 +921,11 @@ static void gb_draw(void)
         else if (gb_v.temp)
             gb_banner(c, "TEMP CHANGE", "RELEASE TO REVERT");
         else if (gb_v.hint == 2u)                 /* OCT+ held, nothing turned yet */
-            gb_banner(c, "TEMP CHANGE", "TURN A KNOB TO TRY IT");
+            gb_banner(c, "TEMP CHANGE", "WIGGLE A PARAM");
         else if (gb_v.hint == 3u)
             gb_banner(c, "PASTE TRIG", "PRESS SAVE");
         else if (gb_v.hint == 1u)
-            gb_banner(c, "SEQ", "KNOB = PARAM   WHITE KEY = LOCKS");
+            gb_banner(c, "PRESS WHITE KEY", "OR WIGGLE PARAM");
         else if (gb_v.note[0])                    /* a message */
             gb_banner(c, gb_v.note, "");
         gb_overlay(&gb_v, c, 0);

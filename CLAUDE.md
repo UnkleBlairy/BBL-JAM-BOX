@@ -110,12 +110,17 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   mom_*): let go of OCT+ and it snaps back (no keep).
 - GLO pages: PERF, COMB, DJ (the DJ filter's own page, so it can be locked).
 - LFO pages: LFO (RATE WAVE PHASE FADE), SYNC (SYNC TRIG POL), LFO DEST.
-- Touch modulation (ui.c / ui_input.c tm_*): hold LFO 250 ms = pick mode (a
+- Holds are 500 ms (TM_MS, HINT_MS, FILL_MS): a panel tap can last 250 ms.
+- Touch modulation (ui.c / ui_input.c tm_*): hold LFO 500 ms = pick mode (a
   quick tap still opens the LFO page). Pick mode stays after letting go: the
   banner "LFO: PICK A DEST" shows, any page can be opened. The first knob turned
   = the DEST, more turns of it = AMT on the big centred pop-up (left -, right +);
   it closes 1.5 s after the last turn. Tap LFO again = cancel, OCT- = DEST off.
   While picking, LFO flashes with the beat and the DEST's page button is lit.
+  While picking, the other sources' buttons (ENV, FILTER) only open their pages,
+  and SELECT sets the current DEST's amount (the quick way back to it). The
+  matrix's per-block values also apply at each note's start (voice.c), so
+  knobs read only at note-on (a kick's RATIO) are modulated too.
   Knobs that step (TYPE WAVE PHASE FADE SYNC TRIG POL) modulate too (stepping);
   MACH and the SEQ / ARP / CLOCK knobs do nothing (no message). Stored in matrix slot 1 (P_M1SRC/DST/AMT).
   Same for hold ENV = "AMP ENV" (slot 2, SRC ENV) and hold the FILTER button
@@ -124,7 +129,9 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
 - Later plan: drop the LFO DEST / ENV DEST pages; a fixed routing worth keeping
   becomes an amount knob on its own page.
 - Pop-ups (ui_gb.c gb_banner): a white box with the page's colour as ink, at the
-  bottom over the mode/pill line. Every ui_message shows there. Held hints
+  bottom over the mode/pill line and the track squares (hidden under it). Text
+  at the title's size when it fits, never smaller than AF_M. Mode changes (SEQ
+  KEY PARAM LOCKS) show no pop-up; messages last ~40 frames. Every ui_message shows there. Held hints
   (ui_input.c hint_poll, 250 ms): SEQ "KNOB = PARAM  WHITE KEY = LOCKS" (its
   release is then no tap), OCT+ "TEMP CHANGE / TURN A KNOB TO TRY IT", then
   "RELEASE TO REVERT". The big centred pop-up (touch mod) is white too.

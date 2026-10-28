@@ -90,7 +90,7 @@ static void hint_poll(void)
 
 /* SIMPLE, FILL MODE: PLAY pressed while playing arms it (fill_arm); held FILL_MS it is FILL (seq.c seq_fill: FILL trigs
  * play, a step entered gets FILL, ui_gb.c's banner), let go sooner it stops as ever */
-#define FILL_MS 250u
+#define FILL_MS 500u
 static uint8_t fill_arm;
 static uint32_t fill_t0;
 static void fill_poll(void)
@@ -131,8 +131,8 @@ static uint32_t tm_poll(uint32_t pressed)
     tm_hold = 0;
     for (i = 0; i < 3u; i++) {
         uint32_t m = 1u << i;
-        if ((held & m) && !(was & m)) {                 /* pressed */
-            t0[i] = fm1_ms | 1u;
+        if ((held & m) && !(was & m)) {                 /* pressed (picking for another source: just its page) */
+            t0[i] = tm_dn && tm_dn != i + 1u ? 0u : fm1_ms | 1u;
             if (tm_dn == i + 1u) {                      /* (its own button again: cancel) */
                 tm_dn = 0;
                 eat |= (uint8_t)m;
@@ -140,7 +140,7 @@ static uint32_t tm_poll(uint32_t pressed)
                 ui.force = 1;
             }
         }
-        if (!(held & m))
+        if (!(held & m) || (tm_dn && tm_dn != i + 1u))
             t0[i] = 0;
         else if (t0[i] && !(eat & m)) {
             if (fm1_ms - t0[i] >= TM_MS) {
@@ -1761,7 +1761,7 @@ static void ui_input(void)
         } else if (dn && ((fm1_in.buttons >> panel.btn[B_OCTDN]) & 1u)) {
             ou_used = 1;
         }
-        if (!dn && ou_dn && !ou_used && fm1_ms - ou_t0 < 250u &&
+        if (!dn && ou_dn && !ou_used && fm1_ms - ou_t0 < HINT_MS &&
             !ui.confirm && !sgrid_on() && !par_on())
             song.octave += song.octave < 3 ? 1 : 0;
         kb_octup = (uint8_t)dn;                         /* (seq.c: OCT+ held + a track key = mute) */
@@ -1809,7 +1809,15 @@ static void ui_input(void)
         motion_capture(TSEL, P_LEVEL, TSEL->p[P_LEVEL]);
         ui.force = 1;
     }
-    if ((s = panel_enc(EN_SELECT)) != 0) {              /* SELECT: the tempo */
+    if ((s = panel_enc(EN_SELECT)) != 0 && tm_dn) {     /* SIMPLE, picking a DEST: SELECT is its amount (the big dial) */
+        int16_t *sp = tm_slot(TSEL);
+        if (sp[0] == TM_SRC[(tm_dn - 1u) % 3u] && sp[1]) {
+            sp[2] = (int16_t)clamp(sp[2] + accel(EN_SELECT, s, 127), -64, 63);
+            tm_k = 4;                                   /* (no page knob: the pop-up up, its next turn picks) */
+            tm_t = fm1_ms;
+            ui.force = 1;
+        }
+    } else if (s) {                                     /* SELECT: the tempo */
         int16_t was = song.g[G_BPM];
         song.g[G_BPM] = (int16_t)clamp(song.g[G_BPM] + accel(EN_SELECT, s, 200), GP[G_BPM].min, GP[G_BPM].max);
         pm_record(TSEL, &song.g[G_BPM], was);           /* (a macro holds the tempo too) */
