@@ -542,11 +542,11 @@ static int pm_page(void) { return !ui.home && !ui.confirm && cur_page()->graph =
 static int pm_down(void) { return pm_h.n != 0u; }   /* a macro key held (on any page) */
 static int fxl_on(void) { return fxl_sel && sgrid_on(); }   /* the step keys are the FX lane's (seq.c fxl) */
 /* SIMPLE, PARAM keys on: on a page whose knobs lock, the white keys set the chosen knob (par_k) and play (seq.c par_key) */
-static uint8_t par_k;
+static uint8_t par_k, par_pg;   /* the knob and its page (picked with SEQ held + a knob: it stays on other pages) */
 static int par_on(void)
 {
-    return FELUCCA_SIMPLE && ui.sgrid == 2u && !ui.confirm && !ui.home && !pm_page() && !pm_down() && !gbsv_keys_on() &&
-           lock_page_ok(ui.page);
+    return FELUCCA_SIMPLE && ui.sgrid == 2u && !ui.confirm && !pm_page() && !pm_down() && !gbsv_keys_on() &&
+           lock_page_ok(par_pg);
 }
 /* SIMPLE, KIT keys on (SEQ's fourth tap): each white key plays with its own locks, held + a knob sets them (seq.c kit_*) */
 static int kit_on(void)
@@ -558,6 +558,9 @@ static int kit_on(void)
  * (any page) is its DEST, more turns of that knob its AMT (the pop-up's dial: up = none, left -, right +); OCT- takes
  * it off. Past TM_MS held (or a knob turned) the pop-up is up and the button's release opens no page */
 #define TM_MS 250u
+/* SIMPLE: a button held past HINT_MS shows what it does held (ui_input.c hint_poll, ui_gb.c's banner): 1 SEQ, 2 OCT+ */
+#define HINT_MS 250u
+static uint8_t gb_hint;
 static uint8_t tm_dn, tm_up, tm_k = 0xFFu;   /* a source's button held (1 + its slot); the pop-up up; the knob that
                                               * picked this hold (0xFF none) */
 static const char *const TM_NAME[3] = {"LFO", "AMP ENV", "FILT ENV"};

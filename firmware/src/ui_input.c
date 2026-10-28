@@ -62,6 +62,29 @@ static uint32_t tm_btn(uint32_t d)
     return 0xFFu;
 }
 
+static void layer_kill(void);                         /* (ui_buttons.c) */
+/* SIMPLE: what a held button does (gb_hint): SEQ, OCT+ (not under a dialog, SAVE, PERF's own keys) */
+static void hint_poll(void)
+{
+    static uint32_t t0[2];
+    static const uint8_t HB[2] = {B_SEQ, B_OCTUP};
+    uint32_t i, h = 0;
+    for (i = 0; i < 2u; i++) {
+        uint32_t dn = (fm1_in.buttons >> panel.btn[HB[i]]) & 1u;
+        if (!dn)
+            t0[i] = 0;
+        else if (!t0[i])
+            t0[i] = fm1_ms | 1u;
+        else if (!h && fm1_ms - t0[i] >= HINT_MS && !ui.confirm && !gbsv_keys_on())
+            h = i + 1u;
+    }
+    if (h != gb_hint)
+        ui.force = 1;
+    if (h == 1u)
+        layer_kill();                                   /* (SEQ held this long: its release is no tap) */
+    gb_hint = (uint8_t)h;
+}
+
 /* SIMPLE, FILL MODE: PLAY pressed while playing arms it (fill_arm); held FILL_MS it is FILL (seq.c seq_fill: FILL trigs
  * play, a step entered gets FILL, ui_gb.c's banner), let go sooner it stops as ever */
 #define FILL_MS 250u
@@ -88,7 +111,6 @@ static void fill_poll(void)
 }
 
 /* SIMPLE, touch modulation (ui.c tm_*): every input pass, LFO held or not; OCT- with it takes the routing off */
-static void layer_kill(void);                         /* (ui_buttons.c) */
 static const uint8_t TM_BTN[3] = {B_LFO, B_ENV, B_SCL};
 static uint32_t tm_poll(uint32_t pressed)
 {
@@ -217,7 +239,7 @@ static uint32_t oct_leds(void)
     if (ui.confirm)                                     /* a dialog: OCT- cancels, OCT+ (breathing) does it */
         return 1u | OCT_BREATH;
     if (mom.n && mom_down())                            /* MOMENTARY: OCT+ (SIMPLE: OCT-) keeps the changes */
-        return FELUCCA_SIMPLE ? 2u | OCT_BREATH_DN : (song.octave < 0 ? 1u : 0u) | OCT_BREATH;
+        return FELUCCA_SIMPLE ? 2u : (song.octave < 0 ? 1u : 0u) | OCT_BREATH;
     return (song.octave < 0 ? 1u : 0u) | (song.octave > 0 ? 2u : 0u);
 }
 
@@ -251,8 +273,11 @@ static uint32_t sgrid_leds(uint32_t *br)                 /* (*br: the trigless s
         if (!key_black(k)) {
             on = p < len && t->step[p].time == ST_NOTE && t->step[p].n != 0u;
             on ^= (uint32_t)(p == ph);
-            if (br && p < len && gbs_trigless(t, p))
-                *br |= 1u << k;
+            if (br && p < len && (gbs_trigless(t, p) || (t->step[p].time == ST_NOTE && t->step[p].n && p < GB_TRIG &&
+                                                 gb_tc(&t->step[p + GB_TRIG]) == GB_TC_FILL))) {
+                *br |= 1u << k;                         /* (trigless, FILL: breathing, not lit) */
+                on = p == ph;
+            }
         } else {
             on = p < NTRK ? p == song.sel : 0u;
         }
@@ -276,9 +301,17 @@ static uint32_t grid_glow(void)
 
 /* an ARP playing on any part flashes the ARP button on the beat, the bar's first beat longer: 1 lit, 0 dark,
  * 2 no ARP playing */
+/* SIMPLE: a third of each beat lit (playing: on the beat; stopped: by the tempo) */
+static uint32_t beat_flash(void)
+{
+    uint32_t bt = 60000u / (uint32_t)clamp(song.g[G_BPM], 20, 999);
+    return song.playing ? beat_pos < beat_samples() / 3u : fm1_ms % bt < bt / 3u;
+}
 static uint32_t arp_led(void)
 {
     uint32_t k, on = 0, b = beat_samples();
+    if (FELUCCA_SIMPLE)                                 /* SIMPLE: the selected track's ARP on: it pulses with the beat */
+        return arp_am(TSEL) == AM_OFF ? 2u : beat_flash();
     for (k = 0; k < NPART; k++)
         on |= arp_am(&trk[k]) && trk[k].nheld;
     return !on ? 2u : beat_pos < (beat_n ? b / 6u : b / 2u);
@@ -473,9 +506,9 @@ static void ui_leds(void)
         ready = 1;
     }
     if (tm_up) {                                        /* SIMPLE, a source held: it flashes with the beat, the DEST's page lit */
-        uint32_t bt = 60000u / (uint32_t)clamp(song.g[G_BPM], 20, 999), b = TM_BTN[(tm_dn - 1u) % 3u];
+        uint32_t b = TM_BTN[(tm_dn - 1u) % 3u];
         const int16_t *sp = tm_slot(TSEL);
-        led_put(nl, panel.btn[b], fm1_ms % bt < bt / 3u);
+        led_put(nl, panel.btn[b], (int)beat_flash());
         if ((k = tm_btn(sp[0] == TM_SRC[(tm_dn - 1u) % 3u] ? (uint32_t)sp[1] : 0u)) != 0xFFu && k != b)
             led_put(nl, panel.btn[k], 1);
     } else
@@ -862,7 +895,7 @@ static void sgrid_release(void)                          /* every input pass: th
 /* SIMPLE, PARAM (song.grid 6): what seq.c par_key needs, every input pass: the chosen knob's id and range, SEQ held */
 static void par_poll(void)
 {
-    uint32_t id = par_on() ? lock_pid(cur_page(), par_k) : 0xFFu;
+    uint32_t id = par_on() ? lock_pid(&PAGES[par_pg % NPAGES], par_k) : 0xFFu;
     kb_seqdn = (uint8_t)(par_on() && ((fm1_in.buttons >> panel.btn[B_SEQ]) & 1u));
     if (id == P_E7)
         id = 0xFFu;                                     /* (MACH: a machine wants its starting sound, machine_defaults) */
@@ -910,6 +943,7 @@ static int seq_knob(uint32_t k)
     if (id == 0xFFu || id == P_E7)                      /* (a knob PARAM can't take: the turn does nothing) */
         return 1;
     par_k = (uint8_t)k;
+    par_pg = ui.page;
     if (ui.sgrid != 2u)
         ui_message("PARAM");
     ui.sgrid = 2;
@@ -1479,11 +1513,12 @@ static void ui_input(void)
         return;                                         /* (before the buttons' timers: no tap or hold after it) */
     pressed = tm_poll(pressed);                         /* SIMPLE: LFO held, touch modulation */
     fill_poll();                                        /* .. PLAY held, FILL MODE */
+    hint_poll();                                        /* .. what a held button does */
     if (mom.n && !mom_down()) {                         /* MOMENTARY: LFO let go (or the menu, a layer ..): back */
         mom_restore();
-        ui_message("BACK");
+        ui_message(FELUCCA_SIMPLE ? "REVERTED" : "BACK");
     }
-    if (mom.n && ((pressed >> panel.btn[MOM_KEEP]) & 1u)) {   /* .. OCT+ with LFO held (SIMPLE: OCT- with OCT+): kept */
+    if (!FELUCCA_SIMPLE && mom.n && ((pressed >> panel.btn[MOM_KEEP]) & 1u)) {   /* (SIMPLE: no KEEP) */   /* .. OCT+ with LFO held (SIMPLE: OCT- with OCT+): kept */
         mom.n = 0;
         pressed &= ~(1u << panel.btn[MOM_KEEP]);
         ui_message("KEPT");
@@ -1594,6 +1629,7 @@ static void ui_input(void)
                 if (b == B_OCTDN && gbs_held()) {       /* steps held: OCT- clears their locks (the steps stay) */
                     gbs_keep();
                     lock_clear(gbs_held());
+                    ui_message("STEP LOCKS CLEARED");
                     break;
                 }
                 if ((b == B_OCTDN || all) && (all || fxl_on())) {   /* (the FX lane: OCT- clears it; with OCT+ it too) */
@@ -1676,7 +1712,12 @@ static void ui_input(void)
         if ((uint32_t)m != trk_mach(TSEL))
             machine_set(TSEL, (uint32_t)m);
     }
-    if ((s = panel_enc(EN_ALGO)) != 0) {                /* ALGORITHM: the selected track's volume, on every page */
+    if ((s = panel_enc(EN_ALGO)) != 0 && FELUCCA_SIMPLE) {   /* SIMPLE: ALGORITHM picks the track (1..6) */
+        gbs_off = gbs_kept = 0;                         /* (as a track key: the steps held were the other track's) */
+        fxl_sel = 0;
+        track_select((uint32_t)clamp((int32_t)song.sel + (s > 0 ? 1 : -1), 0, NTRK - 1));
+        ui.force = 1;
+    } else if (s) {                                     /* ALGORITHM: the selected track's volume, on every page */
         int16_t was = TSEL->p[P_LEVEL];
         TSEL->p[P_LEVEL] = (int16_t)param_turn(&TP[P_LEVEL], was, accel(EN_ALGO, s, TP[P_LEVEL].max - TP[P_LEVEL].min));
         pm_record(TSEL, &TSEL->p[P_LEVEL], was);       /* (a macro holds it too) */

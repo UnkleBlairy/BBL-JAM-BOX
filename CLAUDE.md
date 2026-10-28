@@ -107,7 +107,7 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   COMB, delay TIME/FDBK/TONE, reverb SIZE/DAMP/TYPE: motion.c MOTION_G, ids
   P_COUNT+j). Not the CLOCK page. Removing a step removes its locks.
 - No OCT+ second sets of knobs. OCT+ held + knob = a temporary change (ui_input.c
-  mom_*): let go of OCT+ and it snaps back; OCT- while OCT+ is held keeps it.
+  mom_*): let go of OCT+ and it snaps back (no keep).
 - GLO pages: PERF, COMB, DJ (the DJ filter's own page, so it can be locked).
 - LFO pages: LFO (RATE WAVE PHASE FADE), SYNC (SYNC TRIG POL), LFO DEST.
 - Touch modulation (ui.c / ui_input.c tm_*): hold LFO (pop-up after 250 ms; a
@@ -120,8 +120,16 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   by eng_digital.c / eng_sampler.c; 0 on an 808). One DEST per source.
 - Later plan: drop the LFO DEST / ENV DEST pages; a fixed routing worth keeping
   becomes an amount knob on its own page.
-- OCT+ temporary change shows a "TEMP CHANGE / RELEASE TO REVERT - OCT- KEEPS"
-  banner at the bottom (ui_gb.c gb_temp).
+- Pop-ups (ui_gb.c gb_banner): a white box with the page's colour as ink, at the
+  bottom over the mode/pill line. Every ui_message shows there. Held hints
+  (ui_input.c hint_poll, 250 ms): SEQ "KNOB = PARAM  WHITE KEY = LOCKS" (its
+  release is then no tap), OCT+ "TEMP CHANGE / TURN A KNOB TO TRY IT", then
+  "RELEASE TO REVERT". The big centred pop-up (touch mod) is white too.
+- Layout: 5 px loop border, dials up (labels y 48, centre 94), bottom line at
+  y 182 (key mode in the large font when it fits), squares at y 214.
+- PARAM mode keeps its knob when you change pages; the bottom says "PARAM CUT".
+- ARP button pulses with the beat while the selected track's ARP is on.
+- FILL steps breathe (like trigless locks) instead of being lit.
 - Master FX must never click: DJ and COMB fade in/out over ~23 ms
   (MFX_CSLOPE), the comb loop soft-limits (mfx_soft), the DJ filter updates
   every 32 samples with smooth resonance. Test with a sine + 2nd-difference
@@ -242,7 +250,7 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
 2. Serve `/tmp/felucca-site` on port 8000 (in the background):
    `cd /tmp/felucca-site && python3 -m http.server 8000`
 3. Open http://localhost:8000/webapp/installer/
-- PRESETS knob = machine selector (switching engine fades over). ALGORITHM knob = the selected track's volume.
+- PRESETS knob = machine selector (switching engine fades over). ALGORITHM knob = track select (1-6).
 - Sound save slots are per TRACK (16 each), not per machine; a saved sound
   remembers its engine (gb_snd_t used: 1 = DIGITAL, 2 = ANALOG). Old machine
   slots became track slots.
