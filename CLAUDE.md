@@ -110,11 +110,14 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   mom_*): let go of OCT+ and it snaps back (no keep).
 - GLO pages: PERF, COMB, DJ (the DJ filter's own page, so it can be locked).
 - LFO pages: LFO (RATE WAVE PHASE FADE), SYNC (SYNC TRIG POL), LFO DEST.
-- Touch modulation (ui.c / ui_input.c tm_*): hold LFO (pop-up after 250 ms; a
-  quick tap still opens the LFO page). The first knob turned on any page = the
-  LFO's DEST, more turns of it = AMT on a big centred dial (left -, right +).
-  OCT- while holding LFO = DEST off. While held, LFO flashes with the beat and
-  the DEST's page button is lit. Stored in matrix slot 1 (P_M1SRC/DST/AMT).
+- Touch modulation (ui.c / ui_input.c tm_*): hold LFO 250 ms = pick mode (a
+  quick tap still opens the LFO page). Pick mode stays after letting go: the
+  banner "LFO: PICK A DEST" shows, any page can be opened. The first knob turned
+  = the DEST, more turns of it = AMT on the big centred pop-up (left -, right +);
+  it closes 1.5 s after the last turn. Tap LFO again = cancel, OCT- = DEST off.
+  While picking, LFO flashes with the beat and the DEST's page button is lit.
+  Knobs that step (TYPE WAVE PHASE FADE SYNC TRIG POL) modulate too (stepping);
+  MACH and the SEQ / ARP / CLOCK knobs do nothing (no message). Stored in matrix slot 1 (P_M1SRC/DST/AMT).
   Same for hold ENV = "AMP ENV" (slot 2, SRC ENV) and hold the FILTER button
   (SCL) = "FILT ENV" (slot 3, SRC FENV: the filter envelope, mod.c MS_FENV, set
   by eng_digital.c / eng_sampler.c; 0 on an 808). One DEST per source.
@@ -130,6 +133,9 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
 - PARAM mode keeps its knob when you change pages; the bottom says "PARAM CUT".
 - ARP button pulses with the beat while the selected track's ARP is on.
 - FILL steps breathe (like trigless locks) instead of being lit.
+- Copy / paste trig (ui_input.c clip_*): SEQ mode, hold a step + SAVE = "TRIG
+  COPIED" (notes, CHANCE, TRIG, locks); hold an empty step = "PASTE TRIG / PRESS
+  SAVE", SAVE pastes. Not saved.
 - Master FX must never click: DJ and COMB fade in/out over ~23 ms
   (MFX_CSLOPE), the comb loop soft-limits (mfx_soft), the DJ filter updates
   every 32 samples with smooth resonance. Test with a sine + 2nd-difference

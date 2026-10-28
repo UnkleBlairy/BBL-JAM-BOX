@@ -185,10 +185,10 @@ static void gb_fill(gb_view_t *v)
     v->hint = gb_hint;
     if (ui.msg_t && ui.msg[0] > 1)                /* (not one led by an icon byte) */
         str_cpy(v->note, ui.msg, sizeof v->note);
-    if (tm_up) {                                  /* LFO / ENV / FILTER held: the pop-up */
+    if (tm_dn) {                                  /* picking a DEST: 1 the banner, 2 (a knob picked) the amount's pop-up */
         const int16_t *sp = tm_slot(TSEL);
         uint32_t d = sp[0] == TM_SRC[(tm_dn - 1u) % 3u] ? (uint32_t)sp[1] : 0u;
-        v->tmod = (uint8_t)(d ? 2u : 1u);
+        v->tmod = (uint8_t)(tm_up && d ? 2u : 1u);
         v->tm_src = (uint8_t)((tm_dn - 1u) % 3u);
         v->tm_amt = (int8_t)(d ? sp[2] : 0);
         if (d)
@@ -886,14 +886,33 @@ static void gb_draw(void)
         cv_begin(240, GB_STRIP, c);
         cv_oy = -(int32_t)(s * GB_STRIP);
         gb_scene(&gb_v, c);
-        if (gb_v.tmod)
+        if (gb_v.tmod == 2u)
             gb_popup(&gb_v, c);
+        else if (gb_v.tmod) {                     /* picking: the banner, the pages still seen */
+            char a[24], b[28], nb[8];
+            str_cpy(a, TM_NAME[gb_v.tm_src % 3u], sizeof a);
+            str_cpy(a + str_len(a), ": PICK A DEST", sizeof a - str_len(a));
+            if (gb_v.tm_name[0]) {
+                str_cpy(b, "NOW ", sizeof b);
+                str_cpy(b + 4, gb_v.tm_name, sizeof b - 4u);
+                fmt_int(nb + (gb_v.tm_amt > 0), gb_v.tm_amt);
+                if (gb_v.tm_amt > 0)
+                    nb[0] = '+';
+                str_cpy(b + str_len(b), " ", sizeof b - str_len(b));
+                str_cpy(b + str_len(b), nb, sizeof b - str_len(b));
+                str_cpy(b + str_len(b), "   OCT- = OFF", sizeof b - str_len(b));
+            } else
+                str_cpy(b, "TURN ANY KNOB, ANY PAGE", sizeof b);
+            gb_banner(c, a, b);
+        }
         else if (gb_v.fillm)                      /* PLAY held: FILL MODE */
             gb_banner(c, "FILL MODE", "ENTER TRIGS  -  FILL TRIGS PLAY");
         else if (gb_v.temp)
             gb_banner(c, "TEMP CHANGE", "RELEASE TO REVERT");
         else if (gb_v.hint == 2u)                 /* OCT+ held, nothing turned yet */
             gb_banner(c, "TEMP CHANGE", "TURN A KNOB TO TRY IT");
+        else if (gb_v.hint == 3u)
+            gb_banner(c, "PASTE TRIG", "PRESS SAVE");
         else if (gb_v.hint == 1u)
             gb_banner(c, "SEQ", "KNOB = PARAM   WHITE KEY = LOCKS");
         else if (gb_v.note[0])                    /* a message */

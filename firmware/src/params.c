@@ -77,7 +77,8 @@ static const char *const N_MDST[] = {"OFF", "PITCH", "CUT", "SHP", "AMP", "PAN",
                                      "ATK", "DEC", "SUS", "REL", "E.FLT", "E.PIT", "E.SHP", "E.R2", "L.FLT", "L.SHP", "L.AMP",
                                      "DTIME", "DFDBK", "DTONE", "RTIME", "RDAMP", "GRIT", "RES", "F.AMT", "F.ATK",
                                      "F.DEC", "F.SUS", "F.REL", "C.MIX", "CTUNE", "CFDBK", "CDAMP", "DJ",
-                                     "LEVEL", "AGE", "GATE"};   /* (5 letters fit) (ANALOG's LEVEL and AGE, SAMPLER's GATE) */
+                                     "LEVEL", "AGE", "GATE",   /* (5 letters fit) (ANALOG's LEVEL and AGE, SAMPLER's GATE) */
+                                     "TYPE", "WAVE", "PHASE", "L.FAD", "SYNC", "L.TRG", "POL"};   /* (they step) */
 static const char *const N_ENGNAME[] = {"ANALOG", FELUCCA_FM4 ? "DIGITAL" : "-", "PHASE", "LOFI", "SAMPLE", "VOICE", "TRIO", "WHEEL", "GRAIN", "PHYS",
                                              "DRUM", "NOISE", "FM6",
 };

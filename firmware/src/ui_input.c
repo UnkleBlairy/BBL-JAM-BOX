@@ -63,6 +63,7 @@ static uint32_t tm_btn(uint32_t d)
 }
 
 static void layer_kill(void);                         /* (ui_buttons.c) */
+static int clip_paste_ready(void);                      /* (below: copy / paste a trig) */
 /* SIMPLE: what a held button does (gb_hint): SEQ, OCT+ (not under a dialog, SAVE, PERF's own keys) */
 static void hint_poll(void)
 {
@@ -78,6 +79,8 @@ static void hint_poll(void)
         else if (!h && fm1_ms - t0[i] >= HINT_MS && !ui.confirm && !gbsv_keys_on())
             h = i + 1u;
     }
+    if (!h && clip_paste_ready())
+        h = 3;                                          /* (an empty step held, a trig copied) */
     if (h != gb_hint)
         ui.force = 1;
     if (h == 1u)
@@ -112,55 +115,84 @@ static void fill_poll(void)
 
 /* SIMPLE, touch modulation (ui.c tm_*): every input pass, LFO held or not; OCT- with it takes the routing off */
 static const uint8_t TM_BTN[3] = {B_LFO, B_ENV, B_SCL};
+static uint8_t tm_hold;                                 /* a source's button held (1 + its slot), not yet picking */
+static uint8_t tm_eat;                                  /* the buttons whose release opens no page */
+/* every pass: LFO / ENV / FILTER held TM_MS (or + a knob) starts picking its DEST; it goes on when let go (the pages
+ * can change) until a knob is picked and TM_SHOW_MS pass, or its button is tapped again (cancel), or OCT- (DEST off).
+ * A button that started or ended picking opens no page when let go (eat) */
 static uint32_t tm_poll(uint32_t pressed)
 {
-    static uint32_t t0;
-    uint32_t dn = 0, up, i;
-    int16_t *p;
-    for (i = 0; FELUCCA_SIMPLE && !ui.confirm && !ui.uboot && !gbsv_keys_on() && i < 3u; i++)
-        if ((fm1_in.buttons >> panel.btn[TM_BTN[i]]) & 1u) {
-            dn = tm_dn && ((fm1_in.buttons >> panel.btn[TM_BTN[tm_dn - 1u]]) & 1u) ? tm_dn : i + 1u;   /* (the first) */
-            break;
+    static uint32_t t0[3];
+    static uint8_t was;
+#define eat tm_eat
+    uint32_t i, held = 0, ok = FELUCCA_SIMPLE && !ui.confirm && !ui.uboot && !gbsv_keys_on();
+    for (i = 0; ok && i < 3u; i++)
+        held |= ((fm1_in.buttons >> panel.btn[TM_BTN[i]]) & 1u) << i;
+    tm_hold = 0;
+    for (i = 0; i < 3u; i++) {
+        uint32_t m = 1u << i;
+        if ((held & m) && !(was & m)) {                 /* pressed */
+            t0[i] = fm1_ms | 1u;
+            if (tm_dn == i + 1u) {                      /* (its own button again: cancel) */
+                tm_dn = 0;
+                eat |= (uint8_t)m;
+                t0[i] = 0;
+                ui.force = 1;
+            }
         }
-    if (dn != tm_dn) {
-        t0 = fm1_ms;
-        tm_k = 0xFFu;
+        if (!(held & m))
+            t0[i] = 0;
+        else if (t0[i] && !(eat & m)) {
+            if (fm1_ms - t0[i] >= TM_MS) {
+                tm_dn = (uint8_t)(i + 1u);
+                tm_k = 0xFFu;
+                eat |= (uint8_t)m;
+                ui.force = 1;
+            } else if (!tm_hold) {
+                tm_hold = (uint8_t)(i + 1u);
+            }
+        }
+        if (eat & m) {                                  /* (its release: no page) */
+            ui.pg_down &= (uint16_t)~(1u << panel.btn[TM_BTN[i]]);
+            if (ui.ly)
+                layer_kill();
+            if (!(held & m))
+                eat &= (uint8_t)~m;
+        }
     }
-    tm_dn = (uint8_t)dn;
-    up = dn && (fm1_ms - t0 >= TM_MS || tm_k != 0xFFu);
-    if (up != tm_up)
+    was = (uint8_t)held;
+    if (!ok)
+        tm_dn = 0;
+    if (tm_dn && tm_k != 0xFFu && fm1_ms - tm_t >= TM_SHOW_MS && !(held & (1u << (tm_dn - 1u)))) {
+        tm_dn = 0;                                      /* (picked, set, left alone: done) */
         ui.force = 1;
-    tm_up = (uint8_t)up;
-    if (!dn)
-        return pressed;
-    if (up) {                                           /* (its release: no page) */
-        ui.pg_down &= (uint16_t)~(1u << panel.btn[TM_BTN[dn - 1u]]);
-        if (ui.ly)
-            layer_kill();
     }
-    p = tm_slot(TSEL);
-    if ((pressed >> panel.btn[B_OCTDN]) & 1u) {
+    i = tm_dn && tm_k != 0xFFu;
+    if (i != tm_up)
+        ui.force = 1;
+    tm_up = (uint8_t)i;
+    if (tm_dn && ((pressed >> panel.btn[B_OCTDN]) & 1u)) {
+        int16_t *p = tm_slot(TSEL);
         char m[24];
         p[2] = 0;
         p[1] = 0;
-        tm_k = 0xFFu;
-        str_cpy(m, TM_NAME[dn - 1u], sizeof m);
+        str_cpy(m, TM_NAME[tm_dn - 1u], sizeof m);
         str_cpy(m + str_len(m), " DEST OFF", sizeof m - str_len(m));
         ui_message(m);
+        tm_dn = 0;
         ui.force = 1;
         pressed &= ~(1u << panel.btn[B_OCTDN]);
     }
     return pressed;
+#undef eat
 }
 /* KNOB k turned s with a source held: the first turn of a knob makes it the DEST (AMT from the centre), more turns the AMT */
 static void tm_turn(uint32_t k, int32_t s)
 {
     int16_t *p = tm_slot(TSEL), src = TM_SRC[(tm_dn - 1u) % 3u];
     uint32_t d = ui.home ? 0u : tm_md(cur_page(), k);
-    if (!d) {
-        ui_message("CAN'T MOD THAT");
+    if (!d)                                             /* (MACH, the SEQ / ARP / CLOCK knobs: nothing) */
         return;
-    }
     if (p[1] != (int16_t)d || p[0] != src) {
         p[2] = 0;                                       /* (the ISR: no amount until it is all set) */
         p[1] = (int16_t)d;
@@ -169,6 +201,7 @@ static void tm_turn(uint32_t k, int32_t s)
         p[2] = (int16_t)clamp(p[2] + accel(EN_K1 + k, s, 127), -64, 63);
     }
     tm_k = (uint8_t)k;
+    tm_t = fm1_ms;
     ui.force = 1;
 }
 
@@ -505,7 +538,7 @@ static void ui_leds(void)
         led_pos_init();
         ready = 1;
     }
-    if (tm_up) {                                        /* SIMPLE, a source held: it flashes with the beat, the DEST's page lit */
+    if (tm_dn) {                                        /* SIMPLE, picking a DEST: its button flashes with the beat, the DEST's page lit */
         uint32_t b = TM_BTN[(tm_dn - 1u) % 3u];
         const int16_t *sp = tm_slot(TSEL);
         led_put(nl, panel.btn[b], (int)beat_flash());
@@ -875,6 +908,61 @@ static uint32_t gbs_held(void)
             m |= 1u << p;
     }
     return m;
+}
+/* SIMPLE, SEQ mode: hold a step + SAVE = copy it (its notes, CHANCE, TRIG, locks); hold an empty one (it came on at the
+ * press) + SAVE = paste over it. Not saved, any track (the locks' ids as they were) */
+#define CLIP_LK 16u
+static struct { uint8_t full, trig, nl, lid[CLIP_LK]; int8_t lv[CLIP_LK]; step_t st; } clip;
+static int clip_key(uint32_t *kp)                        /* the one step key held: its key, 1 */
+{
+    uint32_t k, n = 0, len = (uint32_t)TSEL->p[P_SLEN];
+    if (!sgrid_on() || fxl_on())
+        return 0;
+    for (k = 0; k < 27u; k++)
+        if (((fm1_in.notes >> k) & 1u) && !key_black(k) && key_place(k) < len && key_place(k) < GB_TRIG) {
+            *kp = k;
+            n++;
+        }
+    return n == 1u;
+}
+static int clip_paste_ready(void)                        /* an empty step held (now on) and something copied */
+{
+    uint32_t k;
+    return clip.full && clip_key(&k) && !(((gbs_off | gbs_kept) >> k) & 1u);   /* (kept: pasted, or edited) */
+}
+static int clip_save(void)                               /* SAVE pressed: 1 = it copied or pasted (no SAVE screen) */
+{
+    uint32_t k, p, i, place;
+    track_t *t = TSEL;
+    if (!clip_key(&k))
+        return 0;
+    p = key_place(k);
+    place = trk_index(t) << 6 | p;
+    if ((gbs_off >> k) & 1u) {                          /* a step that was on: copy */
+        clip.st = t->step[p];
+        clip.trig = t->step[p + GB_TRIG].probability;
+        clip.nl = 0;
+        for (i = 0; i < motion.count && clip.nl < CLIP_LK; i++)
+            if (motion.event[i].place == place && (motion.event[i].param & MOTION_LOCK)) {
+                clip.lid[clip.nl] = (uint8_t)(motion.event[i].param & ~MOTION_LOCK);
+                clip.lv[clip.nl++] = motion.event[i].value;
+            }
+        clip.full = 1;
+        gbs_keep();                                     /* (it stays when let go) */
+        ui_message("TRIG COPIED");
+    } else if (clip.full) {                             /* an empty one: paste */
+        (void)motion_clear_locks(t, p);
+        t->step[p] = clip.st;
+        t->step[p + GB_TRIG].probability = clip.trig;
+        for (i = 0; i < clip.nl; i++)
+            (void)motion_set_lock(t, p, clip.lid[i], clip.lv[i]);
+        gbs_keep();
+        ui_message("TRIG PASTED");
+    } else {
+        ui_message("NOTHING COPIED");
+    }
+    ui.force = 1;
+    return 1;
 }
 static void sgrid_release(void)                          /* every input pass: the keys let go */
 {
@@ -1537,6 +1625,8 @@ static void ui_input(void)
     if (rec == BT_TAP && !ui.confirm)
         rec_tap();
     (void)save;
+    if (FELUCCA_SIMPLE && ((pressed >> panel.btn[B_SAVE]) & 1u) && !ui.confirm && clip_save())
+        pressed &= ~(1u << panel.btn[B_SAVE]);         /* (a step held: SAVE copies / pastes it) */
     gbsv_buttons(pressed, !ui.confirm);   /* SIMPLE: SAVE is the sounds' and kits' screen */
     if (ui.confirm) {                                   /* OCT- cancels, OCT+ does it; nothing else reacts */
         if (oct & 2u) {
@@ -1736,7 +1826,12 @@ static void ui_input(void)
         uint64_t held;
         if ((s = panel_enc(EN_K1 + k)) == 0)
             continue;
-        if (tm_dn) {                                    /* LFO / ENV / FILTER held + KNOB k: its DEST, its AMT */
+        if (!tm_dn && tm_hold) {                        /* (a source's button held + a knob: picking at once) */
+            tm_dn = tm_hold;
+            tm_k = 0xFFu;
+            tm_eat |= (uint8_t)(1u << (tm_hold - 1u));
+        }
+        if (tm_dn) {                                    /* picking (LFO / ENV / FILTER) + KNOB k: its DEST, its AMT */
             tm_turn(k, s);
             continue;
         }

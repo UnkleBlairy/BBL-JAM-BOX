@@ -558,11 +558,14 @@ static int kit_on(void)
  * (any page) is its DEST, more turns of that knob its AMT (the pop-up's dial: up = none, left -, right +); OCT- takes
  * it off. Past TM_MS held (or a knob turned) the pop-up is up and the button's release opens no page */
 #define TM_MS 250u
+#define TM_SHOW_MS 1500u         /* the amount's pop-up stays this long after the last turn, then picking ends */
+static uint32_t tm_t;            /* the last turn */
 /* SIMPLE: a button held past HINT_MS shows what it does held (ui_input.c hint_poll, ui_gb.c's banner): 1 SEQ, 2 OCT+ */
 #define HINT_MS 250u
 static uint8_t gb_hint;
-static uint8_t tm_dn, tm_up, tm_k = 0xFFu;   /* a source's button held (1 + its slot); the pop-up up; the knob that
-                                              * picked this hold (0xFF none) */
+static uint8_t tm_dn, tm_up, tm_k = 0xFFu;   /* picking for a source (1 + its slot; it stays when its button is let
+                                              * go, so other pages can be reached); the amount's pop-up up; the knob
+                                              * that picked (0xFF none yet) */
 static const char *const TM_NAME[3] = {"LFO", "AMP ENV", "FILT ENV"};
 static const uint8_t TM_SRC[3] = {MS_LFO, MS_ENV, MS_FENV};
 static int16_t *tm_slot(track_t *t) { return &t->p[P_M1SRC + 3u * ((tm_dn - 1u) % 3u)]; }   /* SRC DST AMT */
