@@ -770,6 +770,45 @@ static void par_poll(void)
     }
     par_id = (uint8_t)id;
 }
+/* SIMPLE, SEQ held (not under a dialog, SAVE or PERF): + a knob = PARAM for that knob, + a white key = LOCKS (its release
+ * is then no tap) */
+static int seq_dn(void)
+{
+    return FELUCCA_SIMPLE && !ui.confirm && !gbsv_keys_on() && !pm_page() && !pm_down() &&
+           ((fm1_in.buttons >> panel.btn[B_SEQ]) & 1u);
+}
+static void seq_white(uint32_t notes)
+{
+    uint32_t k;
+    if (!seq_dn())
+        return;
+    for (k = 0; k < 27u; k++)
+        if (((notes >> k) & 1u) && !key_black(k)) {
+            layer_kill();
+            if (ui.sgrid != 3u) {
+                ui.sgrid = 3;                           /* (the key then plays as a LOCKS key, this same pass) */
+                ui_message("LOCKS");
+                ui.force = 1;
+            }
+            return;
+        }
+}
+static int seq_knob(uint32_t k)
+{
+    uint32_t id;
+    if (!seq_dn())
+        return 0;
+    layer_kill();
+    id = !ui.home && lock_page_ok(ui.page) ? lock_pid(cur_page(), k) : 0xFFu;
+    if (id == 0xFFu || id == P_E7)                      /* (a knob PARAM can't take: the turn does nothing) */
+        return 1;
+    par_k = (uint8_t)k;
+    if (ui.sgrid != 2u)
+        ui_message("PARAM");
+    ui.sgrid = 2;
+    ui.force = 1;
+    return 1;
+}
 /* .. its black keys: the track (as SEQ's), SEQ held: black keys 1..4 pick the knob (SEQ's release is then no tap) */
 static void par_keys(uint32_t pressed)
 {
@@ -1219,7 +1258,12 @@ static void layer_tap(uint32_t l);
 static int page_tap(uint32_t b)
 {
     uint32_t f;
-    if (FELUCCA_SIMPLE && b == B_SEQ && (ui.home || cur_page()->graph != GR_GBSEQ)) {   /* SIMPLE: SEQ from anywhere: the SEQ page, its keys on */
+    if (FELUCCA_SIMPLE && b == B_SEQ && ui.sgrid == 1u) {   /* SIMPLE: a tap in SEQ mode: KEY (the page stays) */
+        ui.sgrid = 0;
+        ui_message("KEY");
+        return 1;
+    }
+    if (FELUCCA_SIMPLE && b == B_SEQ && (ui.home || cur_page()->graph != GR_GBSEQ)) {   /* .. otherwise from anywhere: the SEQ page, its keys on */
         ui.fam_last[FAM_SEQ] = 0;
         ui.home = 0;
         open_family(FAM_SEQ);
@@ -1228,8 +1272,8 @@ static int page_tap(uint32_t b)
         return 1;
     }
     if (FELUCCA_SIMPLE && b == B_SEQ) {                  /* .. on the SEQ page: the step keys off / on */
-        ui.sgrid = (uint8_t)(ui.sgrid == 2u ? 0u : ui.sgrid == 0u ? 3u : ui.sgrid == 3u ? 1u : 2u);   /* SEQ -> PARAM -> KEY -> KIT -> SEQ */
-        ui_message(ui.sgrid == 1u ? "SEQ" : ui.sgrid == 2u ? "PARAM" : ui.sgrid == 3u ? "LOCKS" : "KEY");
+        ui.sgrid = 1;                                   /* .. on the SEQ page: KEY, PARAM, LOCKS -> SEQ */
+        ui_message("SEQ");
         return 1;
     }
     for (f = FAM_HOME + 1u; f < FAM_COUNT; f++)        /* (GLO SEQ SAVE ..: HOME is ui_input's, home_tap) */
@@ -1341,6 +1385,7 @@ static void ui_input(void)
         ui.rec_t0 |= 2u;                                /* (REC is a page button: its tap is layer_tap's) */
     oct = oct_taps(pressed, ui.confirm != 0);
     lytap = layer_gesture();
+    seq_white(notes);
     par_poll();
     song.grid = (uint8_t)keys_mode();                 /* (a dialog: the keys play again) */
     if (rec == BT_TAP && !ui.confirm)
@@ -1533,6 +1578,8 @@ static void ui_input(void)
         int16_t *hv;
         uint64_t held;
         if ((s = panel_enc(EN_K1 + k)) == 0)
+            continue;
+        if (seq_knob(k))                                /* SEQ held + KNOB k: PARAM for it */
             continue;
         if (mom_down())                                 /* (LFO + a knob, MOMENTARY or not: LFO's release opens no page) */
             ui.pg_down &= (uint16_t)~(1u << panel.btn[B_LFO]);

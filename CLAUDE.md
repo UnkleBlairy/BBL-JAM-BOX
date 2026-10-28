@@ -77,9 +77,11 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
 - Storage: track CHANCE lives in P_APROB (no ARP in this build); step i's TRIG
   lives in step[i+16]'s chance byte (core.h GB_TRIG) so the save format is
   unchanged.
-- SEQ button: from any page opens the SEQ page with step keys on (SEQ mode); on
-  the SEQ page each tap goes SEQ -> PARAM -> KEY -> SEQ. The mode's name is at
-  the bottom of the screen. SEQ's light is on in SEQ mode and breathes in PARAM.
+- SEQ button: a tap in SEQ mode = KEY mode (page stays); otherwise a tap opens
+  the SEQ page in SEQ mode. Hold SEQ + turn a knob = PARAM mode for that knob;
+  hold SEQ + white key = LOCKS mode (ui_input.c seq_knob / seq_white). The
+  mode's name is at the bottom of the screen. SEQ's light is on in SEQ mode and
+  breathes in PARAM.
 - PARAM key mode (ui_input.c par_*, seq.c par_key): on a sound/FX page the 16
   white keys set one of the 4 knobs (key 1 = lowest, key 16 = highest) and play
   the step note. Hold SEQ + black key 1-4 picks the knob (underlined on screen).
@@ -196,7 +198,7 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
 - A drum hit flashes the header icon inverted (white block) for ~90 ms; only the
   top strip redraws for it (voice.c trk_hit_ms).
 
-- LOCKS key mode (SEQ taps: SEQ -> PARAM -> KEY -> LOCKS; seq.c kit_*, ui_input.c kit_*): each white key is a
+- LOCKS key mode (hold SEQ + white key; seq.c kit_*, ui_input.c kit_*): each white key is a
   playable trig-locked step. Unbaked keys play the sound as the knobs set it; hold a key + turn knobs = bake up to 8
   locks into that key only (heard at once; key + OCT- clears it). The knobs and dials always show the sound's own
   values (a held key shows its locks inverted); turning a knob edits the sound's own value. Recording: the step gets
