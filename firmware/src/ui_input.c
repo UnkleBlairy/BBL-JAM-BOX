@@ -1015,7 +1015,6 @@ static void seq_white(uint32_t notes)
             layer_kill();
             if (ui.sgrid != 3u) {
                 ui.sgrid = 3;                           /* (the key then plays as a LOCKS key, this same pass) */
-                ui_message("LOCKS");
                 ui.force = 1;
             }
             return;
@@ -1032,8 +1031,6 @@ static int seq_knob(uint32_t k)
         return 1;
     par_k = (uint8_t)k;
     par_pg = ui.page;
-    if (ui.sgrid != 2u)
-        ui_message("PARAM");
     ui.sgrid = 2;
     ui.force = 1;
     return 1;
@@ -1491,7 +1488,6 @@ static int page_tap(uint32_t b)
     uint32_t f;
     if (FELUCCA_SIMPLE && b == B_SEQ && ui.sgrid == 1u) {   /* SIMPLE: a tap in SEQ mode: KEY (the page stays) */
         ui.sgrid = 0;
-        ui_message("KEY");
         return 1;
     }
     if (FELUCCA_SIMPLE && b == B_SEQ && (ui.home || cur_page()->graph != GR_GBSEQ)) {   /* .. otherwise from anywhere: the SEQ page, its keys on */
@@ -1504,7 +1500,6 @@ static int page_tap(uint32_t b)
     }
     if (FELUCCA_SIMPLE && b == B_SEQ) {                  /* .. on the SEQ page: the step keys off / on */
         ui.sgrid = 1;                                   /* .. on the SEQ page: KEY, PARAM, LOCKS -> SEQ */
-        ui_message("SEQ");
         return 1;
     }
     for (f = FAM_HOME + 1u; f < FAM_COUNT; f++)        /* (GLO SEQ SAVE ..: HOME is ui_input's, home_tap) */

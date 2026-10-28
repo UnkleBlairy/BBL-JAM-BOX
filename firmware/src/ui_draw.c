@@ -627,5 +627,7 @@ static void ui_draw_page(uint32_t counting)
         ui.hot_t--;
     if (ui.bpm_t)
         ui.bpm_t--;
+    if (ui.msg_t)                                        /* (a message's banner: ~40 frames, then it goes) */
+        ui.msg_t--;
     ui.force = 0;
 }
