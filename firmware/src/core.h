@@ -296,6 +296,8 @@ typedef struct track {
     uint8_t sp_alt;              /* SPREAD: the side the next voice starts on (alternating, voice.c voice_start) */
     int16_t m_rnd;               /* .. its RAND */
     int32_t m_env;               /* the amp envelope of voice m_vi, last block (Q15) */
+    int32_t m_fenv;              /* .. its filter envelope (FENV, eng_digital.c / eng_sampler.c; Q15) */
+    uint8_t rsv_fe[12];          /* (sizeof(track_t) a multiple of 16) */
 } track_t;
 /* the audio ISR indexes trk[] with a multiply by a small immediate and a shift while the size is a multiple of 16; 1.5's
  * new track parameters (the INSERT, the filter TYPE, ENV SYNC) and state would make it no multiple (the constant

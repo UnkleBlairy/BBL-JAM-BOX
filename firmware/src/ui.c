@@ -553,11 +553,16 @@ static int kit_on(void)
 {
     return FELUCCA_SIMPLE && ui.sgrid == 3u && !ui.confirm && !pm_page() && !pm_down() && !gbsv_keys_on();
 }
-/* SIMPLE, touch modulation (ui_input.c tm_*): LFO held = the LFO's routing, matrix slot 1 (SRC LFO). The first knob
- * turned (any page) is its DEST, more turns of that knob its AMT (the pop-up's dial: up = none, left -, right +); OCT-
- * takes it off. Past TM_MS held (or a knob turned) the pop-up is up and LFO's release opens no page */
+/* SIMPLE, touch modulation (ui_input.c tm_*): LFO held = the LFO's routing (matrix slot 1, SRC LFO), ENV held the amp
+ * envelope's (slot 2, ENV), the FILTER button (SCL) held the filter envelope's (slot 3, FENV). The first knob turned
+ * (any page) is its DEST, more turns of that knob its AMT (the pop-up's dial: up = none, left -, right +); OCT- takes
+ * it off. Past TM_MS held (or a knob turned) the pop-up is up and the button's release opens no page */
 #define TM_MS 250u
-static uint8_t tm_dn, tm_up, tm_k = 0xFFu;   /* LFO held; the pop-up up; the knob that picked this hold (0xFF none) */
+static uint8_t tm_dn, tm_up, tm_k = 0xFFu;   /* a source's button held (1 + its slot); the pop-up up; the knob that
+                                              * picked this hold (0xFF none) */
+static const char *const TM_NAME[3] = {"LFO", "AMP ENV", "FILT ENV"};
+static const uint8_t TM_SRC[3] = {MS_LFO, MS_ENV, MS_FENV};
+static int16_t *tm_slot(track_t *t) { return &t->p[P_M1SRC + 3u * ((tm_dn - 1u) % 3u)]; }   /* SRC DST AMT */
 /* KNOB k of page pg as a matrix DEST (mod.c MD_*), 0: none (a knob that switches, or no knob) */
 static uint32_t tm_md(const page_t *pg, uint32_t k)
 {

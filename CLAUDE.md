@@ -112,6 +112,13 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   LFO's DEST, more turns of it = AMT on a big centred dial (left -, right +).
   OCT- while holding LFO = DEST off. While held, LFO flashes with the beat and
   the DEST's page button is lit. Stored in matrix slot 1 (P_M1SRC/DST/AMT).
+  Same for hold ENV = "AMP ENV" (slot 2, SRC ENV) and hold the FILTER button
+  (SCL) = "FILT ENV" (slot 3, SRC FENV: the filter envelope, mod.c MS_FENV, set
+  by eng_digital.c / eng_sampler.c; 0 on an 808). One DEST per source.
+- Later plan: drop the LFO DEST / ENV DEST pages; a fixed routing worth keeping
+  becomes an amount knob on its own page.
+- OCT+ temporary change shows a "TEMP CHANGE / RELEASE TO REVERT - OCT- KEEPS"
+  banner at the bottom (ui_gb.c gb_temp).
 - Master FX must never click: DJ and COMB fade in/out over ~23 ms
   (MFX_CSLOPE), the comb loop soft-limits (mfx_soft), the DJ filter updates
   every 32 samples with smooth resonance. Test with a sine + 2nd-difference

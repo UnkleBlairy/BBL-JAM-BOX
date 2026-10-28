@@ -262,6 +262,8 @@ static void sampler_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, con
         v->s[2] = fe;
         v->s[3] = fs;
         cut += ((fe >> 9) * p[P_FE_AMT]) >> 6;
+        if (v == &t->v[t->m_vi])
+            t->m_fenv = fe >= (1 << 24) ? 32767 : fe >> 9;   /* (FENV, a matrix source: mod.c) */
     }
     int32_t drive = 32768 + p[P_FLT_DRV] * 512, drv = p[P_FLT_DRV], ic1 = v->s[0], ic2 = v->s[1];
     int32_t fk = ANALOG_K(p[P_FLT_RES]);

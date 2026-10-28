@@ -34,6 +34,8 @@ typedef struct {
     uint32_t za, zb;                         /* .. the window's first and last sample */
     uint8_t tmod;                            /* LFO held (touch modulation): 1 the pop-up, no DEST yet, 2 with one */
     int8_t tm_amt;                           /* .. its AMT, -64..63 */
+    uint8_t tm_src;                          /* .. whose: 0 LFO, 1 ENV, 2 FENV (ui.c TM_NAME) */
+    uint8_t temp;                            /* OCT+ held + a knob turned: the temporary change's banner */
     char tm_name[8];                         /* .. its DEST */
     char title[12], lab[4][8], val[4][12];
 } gb_view_t;
@@ -162,10 +164,13 @@ static void gb_fill(gb_view_t *v)
     v->mixer = pg->graph == GR_TRK;
     v->sel = (uint8_t)song.sel;
     v->bpm = song.g[G_BPM];
-    if (tm_up) {                                  /* LFO held: the pop-up */
-        uint32_t d = TSEL->p[P_M1SRC] == MS_LFO ? (uint32_t)TSEL->p[P_M1DST] : 0u;
+    v->temp = (uint8_t)(FELUCCA_SIMPLE && mom.n != 0u);
+    if (tm_up) {                                  /* LFO / ENV / FILTER held: the pop-up */
+        const int16_t *sp = tm_slot(TSEL);
+        uint32_t d = sp[0] == TM_SRC[(tm_dn - 1u) % 3u] ? (uint32_t)sp[1] : 0u;
         v->tmod = (uint8_t)(d ? 2u : 1u);
-        v->tm_amt = (int8_t)(d ? TSEL->p[P_M1AMT] : 0);
+        v->tm_src = (uint8_t)((tm_dn - 1u) % 3u);
+        v->tm_amt = (int8_t)(d ? sp[2] : 0);
         if (d)
             str_cpy(v->tm_name, tm_name(TSEL, d), sizeof v->tm_name);
     }
@@ -735,10 +740,12 @@ static void gb_popup(const gb_view_t *v, uint16_t bgc)
     const char *nm = v->tmod == 2u ? v->tm_name : "CHOOSE";
     const aafont_t *f = large_face_has(nm) && text_w(&AF_L, nm) <= 196 ? &AF_L : &AF_M;
     int32_t a, px, py, amt = v->tm_amt, on = amt * 135 / 64;
-    char nb[8];
+    char nb[8], hd[28];
+    str_cpy(hd, TM_NAME[v->tm_src % 3u], sizeof hd);
+    str_cpy(hd + str_len(hd), " DEST", sizeof hd - str_len(hd));
     cv_rrect(14, 42, 212, 152, 12, ink, bgc);
     cv_rrect(17, 45, 206, 146, 10, bk, ink);
-    cv_text_in(17, 52, 206, &AF_M, v->tmod == 2u ? "LFO DEST" : "LFO DEST: TURN A KNOB", ink, bk);
+    cv_text_in(17, 52, 206, &AF_M, hd, ink, bk);
     cv_text_in(17, f == &AF_L ? 70 : 78, 206, f, nm, ink, bk);
     for (a = 0; a < 360; a++) {                   /* the ring, and its AMT as a bold arc from the top */
         int in = on >= 0 ? (a <= on) : (a >= 360 + on || a == 0);
@@ -757,6 +764,16 @@ static void gb_popup(const gb_view_t *v, uint16_t bgc)
             nb[0] = '+';
         cv_text_in(amt < 0 ? 17 : 160, 140, 63, &AF_M, nb, ink, bk);
     }
+}
+
+/* OCT+ held + a knob turned (ui_input.c mom_*): a banner at the bottom, the dials above it still seen */
+static void gb_temp(uint16_t bgc)
+{
+    const uint16_t bk = GB_RGB(16, 16, 20);
+    cv_rrect(14, 172, 212, 46, 10, GB_W, bgc);
+    cv_rrect(17, 175, 206, 40, 8, bk, GB_W);
+    cv_text_in(17, 178, 206, &AF_M, "TEMP CHANGE", GB_W, bk);
+    cv_text_in(17, 197, 206, &AF_S, "RELEASE TO REVERT  -  OCT- KEEPS", GB_W, bk);
 }
 
 /* the overlay, over every page: the loop border (3 px round the edge, clockwise from the top left, white as far as the
@@ -844,6 +861,8 @@ static void gb_draw(void)
         gb_scene(&gb_v, c);
         if (gb_v.tmod)
             gb_popup(&gb_v, c);
+        else if (gb_v.temp)
+            gb_temp(c);
         gb_overlay(&gb_v, c, 0);
         cv_oy = 0;
         cv_blit(0, s * GB_STRIP);

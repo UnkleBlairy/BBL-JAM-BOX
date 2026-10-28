@@ -63,13 +63,19 @@ static uint32_t tm_btn(uint32_t d)
 }
 
 /* SIMPLE, touch modulation (ui.c tm_*): every input pass, LFO held or not; OCT- with it takes the routing off */
+static void layer_kill(void);                         /* (ui_buttons.c) */
+static const uint8_t TM_BTN[3] = {B_LFO, B_ENV, B_SCL};
 static uint32_t tm_poll(uint32_t pressed)
 {
     static uint32_t t0;
-    uint32_t dn = FELUCCA_SIMPLE && ((fm1_in.buttons >> panel.btn[B_LFO]) & 1u) && !ui.confirm && !ui.uboot &&
-                  !gbsv_keys_on(), up;
-    int16_t *p = TSEL->p;
-    if (dn && !tm_dn) {
+    uint32_t dn = 0, up, i;
+    int16_t *p;
+    for (i = 0; FELUCCA_SIMPLE && !ui.confirm && !ui.uboot && !gbsv_keys_on() && i < 3u; i++)
+        if ((fm1_in.buttons >> panel.btn[TM_BTN[i]]) & 1u) {
+            dn = tm_dn && ((fm1_in.buttons >> panel.btn[TM_BTN[tm_dn - 1u]]) & 1u) ? tm_dn : i + 1u;   /* (the first) */
+            break;
+        }
+    if (dn != tm_dn) {
         t0 = fm1_ms;
         tm_k = 0xFFu;
     }
@@ -78,33 +84,42 @@ static uint32_t tm_poll(uint32_t pressed)
     if (up != tm_up)
         ui.force = 1;
     tm_up = (uint8_t)up;
-    if (up)
-        ui.pg_down &= (uint16_t)~(1u << panel.btn[B_LFO]);   /* (its release: no page) */
-    if (dn && ((pressed >> panel.btn[B_OCTDN]) & 1u)) {
-        p[P_M1AMT] = 0;
-        p[P_M1DST] = 0;
+    if (!dn)
+        return pressed;
+    if (up) {                                           /* (its release: no page) */
+        ui.pg_down &= (uint16_t)~(1u << panel.btn[TM_BTN[dn - 1u]]);
+        if (ui.ly)
+            layer_kill();
+    }
+    p = tm_slot(TSEL);
+    if ((pressed >> panel.btn[B_OCTDN]) & 1u) {
+        char m[24];
+        p[2] = 0;
+        p[1] = 0;
         tm_k = 0xFFu;
-        ui_message("LFO DEST OFF");
+        str_cpy(m, TM_NAME[dn - 1u], sizeof m);
+        str_cpy(m + str_len(m), " DEST OFF", sizeof m - str_len(m));
+        ui_message(m);
         ui.force = 1;
         pressed &= ~(1u << panel.btn[B_OCTDN]);
     }
     return pressed;
 }
-/* KNOB k turned s with LFO held: the first turn of a knob makes it the DEST (AMT from the centre), more turns the AMT */
+/* KNOB k turned s with a source held: the first turn of a knob makes it the DEST (AMT from the centre), more turns the AMT */
 static void tm_turn(uint32_t k, int32_t s)
 {
-    int16_t *p = TSEL->p;
+    int16_t *p = tm_slot(TSEL), src = TM_SRC[(tm_dn - 1u) % 3u];
     uint32_t d = ui.home ? 0u : tm_md(cur_page(), k);
     if (!d) {
         ui_message("CAN'T MOD THAT");
         return;
     }
-    if (p[P_M1DST] != (int16_t)d || p[P_M1SRC] != MS_LFO) {
-        p[P_M1AMT] = 0;                                 /* (the ISR: no amount until it is all set) */
-        p[P_M1DST] = (int16_t)d;
-        p[P_M1SRC] = MS_LFO;
+    if (p[1] != (int16_t)d || p[0] != src) {
+        p[2] = 0;                                       /* (the ISR: no amount until it is all set) */
+        p[1] = (int16_t)d;
+        p[0] = src;
     } else if (tm_k == k) {
-        p[P_M1AMT] = (int16_t)clamp(p[P_M1AMT] + accel(EN_K1 + k, s, 127), -64, 63);
+        p[2] = (int16_t)clamp(p[2] + accel(EN_K1 + k, s, 127), -64, 63);
     }
     tm_k = (uint8_t)k;
     ui.force = 1;
@@ -164,8 +179,8 @@ static int mom_turn(uint32_t k, int32_t s)
         mom.vp[i] = vp;
         mom.v[i] = *vp;
         mom.n++;
-        if (i == 0u)
-            ui_message(FELUCCA_SIMPLE ? "TEMP  [OCT-] KEEP" : "MOMENTARY  [OCT+] KEEP");
+        if (i == 0u && !FELUCCA_SIMPLE)                 /* (SIMPLE: the TEMP CHANGE banner, ui_gb.c) */
+            ui_message("MOMENTARY  [OCT+] KEEP");
     }
     *vp = (int16_t)param_turn(d, *vp, accel(EN_K1 + k, s, d->fmt == F_ENUM ? 0 : d->max - d->min));
     return 1;
@@ -359,7 +374,6 @@ static uint32_t pm_leds(void);
 static uint32_t trk_keys(int playing);
 static uint32_t par_leds(void);
 static uint32_t kit_leds(void);
-static void layer_kill(void);                         /* (ui_buttons.c) */
 /* MENU > ANIM IDLE (1.2, Discussion #135): after IDLE_LEDS_MS without panel input (ui.c scrn.idle: a button or key
  * pressed or held, a knob turned; what SCREEN OFF counts) the LEDs play the idle animation (hal/fm1_led_anim.h
  * fm1_idle_level: a soft light drifting over the keys and back, the buttons breathing with it; the scan draws it,
@@ -433,10 +447,11 @@ static void ui_leds(void)
         led_pos_init();
         ready = 1;
     }
-    if (tm_up) {                                        /* SIMPLE, LFO held: it flashes with the beat, the DEST's page lit */
-        uint32_t bt = 60000u / (uint32_t)clamp(song.g[G_BPM], 20, 999);
-        led_put(nl, panel.btn[B_LFO], fm1_ms % bt < bt / 3u);
-        if ((k = tm_btn(TSEL->p[P_M1SRC] == MS_LFO ? (uint32_t)TSEL->p[P_M1DST] : 0u)) != 0xFFu && k != B_LFO)
+    if (tm_up) {                                        /* SIMPLE, a source held: it flashes with the beat, the DEST's page lit */
+        uint32_t bt = 60000u / (uint32_t)clamp(song.g[G_BPM], 20, 999), b = TM_BTN[(tm_dn - 1u) % 3u];
+        const int16_t *sp = tm_slot(TSEL);
+        led_put(nl, panel.btn[b], fm1_ms % bt < bt / 3u);
+        if ((k = tm_btn(sp[0] == TM_SRC[(tm_dn - 1u) % 3u] ? (uint32_t)sp[1] : 0u)) != 0xFFu && k != b)
             led_put(nl, panel.btn[k], 1);
     } else
         led_put(nl, panel.btn[FAM_BTN[fam]], 1);
@@ -1647,7 +1662,7 @@ static void ui_input(void)
         uint64_t held;
         if ((s = panel_enc(EN_K1 + k)) == 0)
             continue;
-        if (tm_dn) {                                    /* LFO held + KNOB k: the LFO's DEST, its AMT */
+        if (tm_dn) {                                    /* LFO / ENV / FILTER held + KNOB k: its DEST, its AMT */
             tm_turn(k, s);
             continue;
         }
