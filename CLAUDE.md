@@ -107,6 +107,11 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   mom_*): let go of OCT+ and it snaps back; OCT- while OCT+ is held keeps it.
 - GLO pages: PERF, COMB, DJ (the DJ filter's own page, so it can be locked).
 - LFO pages: LFO (RATE WAVE PHASE FADE), SYNC (SYNC TRIG POL), LFO DEST.
+- Touch modulation (ui.c / ui_input.c tm_*): hold LFO (pop-up after 250 ms; a
+  quick tap still opens the LFO page). The first knob turned on any page = the
+  LFO's DEST, more turns of it = AMT on a big centred dial (left -, right +).
+  OCT- while holding LFO = DEST off. While held, LFO flashes with the beat and
+  the DEST's page button is lit. Stored in matrix slot 1 (P_M1SRC/DST/AMT).
 - Master FX must never click: DJ and COMB fade in/out over ~23 ms
   (MFX_CSLOPE), the comb loop soft-limits (mfx_soft), the DJ filter updates
   every 32 samples with smooth resonance. Test with a sine + 2nd-difference

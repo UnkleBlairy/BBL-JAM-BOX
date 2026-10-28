@@ -32,6 +32,9 @@ typedef struct {
     uint16_t wkey;                           /* .. which chunk (its peaks) */
     uint8_t zoom;                            /* START / LEN just turned (a lock too): the waveform zoomed on 1 START, 2 the end */
     uint32_t za, zb;                         /* .. the window's first and last sample */
+    uint8_t tmod;                            /* LFO held (touch modulation): 1 the pop-up, no DEST yet, 2 with one */
+    int8_t tm_amt;                           /* .. its AMT, -64..63 */
+    char tm_name[8];                         /* .. its DEST */
     char title[12], lab[4][8], val[4][12];
 } gb_view_t;
 static gb_view_t gb_v, gb_last;
@@ -159,6 +162,13 @@ static void gb_fill(gb_view_t *v)
     v->mixer = pg->graph == GR_TRK;
     v->sel = (uint8_t)song.sel;
     v->bpm = song.g[G_BPM];
+    if (tm_up) {                                  /* LFO held: the pop-up */
+        uint32_t d = TSEL->p[P_M1SRC] == MS_LFO ? (uint32_t)TSEL->p[P_M1DST] : 0u;
+        v->tmod = (uint8_t)(d ? 2u : 1u);
+        v->tm_amt = (int8_t)(d ? TSEL->p[P_M1AMT] : 0);
+        if (d)
+            str_cpy(v->tm_name, tm_name(TSEL, d), sizeof v->tm_name);
+    }
     v->bpm_alt = (uint8_t)(pm_altered(TSEL, &song.g[G_BPM]) != 0);
     if ((song.rec >> song.sel) & 1u) {           /* REC: playing, it breathes twice a bar (one breath = 2 beats) */
         uint32_t bs = beat_samples(), ph = ((beat_n & 1u) * bs + (beat_pos < bs ? beat_pos : bs)) * 32u / (2u * bs + 1u);
@@ -717,6 +727,38 @@ static void gb_scene(const gb_view_t *v, uint16_t bgc)
     cv_text_on(232 - pw + 8 + (v->picon ? 20 : 0), 197, &AF_M, nm, v->an ? bgc : c, v->an ? c : bgc);
 }
 
+/* LFO held: the touch modulation pop-up (ui.c tm_*): its DEST (or CHOOSE), a big dial for its AMT (up: none) */
+static void gb_popup(const gb_view_t *v, uint16_t bgc)
+{
+    const int32_t cx = 120, cy = 148;
+    const uint16_t ink = GB_W, bk = GB_RGB(16, 16, 20);
+    const char *nm = v->tmod == 2u ? v->tm_name : "CHOOSE";
+    const aafont_t *f = large_face_has(nm) && text_w(&AF_L, nm) <= 196 ? &AF_L : &AF_M;
+    int32_t a, px, py, amt = v->tm_amt, on = amt * 135 / 64;
+    char nb[8];
+    cv_rrect(14, 42, 212, 152, 12, ink, bgc);
+    cv_rrect(17, 45, 206, 146, 10, bk, ink);
+    cv_text_in(17, 52, 206, &AF_M, v->tmod == 2u ? "LFO DEST" : "LFO DEST: TURN A KNOB", ink, bk);
+    cv_text_in(17, f == &AF_L ? 70 : 78, 206, f, nm, ink, bk);
+    for (a = 0; a < 360; a++) {                   /* the ring, and its AMT as a bold arc from the top */
+        int in = on >= 0 ? (a <= on) : (a >= 360 + on || a == 0);
+        dial_pt(cx, cy, 30, a, &px, &py);
+        cv_rect(px - 1, py - 1, 3, 3, ink);
+        if (amt && in) {
+            dial_pt(cx, cy, 36, a, &px, &py);
+            cv_rect(px - 2, py - 2, 4, 4, ink);
+        }
+    }
+    dial_pt(cx, cy, 24, 360 + on, &px, &py);
+    cv_line_t(cx, cy, px, py, ink, 3);
+    if (v->tmod == 2u) {                            /* the AMT as a number either side: - left, + right */
+        fmt_int(nb + (amt > 0 ? 1 : 0), amt);
+        if (amt > 0)
+            nb[0] = '+';
+        cv_text_in(amt < 0 ? 17 : 160, 140, 63, &AF_M, nb, ink, bk);
+    }
+}
+
 /* the overlay, over every page: the loop border (3 px round the edge, clockwise from the top left, white as far as the
  * loop has got) and the six track squares at the bottom (the track's colour; white on a hit; muted: dark with an X; the
  * selected one: a thicker edge). direct: straight onto the panel (only these changed), else into the canvas strip */
@@ -800,6 +842,8 @@ static void gb_draw(void)
         cv_begin(240, GB_STRIP, c);
         cv_oy = -(int32_t)(s * GB_STRIP);
         gb_scene(&gb_v, c);
+        if (gb_v.tmod)
+            gb_popup(&gb_v, c);
         gb_overlay(&gb_v, c, 0);
         cv_oy = 0;
         cv_blit(0, s * GB_STRIP);

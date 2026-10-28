@@ -553,6 +553,34 @@ static int kit_on(void)
 {
     return FELUCCA_SIMPLE && ui.sgrid == 3u && !ui.confirm && !pm_page() && !pm_down() && !gbsv_keys_on();
 }
+/* SIMPLE, touch modulation (ui_input.c tm_*): LFO held = the LFO's routing, matrix slot 1 (SRC LFO). The first knob
+ * turned (any page) is its DEST, more turns of that knob its AMT (the pop-up's dial: up = none, left -, right +); OCT-
+ * takes it off. Past TM_MS held (or a knob turned) the pop-up is up and LFO's release opens no page */
+#define TM_MS 250u
+static uint8_t tm_dn, tm_up, tm_k = 0xFFu;   /* LFO held; the pop-up up; the knob that picked this hold (0xFF none) */
+/* KNOB k of page pg as a matrix DEST (mod.c MD_*), 0: none (a knob that switches, or no knob) */
+static uint32_t tm_md(const page_t *pg, uint32_t k)
+{
+    uint32_t id = page_id_an(pg, pg->id[k & 3u]), j;
+    if (id == 0xFFu || pg->graph == GR_PERF || pg->scope == SC_TRK || pg->scope == SC_STEP || pg->fam == FAM_TRK)
+        return 0;
+    if ((id & 0x80u) || pg->scope == SC_GLOBAL)
+        id = 0x80u | (id & 0x7Fu);
+    else if (id >= P_E0 && id < P_E7)
+        return MD_E1 + id - P_E0;
+    else if (id == P_TRANS || id == P_LRATE || id == P_LD_PIT || id == P_DLY || id == P_REV || id == P_PAN)
+        return id == P_TRANS ? MD_PITCH : id == P_LRATE ? MD_RATE : id == P_LD_PIT ? MD_VIB : id == P_DLY ? MD_DLY :
+               id == P_REV ? MD_REV : MD_PAN;
+    for (j = 0; j < MD_N - MD_X0; j++)
+        if (MDX[j] == id)
+            return MD_X0 + j;
+    return 0;
+}
+/* the DEST's name (the knob's own for the machine's E1..E7) */
+static const char *tm_name(const track_t *t, uint32_t d)
+{
+    return MD_ENGINE(d) ? track_desc(t, P_E0 + d - MD_E1)->label : N_MDST[d % MD_N];
+}
 /* the macro's parameter: track tr < NTRK, or tr == PM_G: a global (BPM, SWING, the master's) */
 #define PM_G 0xFFu
 static int16_t *pm_ptr(uint32_t tr, uint32_t id)

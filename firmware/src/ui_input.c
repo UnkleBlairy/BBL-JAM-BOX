@@ -50,6 +50,66 @@ static int32_t accel(uint32_t role, int32_t s, int32_t range);
  * on CALIBRATION / ABOUT OCT+ breathing alone (opens), in ABOUT OCT- lit (back); elsewhere the octave shift */
 #define OCT_BREATH 4u
 #define OCT_BREATH_DN 8u                                /* OCT- breathing (the menu: the previous value) */
+/* the page button of the page that has DEST d (0xFF: none shown) */
+static uint32_t tm_btn(uint32_t d)
+{
+    uint32_t i, k;
+    for (i = 0; d && i < NPAGES; i++)
+        if (page_visible(i))
+            for (k = 0; k < 4u; k++)
+                if (tm_md(&PAGES[i], k) == d)
+                    return FAM_BTN[PAGES[i].fam];
+    return 0xFFu;
+}
+
+/* SIMPLE, touch modulation (ui.c tm_*): every input pass, LFO held or not; OCT- with it takes the routing off */
+static uint32_t tm_poll(uint32_t pressed)
+{
+    static uint32_t t0;
+    uint32_t dn = FELUCCA_SIMPLE && ((fm1_in.buttons >> panel.btn[B_LFO]) & 1u) && !ui.confirm && !ui.uboot &&
+                  !gbsv_keys_on(), up;
+    int16_t *p = TSEL->p;
+    if (dn && !tm_dn) {
+        t0 = fm1_ms;
+        tm_k = 0xFFu;
+    }
+    tm_dn = (uint8_t)dn;
+    up = dn && (fm1_ms - t0 >= TM_MS || tm_k != 0xFFu);
+    if (up != tm_up)
+        ui.force = 1;
+    tm_up = (uint8_t)up;
+    if (up)
+        ui.pg_down &= (uint16_t)~(1u << panel.btn[B_LFO]);   /* (its release: no page) */
+    if (dn && ((pressed >> panel.btn[B_OCTDN]) & 1u)) {
+        p[P_M1AMT] = 0;
+        p[P_M1DST] = 0;
+        tm_k = 0xFFu;
+        ui_message("LFO DEST OFF");
+        ui.force = 1;
+        pressed &= ~(1u << panel.btn[B_OCTDN]);
+    }
+    return pressed;
+}
+/* KNOB k turned s with LFO held: the first turn of a knob makes it the DEST (AMT from the centre), more turns the AMT */
+static void tm_turn(uint32_t k, int32_t s)
+{
+    int16_t *p = TSEL->p;
+    uint32_t d = ui.home ? 0u : tm_md(cur_page(), k);
+    if (!d) {
+        ui_message("CAN'T MOD THAT");
+        return;
+    }
+    if (p[P_M1DST] != (int16_t)d || p[P_M1SRC] != MS_LFO) {
+        p[P_M1AMT] = 0;                                 /* (the ISR: no amount until it is all set) */
+        p[P_M1DST] = (int16_t)d;
+        p[P_M1SRC] = MS_LFO;
+    } else if (tm_k == k) {
+        p[P_M1AMT] = (int16_t)clamp(p[P_M1AMT] + accel(EN_K1 + k, s, 127), -64, 63);
+    }
+    tm_k = (uint8_t)k;
+    ui.force = 1;
+}
+
 /* MOMENTARY (1.2, Discussions #72 / #73): LFO held, the knobs' changes are temporary. KNOB 1..4 on HOME and on the
  * sound and FX pages (a value of the selected track or a global sound / FX one, as edit_param sets it; MIXER's LEVEL
  * PAN REV MUTE too, #195; not on the action pages, the lists, STEP, AUTOMATION or SONG, where the knobs pick) change
@@ -373,7 +433,13 @@ static void ui_leds(void)
         led_pos_init();
         ready = 1;
     }
-    led_put(nl, panel.btn[FAM_BTN[fam]], 1);
+    if (tm_up) {                                        /* SIMPLE, LFO held: it flashes with the beat, the DEST's page lit */
+        uint32_t bt = 60000u / (uint32_t)clamp(song.g[G_BPM], 20, 999);
+        led_put(nl, panel.btn[B_LFO], fm1_ms % bt < bt / 3u);
+        if ((k = tm_btn(TSEL->p[P_M1SRC] == MS_LFO ? (uint32_t)TSEL->p[P_M1DST] : 0u)) != 0xFFu && k != B_LFO)
+            led_put(nl, panel.btn[k], 1);
+    } else
+        led_put(nl, panel.btn[FAM_BTN[fam]], 1);
     if (sgrid_on())
         led_put(nl, panel.btn[B_SEQ], 1);               /* SIMPLE: SEQ lit while the keys are the steps, */
     led_put(nb, panel.btn[B_SEQ], FELUCCA_SIMPLE && ui.sgrid == 2u);   /* .. breathing while they are PARAM */
@@ -1369,6 +1435,7 @@ static void ui_input(void)
     follow_poll();                                      /* (1.6, #242: SEQ's roll follows the play position) */
     if (scr_input(pressed, notes))                      /* MENU > SCREEN OFF: dark, or the wake gesture: swallowed */
         return;                                         /* (before the buttons' timers: no tap or hold after it) */
+    pressed = tm_poll(pressed);                         /* SIMPLE: LFO held, touch modulation */
     if (mom.n && !mom_down()) {                         /* MOMENTARY: LFO let go (or the menu, a layer ..): back */
         mom_restore();
         ui_message("BACK");
@@ -1580,9 +1647,13 @@ static void ui_input(void)
         uint64_t held;
         if ((s = panel_enc(EN_K1 + k)) == 0)
             continue;
+        if (tm_dn) {                                    /* LFO held + KNOB k: the LFO's DEST, its AMT */
+            tm_turn(k, s);
+            continue;
+        }
         if (seq_knob(k))                                /* SEQ held + KNOB k: PARAM for it */
             continue;
-        if (mom_down())                                 /* (LFO + a knob, MOMENTARY or not: LFO's release opens no page) */
+        if (!FELUCCA_SIMPLE && mom_down())              /* (LFO + a knob, MOMENTARY or not: LFO's release opens no page) */
             ui.pg_down &= (uint16_t)~(1u << panel.btn[B_LFO]);
         if (kit_held() && kit_turn(k, s, kit_held())) {   /* KIT: a key held, KNOB k sets its lock */
             ui.hot_col = (uint8_t)k;
