@@ -190,7 +190,7 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   PRESETS knob (ui.c machine_set) switches machines across engines.
 
 - Screen header (ui_gb.c gb_header): the page's icon at 2x top left, then the
-  title and its "n/N" tag, BPM top right. Icon: the machine's on sound/ENV/SEQ/ARP
+  title and its "n/N" tag, BPM top right at the title's size (AF_L). Icon: the machine's on sound/ENV/SEQ/ARP
   pages, the filter type on FILTER pages, the LFO wave on LFO pages, DELAY / VERB /
   COMB (DJ with OCT+) / MACRO (PERF); VOLUME and CLOCK have none. The title drops
   its tag, then shrinks, rather than touch the BPM. Bottom right: the machine pill
@@ -267,7 +267,9 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
 - LFO DEST order = the knobs as their pages show them, left to right (params.c
   MDST_ORDER), then PITCH AMP. PAN SHP DEPTH VEL TIME E8 are left out. VIB is
   called L.PIT.
-- Overlay on every page (ui_gb.c gb_overlay): six track squares at the bottom
+- Bottom line: no page dots; key mode left, machine pill right (y 194). Nothing
+  microscopic on screen. tools/emu_shot.c saves emulator screen pictures.
+- Overlay on every page (ui_gb.c gb_overlay): six 16 px track squares at the bottom
   (track colour; white on a hit; muted = dark with an X; selected = thick edge)
   and the loop border: 3 px round the screen edge, clockwise from the top left,
   white as far as the selected track's loop has got. They redraw straight onto

@@ -464,18 +464,18 @@ static void gb_header(const gb_view_t *v, const char *title, uint16_t bgc)
             gb_icon(8, 6, 2, v->icon, GB_W);
     }
     fmt_int(bb, v->bpm);
-    bw = text_w(&AF_M, bb) + (v->bpm_alt ? 12 : 0);
+    bw = text_w(&AF_L, bb) + (v->bpm_alt ? 12 : 0);              /* (the title's size) */
     if (v->bpm_alt) {                                             /* the tempo held by a macro: inverted */
-        cv_rrect(232 - bw + 6, 8, bw, 22, 6, GB_W, bgc);
-        cv_text_r(232, 12, &AF_M, bb, bgc, GB_W);
+        cv_rrect(232 - bw + 6, 4, bw, 34, 6, GB_W, bgc);
+        cv_text_r(232, 6, &AF_L, bb, bgc, GB_W);
     } else
-        cv_text_r(232, 12, &AF_M, bb, GB_W, bgc);
+        cv_text_r(232, 6, &AF_L, bb, GB_W, bgc);
     if (v->rec) {                                                 /* armed: a red REC left of the BPM */
         int32_t rw = text_w(&AF_S, "REC") + 12, rx = 232 - bw - 6 - rw;
-        cv_rrect(rx - 1, 8, rw + 2, 24, 7, GB_W, bgc);
+        cv_rrect(rx - 1, 9, rw + 2, 24, 7, GB_W, bgc);
         uint16_t rc = (uint16_t)((8u + 23u * (v->rec - 1u) / 15u) << 11);   /* dark red .. red */
-        cv_rrect(rx, 9, rw, 22, 6, rc, GB_W);
-        cv_text_on(rx + 6, 14, &AF_S, "REC", GB_W, rc);
+        cv_rrect(rx, 10, rw, 22, 6, rc, GB_W);
+        cv_text_on(rx + 6, 15, &AF_S, "REC", GB_W, rc);
         bw += rw + 6;
     }
     room = 232 - bw - 8 - tx;
@@ -536,7 +536,7 @@ static void gb_scene(const gb_view_t *v, uint16_t bgc)
         uint32_t o = 0;
         gb_header(v, v->hn > 2u ? "ARP" : "PERF", bgc);
         for (k = 0; k < 8u; k++) {
-            int32_t tx = 8 + (int32_t)(k & 3u) * 56, ty = 44 + (int32_t)(k >> 2) * 38;
+            int32_t tx = 8 + (int32_t)(k & 3u) * 56, ty = 42 + (int32_t)(k >> 2) * 37;
             int on = v->mac_held[k];
             char nb[4];
             nb[0] = 'M'; nb[1] = (char)('1' + k); nb[2] = 0;
@@ -562,13 +562,13 @@ static void gb_scene(const gb_view_t *v, uint16_t bgc)
         for (k = 0; k < 4u; k++) {
             int32_t tx = 8 + (int32_t)k * 56;
             int on = v->fade == k + 1u, rp = (v->rpt >> k) & 1u;
-            gb_pill(tx, 124, 52, 28, GB_W, on);
-            cv_text_in(tx, 130, 52, &AF_M, FN[k], on ? bgc : GB_W, on ? GB_W : bgc);
-            gb_pill(tx, 158, 52, 28, GB_W, rp);
+            gb_pill(tx, 117, 52, 26, GB_W, on);
+            cv_text_in(tx, 122, 52, &AF_M, FN[k], on ? bgc : GB_W, on ? GB_W : bgc);
+            gb_pill(tx, 147, 52, 26, GB_W, rp);
             if (k == 3u)                                      /* REV: its icon */
-                gb_icon(tx + 18, 164, 1, IC_REVERSE, rp ? bgc : GB_W);
+                gb_icon(tx + 18, 152, 1, IC_REVERSE, rp ? bgc : GB_W);
             else
-                cv_text_in(tx, 164, 52, &AF_M, RN[k], rp ? bgc : GB_W, rp ? GB_W : bgc);
+                cv_text_in(tx, 152, 52, &AF_M, RN[k], rp ? bgc : GB_W, rp ? GB_W : bgc);
         }
         {                                                 /* the four knobs: FADE  FILT / COMB  TUNE */
             char nn[8];
@@ -589,7 +589,7 @@ static void gb_scene(const gb_view_t *v, uint16_t bgc)
                 for (q = 0; nn[q]; q++) fb[o++] = nn[q];
                 fb[o] = 0;
             }
-            cv_text_on(8, 188, &AF_M, fb, c, bgc);
+            cv_text_on(8, 176, &AF_M, fb, c, bgc);
             if (v->dj > 1 || v->dj < -1) {                     /* the DJ filter: LP to the left, HP to the right, how far */
                 int32_t a2 = v->dj < 0 ? -v->dj : v->dj;
                 fb[0] = v->dj < 0 ? 'L' : 'H'; fb[1] = 'P'; fb[2] = ' ';
@@ -599,17 +599,17 @@ static void gb_scene(const gb_view_t *v, uint16_t bgc)
             } else {
                 str_cpy(fb, "FILT -", sizeof fb);
             }
-            cv_text_r(232, 188, &AF_M, fb, c, bgc);
+            cv_text_r(232, 176, &AF_M, fb, c, bgc);
             str_cpy(fb, "COMB ", sizeof fb);
             fmt_int(nn, v->cmix * 100 / 127);
             for (q = 0; nn[q]; q++) fb[5u + q] = nn[q];
             fb[5u + q] = 0;
-            cv_text_on(8, 211, &AF_M, fb, c, bgc);
+            cv_text_on(8, 197, &AF_M, fb, c, bgc);
             str_cpy(fb, "TUNE ", sizeof fb);
             fmt_int(nn, v->ctune * 100 / 127);
             for (q = 0; nn[q]; q++) fb[5u + q] = nn[q];
             fb[5u + q] = 0;
-            cv_text_r(232, 211, &AF_M, fb, c, bgc);
+            cv_text_r(232, 197, &AF_M, fb, c, bgc);
         }
         return;
     }
@@ -689,7 +689,7 @@ static void gb_scene(const gb_view_t *v, uint16_t bgc)
     } else if (v->wv == 2u) {
         const uint8_t *pk = smp_peaks(v->wkey & 63u);
         uint16_t dim = gb_mix(bgc, 90);                           /* outside the window: the ink at ~35 % */
-        int32_t x, y0 = 172, hh = 24;
+        int32_t x, y0 = 170, hh = 20;
         for (x = 0; pk && x < (int32_t)GB_WAVE; x++) {
             int32_t h2 = (int32_t)pk[x] * hh / 512;
             h2 = h2 < 1 ? 1 : h2;
@@ -702,24 +702,17 @@ static void gb_scene(const gb_view_t *v, uint16_t bgc)
     }
     const char *nm = v->fx ? "FX" : MACHINES[v->mach % NMACH].pill;
     int32_t pw = (text_w(&AF_M, nm) + 17 + (v->picon ? 20 : 0)) & ~1;
-    {                                                             /* what the keys are: between the dots and the pill */
+    {                                                             /* what the keys are: left of the pill */
         static const char *const KM[5] = {"", "SEQ", "PARAM", "KEY", "LOCKS"};
         const char *km = KM[v->kmode % 5u];
-        int32_t x0 = 8 + (int32_t)v->npages * 20, x1 = 232 - pw - 4;
+        int32_t x0 = 8, x1 = 232 - pw - 4;
         const aafont_t *kf = text_w(&AF_M, km) <= x1 - x0 ? &AF_M : &AF_S;
-        cv_text_in(x0, kf == &AF_M ? 201 : 203, x1 - x0, kf, km, c, bgc);
+        cv_text_on(x0, kf == &AF_M ? 197 : 199, kf, km, c, bgc);
     }
-    for (k = 0; k < v->npages; k++)                               /* the page dots */
-        if (k == v->page)
-            cv_rrect(8 + (int32_t)k * 20, 206, 16, 8, 4, c, bgc);
-        else {
-            cv_rrect(8 + (int32_t)k * 20, 206, 8, 8, 4, c, bgc);
-            cv_rrect(10 + (int32_t)k * 20, 208, 4, 4, 2, bgc, c);
-        }
-    gb_pill(232 - pw, 198, pw, 24, c, v->an);                      /* the machine, bottom right: an oval (an 808: filled), */
+    gb_pill(232 - pw, 194, pw, 24, c, v->an);                      /* the machine, bottom right: an oval (an 808: filled), */
     if (v->picon)                                                 /* its icon, its name */
-        gb_icon(232 - pw + 8, 202, 1, v->picon, v->an ? bgc : c);
-    cv_text_on(232 - pw + 8 + (v->picon ? 20 : 0), 201, &AF_M, nm, v->an ? bgc : c, v->an ? c : bgc);
+        gb_icon(232 - pw + 8, 198, 1, v->picon, v->an ? bgc : c);
+    cv_text_on(232 - pw + 8 + (v->picon ? 20 : 0), 197, &AF_M, nm, v->an ? bgc : c, v->an ? c : bgc);
 }
 
 /* the overlay, over every page: the loop border (3 px round the edge, clockwise from the top left, white as far as the
@@ -748,14 +741,14 @@ static void gb_overlay(const gb_view_t *v, uint16_t bgc, int direct)
     gb_ovr(240 - f[2], 237, f[2], 3, GB_W, direct);
     gb_ovr(0, 240 - f[3], 3, f[3], GB_W, direct);
     for (k = 0; k < NTRK; k++) {
-        uint32_t x = 70u + k * 18u, y = 226u, e = k == v->sel ? 2u : 1u, m = (v->tmute >> k) & 1u;
+        uint32_t x = 62u + k * 20u, y = 220u, e = k == v->sel ? 3u : 1u, m = (v->tmute >> k) & 1u;
         uint16_t in = (v->thit >> k) & 1u ? GB_W : m ? 0u : gb_col[k];
-        gb_ovr(x, y, 10, 10, GB_W, direct);
-        gb_ovr(x + e, y + e, 10 - 2u * e, 10 - 2u * e, in, direct);
+        gb_ovr(x, y, 16, 16, GB_W, direct);
+        gb_ovr(x + e, y + e, 16 - 2u * e, 16 - 2u * e, in, direct);
         if (m)
-            for (i = 2; i < 8u; i++) {            /* the X */
-                gb_ovr(x + i, y + i, 1, 1, GB_W, direct);
-                gb_ovr(x + 9u - i, y + i, 1, 1, GB_W, direct);
+            for (i = 3; i < 13u; i++) {           /* the X (2 px) */
+                gb_ovr(x + i, y + i, 2, 1, GB_W, direct);
+                gb_ovr(x + 14u - i, y + i, 2, 1, GB_W, direct);
             }
     }
 }
