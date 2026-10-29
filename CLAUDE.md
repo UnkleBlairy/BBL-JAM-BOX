@@ -134,9 +134,14 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
 - Later plan: drop the LFO DEST / ENV DEST pages; a fixed routing worth keeping
   becomes an amount knob on its own page.
 - Pop-ups (ui_gb.c gb_banner): a white box with the page's colour as ink, at the
-  bottom over the mode/pill line and the track squares (hidden under it). Text
-  at the title's size when it fits, never smaller than AF_M. Mode changes (SEQ
-  KEY PARAM LOCKS) show no pop-up; messages last ~40 frames. Every ui_message shows there. Held hints
+  bottom over the mode/pill line and the track squares (hidden under it). Big
+  chunky text only (AF_L, the title's size): pages of two lines (ui_gb.c
+  gb_ban_fill), a long hint pages every 2 s (e.g. SEQ held: "WHITE KEY / =
+  LOCKS" then "WIGGLE KNOB / = PARAM"); a message too long for one line splits
+  at its middle space. The large font has ! : = > for them (gen_aa_font.py
+  L_CHARS). Mode changes (SEQ KEY PARAM LOCKS) show no pop-up; messages ~1.2 s.
+  None over the SAVE?/LOAD? screen (whose lines are all big too). The amount
+  pop-up: "LFO > TUNE" big, the dial, the amount big under it. Every ui_message shows there. Held hints
   (ui_input.c hint_poll, 250 ms): SEQ "KNOB = PARAM  WHITE KEY = LOCKS" (its
   release is then no tap), OCT+ "TEMP CHANGE / TURN A KNOB TO TRY IT", then
   "RELEASE TO REVERT". The big centred pop-up (touch mod) is white too.

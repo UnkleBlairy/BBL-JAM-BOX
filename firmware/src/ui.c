@@ -388,7 +388,7 @@ static void ui_say(const char *a, const char *b)
     str_cpy(ui.msg, a, sizeof ui.msg);
     n = str_len(ui.msg);
     str_cpy(ui.msg + n, b, sizeof ui.msg - n);
-    ui.msg_t = 40;
+    ui.msg_t = FELUCCA_SIMPLE ? 80u : 40u;           /* (SIMPLE: the banner, ~1.2 s) */
     ui.msg2[0] = 0;
 }
 

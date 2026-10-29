@@ -40,6 +40,8 @@ typedef struct {
     uint8_t hint;                            /* a held button's hint (ui.c gb_hint) */
     char note[24];                           /* a message (ui_message) for the banner, while it shows */
     uint8_t ban;                             /* a banner is up: no track squares under it */
+    uint8_t bn, bpg;                         /* .. its pages (1..3, two big lines each), the one shown */
+    char bt[6][20];                          /* .. their lines */
     char tm_name[8];                         /* .. its DEST */
     char pname[8];                           /* PARAM: its knob's name */
     char title[12], lab[4][8], val[4][12];
@@ -169,6 +171,96 @@ static uint32_t smp_format(uint32_t id, int32_t cur, char *b)
     return 0;
 }
 
+/* the banners (ui_gb.c gb_banner): pages of two big lines; a page GB_BAN_MS, round again while it shows */
+#define GB_BAN_W 212
+#define GB_BAN_MS 2000u
+static const char *const TM_SHORT[3] = {"LFO", "ENV", "FENV"};
+static int ban_fits(const char *s) { return large_face_has(s) && text_w(&AF_L, s) <= GB_BAN_W; }
+static void ban_put(gb_view_t *v, const char *a, const char *b)
+{
+    if (v->bn >= 3u)
+        return;
+    str_cpy(v->bt[2u * v->bn], a, sizeof v->bt[0]);
+    str_cpy(v->bt[2u * v->bn + 1u], b, sizeof v->bt[0]);
+    v->bn++;
+}
+static void ban_msg(gb_view_t *v, const char *m)   /* a message: one line, or two split at the space nearest the middle */
+{
+    uint32_t i, n = str_len(m), best = 0, bd = 999u;
+    char a[20];
+    if (ban_fits(m) || n >= sizeof a) {
+        ban_put(v, m, "");
+        return;
+    }
+    for (i = 1; i + 1u < n; i++)
+        if (m[i] == ' ' && (i > n / 2u ? i - n / 2u : n / 2u - i) < bd) {
+            bd = i > n / 2u ? i - n / 2u : n / 2u - i;
+            best = i;
+        }
+    if (!best) {
+        ban_put(v, m, "");
+        return;
+    }
+    str_cpy(a, m, best + 1u);
+    ban_put(v, a, m + best + 1u);
+}
+static void gb_ban_fill(gb_view_t *v)
+{
+    static uint32_t t0;
+    static char first[20];
+    char a[24], b[12];
+    v->bn = 0;
+    if (gbsv || gbsv_t) {                         /* (the SAVE? / LOAD? screen: none over it) */
+    } else if (v->tmod == 1u) {                   /* picking a DEST */
+        static const char *const BTN[3] = {"LFO", "ENV", "FILTER"};
+        const char *src = TM_NAME[v->tm_src % 3u];
+        if (v->tm_name[0]) {                      /* one set: "LFO > CUT" "+20", SELECT, OCT- */
+            str_cpy(a, TM_SHORT[v->tm_src % 3u], sizeof a);
+            str_cpy(a + str_len(a), " > ", sizeof a - str_len(a));
+            str_cpy(a + str_len(a), v->tm_name, sizeof a - str_len(a));
+            fmt_int(b + (v->tm_amt > 0), v->tm_amt);
+            if (v->tm_amt > 0)
+                b[0] = '+';
+            ban_put(v, a, b);
+            ban_put(v, "SELECT", "= AMOUNT");
+            ban_put(v, "OCT-", "= REMOVE");
+        } else {
+            str_cpy(a, src, sizeof a);
+            str_cpy(a + str_len(a), " DEST", sizeof a - str_len(a));
+            if (ban_fits(a))
+                ban_put(v, a, "WIGGLE KNOB");
+            else {
+                ban_put(v, src, "DEST");
+                ban_put(v, "WIGGLE", "KNOB");
+            }
+            str_cpy(a, "TAP ", sizeof a);
+            str_cpy(a + 4, BTN[v->tm_src % 3u], sizeof a - 4u);
+            ban_put(v, a, "= CANCEL");
+        }
+    } else if (v->fillm) {                        /* PLAY held */
+        ban_put(v, "FILL MODE", "ENTER TRIGS");
+    } else if (v->temp) {                         /* OCT+ held, a knob turned */
+        ban_put(v, "RELEASE TO", "REVERT");
+    } else if (v->hint == 2u) {                   /* OCT+ held */
+        ban_put(v, "TEMP CHANGE", "WIGGLE KNOB");
+    } else if (v->hint == 3u) {                   /* an empty step held, a trig copied */
+        ban_put(v, "PASTE TRIG", "PRESS SAVE");
+    } else if (v->hint == 1u) {                   /* SEQ held */
+        ban_put(v, "WHITE KEY", "= LOCKS");
+        ban_put(v, "WIGGLE KNOB", "= PARAM");
+    } else if (v->note[0]) {
+        ban_msg(v, v->note);
+    }
+    v->ban = (uint8_t)(v->bn != 0u);
+    if (v->bn && !str_eq(first, v->bt[0])) {      /* (a new banner: from its first page) */
+        str_cpy(first, v->bt[0], sizeof first);
+        t0 = fm1_ms;
+    } else if (!v->bn) {
+        first[0] = 0;
+    }
+    v->bpg = (uint8_t)(v->bn > 1u ? (uint32_t)clamp((int32_t)(fm1_ms - t0), 0, 1 << 30) / GB_BAN_MS % v->bn : 0u);
+}
+
 static void gb_fill(gb_view_t *v)
 {
     const page_t *pg = cur_page();
@@ -186,17 +278,16 @@ static void gb_fill(gb_view_t *v)
     v->hint = gb_hint;
     if (ui.msg_t && ui.msg[0] > 1)                /* (not one led by an icon byte) */
         str_cpy(v->note, ui.msg, sizeof v->note);
-    v->ban = (uint8_t)(v->fillm || v->temp || v->hint || v->note[0]);
     if (tm_dn) {                                  /* picking a DEST: 1 the banner, 2 (a knob picked) the amount's pop-up */
         const int16_t *sp = tm_slot(TSEL);
         uint32_t d = sp[0] == TM_SRC[(tm_dn - 1u) % 3u] ? (uint32_t)sp[1] : 0u;
         v->tmod = (uint8_t)(tm_up && d ? 2u : 1u);
-        v->ban |= (uint8_t)(v->tmod == 1u);
         v->tm_src = (uint8_t)((tm_dn - 1u) % 3u);
         v->tm_amt = (int8_t)(d ? sp[2] : 0);
         if (d)
             str_cpy(v->tm_name, tm_name(TSEL, d), sizeof v->tm_name);
     }
+    gb_ban_fill(v);
     v->bpm_alt = (uint8_t)(pm_altered(TSEL, &song.g[G_BPM]) != 0);
     if ((song.rec >> song.sel) & 1u) {           /* REC: playing, it breathes twice a bar (one breath = 2 beats) */
         uint32_t bs = beat_samples(), ph = ((beat_n & 1u) * bs + (beat_pos < bs ? beat_pos : bs)) * 32u / (2u * bs + 1u);
@@ -564,10 +655,10 @@ static void gb_scene(const gb_view_t *v, uint16_t bgc)
         }
         cv_text_on(8, 4, &AF_L, v->sv == 1u ? "SAVE?" : "LOAD?", c, bgc);
         cv_text_r(232, 14, &AF_M, MACHINES[v->mach % NMACH].pill, c, bgc);
-        cv_text_on(8, 84, &AF_L, "SOUND", c, bgc);
-        cv_text_on(8, 116, &AF_M, "WHITE KEY", c, bgc);
-        cv_text_on(8, 156, &AF_L, "KIT", c, bgc);
-        cv_text_on(8, 188, &AF_M, "BLACK KEY", c, bgc);
+        cv_text_on(8, 60, &AF_L, "SOUND", c, bgc);       /* (all at the title's size) */
+        cv_text_on(8, 94, &AF_L, "WHITE KEY", c, bgc);
+        cv_text_on(8, 142, &AF_L, "KIT", c, bgc);
+        cv_text_on(8, 176, &AF_L, "BLACK KEY", c, bgc);
         return;
     }
     if (v->perf) {
@@ -765,34 +856,32 @@ static void gb_scene(const gb_view_t *v, uint16_t bgc)
 /* LFO held: the touch modulation pop-up (ui.c tm_*): its DEST (or CHOOSE), a big dial for its AMT (up: none) */
 static void gb_popup(const gb_view_t *v, uint16_t bgc)
 {
-    const int32_t cx = 120, cy = 148;
+    const int32_t cx = 120, cy = 124;
     const uint16_t ink = bgc, bk = GB_W;              /* (a negative of the page: white, its colour for the ink) */
-    const char *nm = v->tmod == 2u ? v->tm_name : "CHOOSE";
-    const aafont_t *f = large_face_has(nm) && text_w(&AF_L, nm) <= 196 ? &AF_L : &AF_M;
     int32_t a, px, py, amt = v->tm_amt, on = amt * 135 / 64;
-    char nb[8], hd[28];
-    str_cpy(hd, TM_NAME[v->tm_src % 3u], sizeof hd);
-    str_cpy(hd + str_len(hd), " DEST", sizeof hd - str_len(hd));
+    char nb[8], hd[24];
+    const aafont_t *f;
+    str_cpy(hd, TM_SHORT[v->tm_src % 3u], sizeof hd);   /* "LFO > TUNE" */
+    str_cpy(hd + str_len(hd), " > ", sizeof hd - str_len(hd));
+    str_cpy(hd + str_len(hd), v->tm_name, sizeof hd - str_len(hd));
+    f = large_face_has(hd) && text_w(&AF_L, hd) <= 200 ? &AF_L : &AF_M;
     cv_rrect(14, 42, 212, 152, 12, bk, bgc);
-    cv_text_in(17, 52, 206, &AF_M, hd, ink, bk);
-    cv_text_in(17, f == &AF_L ? 70 : 78, 206, f, nm, ink, bk);
+    cv_text_in(14, f == &AF_L ? 46 : 52, 212, f, hd, ink, bk);
     for (a = 0; a < 360; a++) {                   /* the ring, and its AMT as a bold arc from the top */
         int in = on >= 0 ? (a <= on) : (a >= 360 + on || a == 0);
         dial_pt(cx, cy, 30, a, &px, &py);
         cv_rect(px - 1, py - 1, 3, 3, ink);
         if (amt && in) {
-            dial_pt(cx, cy, 36, a, &px, &py);
-            cv_rect(px - 2, py - 2, 4, 4, ink);
+            dial_pt(cx, cy, 37, a, &px, &py);
+            cv_rect(px - 2, py - 2, 5, 5, ink);
         }
     }
     dial_pt(cx, cy, 24, 360 + on, &px, &py);
-    cv_line_t(cx, cy, px, py, ink, 3);
-    if (v->tmod == 2u) {                            /* the AMT as a number either side: - left, + right */
-        fmt_int(nb + (amt > 0 ? 1 : 0), amt);
-        if (amt > 0)
-            nb[0] = '+';
-        cv_text_in(amt < 0 ? 17 : 160, 140, 63, &AF_M, nb, ink, bk);
-    }
+    cv_line_t(cx, cy, px, py, ink, 4);
+    fmt_int(nb + (amt > 0 ? 1 : 0), amt);         /* the AMT, big, under the dial */
+    if (amt > 0)
+        nb[0] = '+';
+    cv_text_in(14, 162, 212, &AF_L, nb, ink, bk);
 }
 
 /* OCT+ held + a knob turned (ui_input.c mom_*): a banner at the bottom, the dials above it still seen */
@@ -898,36 +987,8 @@ static void gb_draw(void)
         gb_scene(&gb_v, c);
         if (gb_v.tmod == 2u)
             gb_popup(&gb_v, c);
-        else if (gb_v.tmod) {                     /* picking: the banner, the pages still seen */
-            char a[24], b[28], nb[8];
-            str_cpy(a, TM_NAME[gb_v.tm_src % 3u], sizeof a);
-            if (gb_v.tm_name[0]) {                /* "LFO CUT +20", SELECT: the amount */
-                fmt_int(nb + (gb_v.tm_amt > 0), gb_v.tm_amt);
-                if (gb_v.tm_amt > 0)
-                    nb[0] = '+';
-                str_cpy(a + str_len(a), " ", sizeof a - str_len(a));
-                str_cpy(a + str_len(a), gb_v.tm_name, sizeof a - str_len(a));
-                str_cpy(a + str_len(a), " ", sizeof a - str_len(a));
-                str_cpy(a + str_len(a), nb, sizeof a - str_len(a));
-                str_cpy(b, "SELECT = AMOUNT", sizeof b);
-            } else {
-                str_cpy(a + str_len(a), " DEST", sizeof a - str_len(a));
-                str_cpy(b, "WIGGLE A PARAM", sizeof b);
-            }
-            gb_banner(c, a, b);
-        }
-        else if (gb_v.fillm)                      /* PLAY held: FILL MODE */
-            gb_banner(c, "FILL MODE", "ENTER TRIGS  -  FILL TRIGS PLAY");
-        else if (gb_v.temp)
-            gb_banner(c, "TEMP CHANGE", "RELEASE TO REVERT");
-        else if (gb_v.hint == 2u)                 /* OCT+ held, nothing turned yet */
-            gb_banner(c, "TEMP CHANGE", "WIGGLE A PARAM");
-        else if (gb_v.hint == 3u)
-            gb_banner(c, "PASTE TRIG", "PRESS SAVE");
-        else if (gb_v.hint == 1u)
-            gb_banner(c, "PRESS WHITE KEY", "OR WIGGLE PARAM");
-        else if (gb_v.note[0])                    /* a message */
-            gb_banner(c, gb_v.note, "");
+        else if (gb_v.bn)                         /* a banner: its page */
+            gb_banner(c, gb_v.bt[2u * gb_v.bpg], gb_v.bt[2u * gb_v.bpg + 1u]);
         gb_overlay(&gb_v, c, 0);
         cv_oy = 0;
         cv_blit(0, s * GB_STRIP);
