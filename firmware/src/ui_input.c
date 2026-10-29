@@ -76,7 +76,7 @@ static void hint_poll(void)
             t0[i] = 0;
         else if (!t0[i])
             t0[i] = fm1_ms | 1u;
-        else if (!h && fm1_ms - t0[i] >= HINT_MS && !ui.confirm && !gbsv_keys_on())
+        else if (!h && (int32_t)(fm1_ms - t0[i]) >= (int32_t)HINT_MS && !ui.confirm && !gbsv_keys_on())   /* (signed: t0 is | 1) */
             h = i + 1u;
     }
     if (!h && clip_paste_ready())
@@ -115,9 +115,8 @@ static void fill_poll(void)
 
 /* SIMPLE, touch modulation (ui.c tm_*): every input pass, LFO held or not; OCT- with it takes the routing off */
 static const uint8_t TM_BTN[3] = {B_LFO, B_ENV, B_SCL};
-static uint8_t tm_hold;                                 /* a source's button held (1 + its slot), not yet picking */
 static uint8_t tm_eat;                                  /* the buttons whose release opens no page */
-/* every pass: LFO / ENV / FILTER held TM_MS (or + a knob) starts picking its DEST; it goes on when let go (the pages
+/* every pass: LFO / ENV / FILTER held TM_MS starts picking its DEST; it goes on when let go (the pages
  * can change) until a knob is picked and TM_SHOW_MS pass, or its button is tapped again (cancel), or OCT- (DEST off).
  * A button that started or ended picking opens no page when let go (eat) */
 static uint32_t tm_poll(uint32_t pressed)
@@ -128,7 +127,6 @@ static uint32_t tm_poll(uint32_t pressed)
     uint32_t i, held = 0, ok = FELUCCA_SIMPLE && !ui.confirm && !ui.uboot && !gbsv_keys_on();
     for (i = 0; ok && i < 3u; i++)
         held |= ((fm1_in.buttons >> panel.btn[TM_BTN[i]]) & 1u) << i;
-    tm_hold = 0;
     for (i = 0; i < 3u; i++) {
         uint32_t m = 1u << i;
         if ((held & m) && !(was & m)) {                 /* pressed (picking for another source: just its page) */
@@ -143,13 +141,11 @@ static uint32_t tm_poll(uint32_t pressed)
         if (!(held & m) || (tm_dn && tm_dn != i + 1u))
             t0[i] = 0;
         else if (t0[i] && !(eat & m)) {
-            if (fm1_ms - t0[i] >= TM_MS) {
+            if ((int32_t)(fm1_ms - t0[i]) >= (int32_t)TM_MS) {   /* (signed: t0 is | 1, it can be 1 ms ahead) */
                 tm_dn = (uint8_t)(i + 1u);
                 tm_k = 0xFFu;
                 eat |= (uint8_t)m;
                 ui.force = 1;
-            } else if (!tm_hold) {
-                tm_hold = (uint8_t)(i + 1u);
             }
         }
         if (eat & m) {                                  /* (its release: no page) */
@@ -163,7 +159,7 @@ static uint32_t tm_poll(uint32_t pressed)
     was = (uint8_t)held;
     if (!ok)
         tm_dn = 0;
-    if (tm_dn && tm_k != 0xFFu && fm1_ms - tm_t >= TM_SHOW_MS && !(held & (1u << (tm_dn - 1u)))) {
+    if (tm_dn && tm_k != 0xFFu && fm1_ms - tm_t >= TM_SHOW_MS) {
         tm_dn = 0;                                      /* (picked, set, left alone: done) */
         ui.force = 1;
     }
@@ -704,7 +700,7 @@ static void gbsv_buttons(uint32_t pressed, int ok)
         if (gbsv || gbsv_t) { gbsv = 0; gbsv_t = 0; ui.force = 1; }
         return;
     }
-    if (gbsv_t && fm1_ms - gbsv_t > 1200u) {            /* the flash is over */
+    if (gbsv_t && (int32_t)(fm1_ms - gbsv_t) > 1200) {   /* the flash is over (signed: gbsv_t is | 1) */
         gbsv_t = 0;
         ui.force = 1;
     }
@@ -1490,7 +1486,7 @@ static int page_tap(uint32_t b)
     if (FELUCCA_SIMPLE && b == B_SEQ) {                  /* SIMPLE: a tap = KEY <-> SEQ (the page stays; PARAM, LOCKS: SEQ); */
         static uint32_t t_last;                         /* two quick taps = the SEQ page, the keys as before them */
         static uint8_t was;
-        if (t_last && fm1_ms - t_last < SEQ_DBL_MS) {
+        if (t_last && (int32_t)(fm1_ms - t_last) < (int32_t)SEQ_DBL_MS) {   /* (signed: t_last is | 1) */
             t_last = 0;
             ui.sgrid = was;
             ui.fam_last[FAM_SEQ] = 0;
@@ -1831,11 +1827,6 @@ static void ui_input(void)
         uint64_t held;
         if ((s = panel_enc(EN_K1 + k)) == 0)
             continue;
-        if (!tm_dn && tm_hold) {                        /* (a source's button held + a knob: picking at once) */
-            tm_dn = tm_hold;
-            tm_k = 0xFFu;
-            tm_eat |= (uint8_t)(1u << (tm_hold - 1u));
-        }
         if (tm_dn) {                                    /* picking (LFO / ENV / FILTER) + KNOB k: its DEST, its AMT */
             tm_turn(k, s);
             continue;

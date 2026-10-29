@@ -110,12 +110,17 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   mom_*): let go of OCT+ and it snaps back (no keep).
 - GLO pages: PERF, COMB, DJ (the DJ filter's own page, so it can be locked).
 - LFO pages: LFO (RATE WAVE PHASE FADE), SYNC (SYNC TRIG POL), LFO DEST.
-- Holds are 500 ms (TM_MS, HINT_MS, FILL_MS): a panel tap can last 250 ms.
+- Holds are 500 ms (HINT_MS, FILL_MS); the mod picker needs 700 ms (TM_MS). A
+  panel tap can last 250 ms. Timestamps stored as fm1_ms | 1 can be 1 ms ahead:
+  compare them signed ((int32_t)(fm1_ms - t0)), or a fresh press reads as held
+  for ever (that was the instant picker and the SEQ "lock-up" on the FM-1).
 - Touch modulation (ui.c / ui_input.c tm_*): hold LFO 500 ms = pick mode (a
   quick tap still opens the LFO page). Pick mode stays after letting go: the
   banner "LFO: PICK A DEST" shows, any page can be opened. The first knob turned
   = the DEST, more turns of it = AMT on the big centred pop-up (left -, right +);
-  it closes 1.5 s after the last turn. Tap LFO again = cancel, OCT- = DEST off.
+  it closes 1 s after the last turn (held or not), then an LFO tap opens the
+  LFO page. Tap LFO again while picking = cancel, OCT- = DEST off. A knob
+  turned before the 700 ms is an ordinary turn.
   While picking, LFO flashes with the beat and the DEST's page button is lit.
   While picking, the other sources' buttons (ENV, FILTER) only open their pages,
   and SELECT sets the current DEST's amount (the quick way back to it). The

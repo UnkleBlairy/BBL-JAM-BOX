@@ -244,7 +244,7 @@ static void gb_fill(gb_view_t *v)
     if (gbsv || gbsv_t) {                         /* SAVE? / LOAD?, or what was saved / loaded, flashing */
         v->sv = gbsv ? gbsv : 1u;
         if (gbsv_t) {
-            v->flash = (uint8_t)(((fm1_ms - gbsv_t) / 150u) & 1u ? 2u : 1u);
+            v->flash = (uint8_t)((uint32_t)clamp((int32_t)(fm1_ms - gbsv_t), 0, 99999) / 150u & 1u ? 2u : 1u);
             memcpy(v->msg, gbsv_msg, sizeof v->msg);
         }
         return;
