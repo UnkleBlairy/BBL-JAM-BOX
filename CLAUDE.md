@@ -80,8 +80,8 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   unless a knob was turned while holding it (hold-to-edit, like Elektron).
 - Storage: track CHANCE lives in P_APROB; step i's TRIG lives in step[i+16]'s
   chance byte as GB_TC0 + n (core.h GB_TRIG; patterns are never saved).
-- SEQ button: a tap in SEQ mode = KEY mode (page stays); otherwise a tap opens
-  the SEQ page in SEQ mode. Hold SEQ + turn a knob = PARAM mode for that knob;
+- SEQ button: a tap = KEY <-> SEQ mode, the page stays (from PARAM / LOCKS: SEQ).
+  A double tap (350 ms) = open the SEQ page, the mode as it was. Hold SEQ + turn a knob = PARAM mode for that knob;
   hold SEQ + white key = LOCKS mode (ui_input.c seq_knob / seq_white). The
   mode's name is at the bottom of the screen. SEQ's light is on in SEQ mode and
   breathes in PARAM.

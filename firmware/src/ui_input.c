@@ -1483,23 +1483,25 @@ static void layer_tap(uint32_t l);
 
 /* a page button let go (they act on release; a layer's own button: layer_gesture). 1: it acted (EDIT on STEP, USER,
  * PROJECT, AUTOMATION) instead of opening a page */
+#define SEQ_DBL_MS 350u                                 /* SEQ: a second tap this soon = a double tap */
 static int page_tap(uint32_t b)
 {
     uint32_t f;
-    if (FELUCCA_SIMPLE && b == B_SEQ && ui.sgrid == 1u) {   /* SIMPLE: a tap in SEQ mode: KEY (the page stays) */
-        ui.sgrid = 0;
-        return 1;
-    }
-    if (FELUCCA_SIMPLE && b == B_SEQ && (ui.home || cur_page()->graph != GR_GBSEQ)) {   /* .. otherwise from anywhere: the SEQ page, its keys on */
-        ui.fam_last[FAM_SEQ] = 0;
-        ui.home = 0;
-        open_family(FAM_SEQ);
-        ui.sgrid = 1;
+    if (FELUCCA_SIMPLE && b == B_SEQ) {                  /* SIMPLE: a tap = KEY <-> SEQ (the page stays; PARAM, LOCKS: SEQ); */
+        static uint32_t t_last;                         /* two quick taps = the SEQ page, the keys as before them */
+        static uint8_t was;
+        if (t_last && fm1_ms - t_last < SEQ_DBL_MS) {
+            t_last = 0;
+            ui.sgrid = was;
+            ui.fam_last[FAM_SEQ] = 0;
+            ui.home = 0;
+            open_family(FAM_SEQ);
+        } else {
+            t_last = fm1_ms | 1u;
+            was = ui.sgrid;
+            ui.sgrid = (uint8_t)(ui.sgrid == 1u ? 0u : 1u);
+        }
         ui.force = 1;
-        return 1;
-    }
-    if (FELUCCA_SIMPLE && b == B_SEQ) {                  /* .. on the SEQ page: the step keys off / on */
-        ui.sgrid = 1;                                   /* .. on the SEQ page: KEY, PARAM, LOCKS -> SEQ */
         return 1;
     }
     for (f = FAM_HOME + 1u; f < FAM_COUNT; f++)        /* (GLO SEQ SAVE ..: HOME is ui_input's, home_tap) */
