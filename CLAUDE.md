@@ -81,7 +81,11 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
 - Storage: track CHANCE lives in P_APROB; step i's TRIG lives in step[i+16]'s
   chance byte as GB_TC0 + n (core.h GB_TRIG; patterns are never saved).
 - SEQ button: a tap = KEY <-> SEQ mode, the page stays (from PARAM / LOCKS: SEQ).
-  A double tap (350 ms) = open the SEQ page, the mode as it was. Hold SEQ + turn a knob = PARAM mode for that knob;
+  A double tap (350 ms) = open the SEQ page, the mode as it was.
+  Hold SEQ 700 ms = PARAM / LOCKS picking (ui_input.c seq_pick), like the LFO
+  picker: it stays after letting go (pages can change) until a knob is turned
+  (PARAM for it), a white key (LOCKS), or SEQ is tapped (cancel, no toggle).
+  Pop-up pages: WHITE KEY / = LOCKS, WIGGLE KNOB / = PARAM, TAP SEQ / = CANCEL. Hold SEQ + turn a knob = PARAM mode for that knob;
   hold SEQ + white key = LOCKS mode (ui_input.c seq_knob / seq_white). The
   mode's name is at the bottom of the screen. SEQ's light is on in SEQ mode and
   breathes in PARAM.

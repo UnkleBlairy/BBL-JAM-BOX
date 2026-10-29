@@ -248,6 +248,7 @@ static void gb_ban_fill(gb_view_t *v)
     } else if (v->hint == 1u) {                   /* SEQ held */
         ban_put(v, "WHITE KEY", "= LOCKS");
         ban_put(v, "WIGGLE KNOB", "= PARAM");
+        ban_put(v, "TAP SEQ", "= CANCEL");
     } else if (v->note[0]) {
         ban_msg(v, v->note);
     }

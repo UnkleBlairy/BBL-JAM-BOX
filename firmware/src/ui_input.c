@@ -65,6 +65,9 @@ static uint32_t tm_btn(uint32_t d)
 static void layer_kill(void);                         /* (ui_buttons.c) */
 static int clip_paste_ready(void);                      /* (below: copy / paste a trig) */
 /* SIMPLE: what a held button does (gb_hint): SEQ, OCT+ (not under a dialog, SAVE, PERF's own keys) */
+/* SEQ held TM_MS: picking PARAM / LOCKS (seq_pick), as LFO's DEST: it stays when let go (the pages can change) until a
+ * knob turned (PARAM for it, seq_knob), a white key (LOCKS, seq_white), or SEQ tapped (cancel: seq_eat, no toggle) */
+static uint8_t seq_pick, seq_eat;
 static void hint_poll(void)
 {
     static uint32_t t0[2];
@@ -76,15 +79,23 @@ static void hint_poll(void)
             t0[i] = 0;
         else if (!t0[i])
             t0[i] = fm1_ms | 1u;
-        else if (!h && (int32_t)(fm1_ms - t0[i]) >= (int32_t)HINT_MS && !ui.confirm && !gbsv_keys_on())   /* (signed: t0 is | 1) */
+        else if (i == 0u) {                             /* SEQ: picking */
+            if (!seq_pick && !seq_eat && (int32_t)(fm1_ms - t0[i]) >= (int32_t)TM_MS && !ui.confirm && !gbsv_keys_on()) {
+                seq_pick = 1;
+                layer_kill();                           /* (its release: no tap) */
+            }
+        } else if (!h && (int32_t)(fm1_ms - t0[i]) >= (int32_t)HINT_MS && !ui.confirm && !gbsv_keys_on()) {   /* (signed: t0 is | 1) */
             h = i + 1u;
+        }
     }
+    if (ui.confirm || gbsv_keys_on() || pm_page())
+        seq_pick = 0;
+    if (seq_pick)
+        h = 1;
     if (!h && clip_paste_ready())
         h = 3;                                          /* (an empty step held, a trig copied) */
     if (h != gb_hint)
         ui.force = 1;
-    if (h == 1u)
-        layer_kill();                                   /* (SEQ held this long: its release is no tap) */
     gb_hint = (uint8_t)h;
 }
 
@@ -996,10 +1007,10 @@ static void par_poll(void)
 }
 /* SIMPLE, SEQ held (not under a dialog, SAVE or PERF): + a knob = PARAM for that knob, + a white key = LOCKS (its release
  * is then no tap) */
-static int seq_dn(void)
+static int seq_dn(void)                                 /* SEQ held, or picking (hint_poll) */
 {
     return FELUCCA_SIMPLE && !ui.confirm && !gbsv_keys_on() && !pm_page() && !pm_down() &&
-           ((fm1_in.buttons >> panel.btn[B_SEQ]) & 1u);
+           (seq_pick || ((fm1_in.buttons >> panel.btn[B_SEQ]) & 1u));
 }
 static void seq_white(uint32_t notes)
 {
@@ -1009,6 +1020,7 @@ static void seq_white(uint32_t notes)
     for (k = 0; k < 27u; k++)
         if (((notes >> k) & 1u) && !key_black(k)) {
             layer_kill();
+            seq_pick = 0;
             if (ui.sgrid != 3u) {
                 ui.sgrid = 3;                           /* (the key then plays as a LOCKS key, this same pass) */
                 ui.force = 1;
@@ -1027,6 +1039,7 @@ static int seq_knob(uint32_t k)
         return 1;
     par_k = (uint8_t)k;
     par_pg = ui.page;
+    seq_pick = 0;
     ui.sgrid = 2;
     ui.force = 1;
     return 1;
@@ -1486,6 +1499,10 @@ static int page_tap(uint32_t b)
     if (FELUCCA_SIMPLE && b == B_SEQ) {                  /* SIMPLE: a tap = KEY <-> SEQ (the page stays; PARAM, LOCKS: SEQ); */
         static uint32_t t_last;                         /* two quick taps = the SEQ page, the keys as before them */
         static uint8_t was;
+        if (seq_eat) {                                  /* (the tap that cancelled picking) */
+            seq_eat = 0;
+            return 1;
+        }
         if (t_last && (int32_t)(fm1_ms - t_last) < (int32_t)SEQ_DBL_MS) {   /* (signed: t_last is | 1) */
             t_last = 0;
             ui.sgrid = was;
@@ -1678,6 +1695,12 @@ static void ui_input(void)
                 transport_req = 1;
             break;
         case B_SEQ:
+            if (FELUCCA_SIMPLE && seq_pick) {           /* picking: SEQ again cancels (its release no toggle) */
+                seq_pick = 0;
+                seq_eat = 1;
+                ui.force = 1;
+            }
+            break;
         case B_REC:                                     /* tap: above; held, its layer (ui_layer.c) */
         case B_SAVE:
         case B_FX:                                      /* the layers' buttons: ui_layer.c */
