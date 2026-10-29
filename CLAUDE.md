@@ -262,6 +262,10 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   (assets/logo/MEE.jpg, tools/gen_splash_logo.py), "BBL JAM BOX v0.1-beta", "BASED ON FELUCCA". The logo is
   not under the GPL. The site's package is bbl-jam-box-X.Y.fwsc.
 
+- Screen font: Blair's own BLB Pixel 7 Chunky (assets/fonts/BLBPixel7-Chunky.ttf, SIL OFL 1.1),
+  sizes from the Screen Lab app: S 12 px, M 15 px (+0.5 px tracking), L 28 px (gen_aa_font.py
+  preset bbl-pixel). Not the Square Pixel-7 font (personal-use licence).
+
 ## Workflow (after every change)
 
 1. Build firmware: `./build.sh`
