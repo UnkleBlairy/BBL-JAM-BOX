@@ -1092,6 +1092,58 @@ static uint32_t par_leds(void)
     }
     return m;
 }
+/* SIMPLE, SEQ mode: a page key (black 8..11) held HINT_MS snaps LEN to the end of its page (shorter: the steps after it
+ * stay, only unplayed); held + OCT- deletes it and the pages after it (gbs_page_del) */
+static struct { uint32_t t0; uint8_t k; } gpk;
+static int gbs_page_held(void)                           /* the page key held (its page), -1 none */
+{
+    uint32_t k;
+    if (!sgrid_on() || fxl_on())
+        return -1;
+    for (k = 0; k < 27u; k++)
+        if (((fm1_in.notes >> k) & 1u) && key_black(k) && key_place(k) >= GBS_PG)
+            return (int)(key_place(k) - GBS_PG);
+    return -1;
+}
+static void gbs_page_poll(void)                          /* every input pass */
+{
+    track_t *t = TSEL;
+    if (!gpk.t0)
+        return;
+    if (!((fm1_in.notes >> gpk.k) & 1u) || !sgrid_on() || fxl_on()) {
+        gpk.t0 = 0;
+        return;
+    }
+    if ((int32_t)(fm1_ms - gpk.t0) >= (int32_t)HINT_MS) {
+        int16_t was = t->p[P_SLEN];
+        char m[8] = "LEN ";
+        gpk.t0 = 0;
+        t->p[P_SLEN] = (int16_t)((key_place(gpk.k) - GBS_PG + 1u) * 16u);
+        pm_record(t, &t->p[P_SLEN], was);
+        fmt_int(m + 4, t->p[P_SLEN]);
+        ui_message(m);
+        ui.force = 1;
+    }
+}
+static void gbs_page_del(uint32_t pg)                    /* page pg and the ones after it: their steps, locks gone */
+{
+    track_t *t = TSEL;
+    uint32_t i;
+    int16_t was = t->p[P_SLEN];
+    gpk.t0 = 0;
+    if (!pg) {
+        ui_message("PAGE 1 STAYS");
+        return;
+    }
+    for (i = pg * 16u; i < NSTEP; i++)
+        gbs_step_off(&t->step[i]);
+    gbs_off = gbs_kept = 0;
+    t->p[P_SLEN] = (int16_t)(pg * 16u);
+    pm_record(t, &t->p[P_SLEN], was);
+    ui.bank = (uint8_t)(pg - 1u);
+    ui_message(pg == 1u ? "PAGE 2 DELETED" : pg == 2u ? "PAGE 3 DELETED" : "PAGE 4 DELETED");
+    ui.force = 1;
+}
 static void sgrid_keys(uint32_t pressed)
 {
     uint32_t k, len = (uint32_t)TSEL->p[P_SLEN];
@@ -1113,6 +1165,8 @@ static void sgrid_keys(uint32_t pressed)
                     gbs_off = gbs_kept = 0;             /* (the steps held were the other page's) */
                     ui.bank = (uint8_t)pg;
                 }
+                gpk.k = (uint8_t)k;                     /* (held: LEN snaps to its end, gbs_page_poll) */
+                gpk.t0 = fm1_ms | 1u;
                 ui.force = 1;
                 continue;
             }
@@ -1779,6 +1833,10 @@ static void ui_input(void)
                 break;                                   /* SIMPLE: OCT+ is a tap (the octave, on release) or a hold (the setup values) */
             if (FELUCCA_SIMPLE && sgrid_on()) {          /* the step keys: OCT- clears the track's steps, OCT- + OCT+ every track's */
                 uint32_t other = b == B_OCTDN ? B_OCTUP : B_OCTDN, a, i2, all = (fm1_in.buttons >> panel.btn[other]) & 1u;
+                if (b == B_OCTDN && gbs_page_held() >= 0) {   /* a page key held: OCT- deletes the page (and after) */
+                    gbs_page_del((uint32_t)gbs_page_held());
+                    break;
+                }
                 if (b == B_OCTDN && gbs_held()) {       /* steps held: OCT- clears their locks (the steps stay) */
                     gbs_keep();
                     lock_clear(gbs_held());
@@ -1848,6 +1906,7 @@ static void ui_input(void)
                 kit_undo(&trk[k]);
     pm_poll();
     sgrid_release();
+    gbs_page_poll();
     gb_store_poll();
     if (song.grid == 5u) {
         gbsv_keys(notes);
