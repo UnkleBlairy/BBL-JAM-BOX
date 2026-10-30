@@ -803,7 +803,7 @@ const sayK = (k, arg = "") => { lastKey = k; lastArg = arg; $("status").textCont
 const say = (txt) => { lastKey = null; $("status").textContent = txt; };
 const log = (t) => { $("log").textContent += t + "\n"; };
 let image = null;
-const meta = {"version": "0.1-beta", "product": "FM-1_901", "pkg": "../../firmware/bbl-jam-box-0.1-beta.fwsc"};
+const meta = {"version": "0.2-beta", "product": "FM-1_902", "pkg": "../../firmware/bbl-jam-box-0.2-beta.fwsc"};
 
 let writing = false, stock = null, stockFileEpoch = 0;
 const lockInstaller = (on) => { writing = on; $("go").disabled = on || !image; $("stock-go").disabled = on || !stock; $("stock-file").disabled = on; $("stock-recovery").disabled = on; };

@@ -1,5 +1,48 @@
 # Changelog
 
+## 0.2 beta (2026-10-30)
+
+A big update to how BBL JAM BOX plays: quicker gestures, touch modulation, Elektron-style trig conditions and a
+new chunky pixel font.
+
+### Playing
+- **SEQ button:** tap = switch between KEY and SEQ mode (the page stays). Double tap = open the SEQ page.
+  Hold SEQ = pick a key mode: turn a knob for **PARAM** mode, press a white key for **LOCKS** mode, or tap SEQ to
+  cancel. It waits for you after you let go.
+- **LOCKS key mode:** each white key is its own playable step. Hold a key and turn knobs to bake up to 8 locks into
+  it. Play them live or record them.
+- **PARAM mode** keeps its knob when you change pages.
+- **ALGORITHM knob** now picks the track (1–6).
+- **Temporary changes:** hold OCT+ and turn knobs. Let go and everything snaps back.
+- **PITCH** in semitones on the FM synth and the sampler, lockable per step.
+
+### Touch modulation
+- **Hold LFO** (about ¾ of a second), then turn any knob: that knob becomes the LFO's destination. Keep turning to
+  set the amount (left = minus, right = plus) on a big pop-up. It closes by itself a second after you stop.
+- The same for the **amp envelope** (hold ENV) and the **filter envelope** (hold FILTER).
+- Tap the same button again to cancel, OCT- removes the destination, SELECT goes straight back to the amount.
+- Almost every knob can be modulated, even stepped ones (wave, type) and knobs read at the note's start (like the
+  kick's RATIO).
+- The LFO pages are tidier: RATE WAVE PHASE FADE on page one, SYNC TRIG POL on page two.
+
+### Sequencer
+- **All of Elektron's trig conditions:** 1:2 to 8:8, FILL, PRE, NEI, 1ST and their NOT versions.
+- **FILL mode:** while playing, hold PLAY. Steps you enter then get the FILL condition, and they breathe so you can
+  tell them apart.
+- **Copy and paste a trig:** in SEQ mode hold a step and press SAVE to copy (notes, chance, condition, locks). Hold
+  an empty step and press SAVE to paste.
+- A **DJ page** so the DJ filter can be locked.
+- The ARP button pulses with the beat while the arp is on.
+
+### Screen
+- **New font:** BLB Pixel 7 Chunky, Blair's own pixel font. Big and chunky everywhere, no tiny text.
+- **Pop-ups** are white boxes at the bottom with big text. Long hints show in two halves.
+- Bigger BPM, track squares and key mode; thicker loop border; no page dots.
+
+### Fixes
+- Holding buttons was sometimes read wrong on the FM-1 (a tap opened the mod picker, SEQ taps got lost). Fixed.
+- Messages no longer stay stuck on the screen.
+
 ## 0.1 beta (2026-10-26)
 
 The first public beta of BBL JAM BOX: a live-jamming groovebox for the M-VAVE FM-1, built from Leo Kuroshita's
