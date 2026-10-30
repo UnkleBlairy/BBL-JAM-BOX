@@ -67,7 +67,9 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   3 COMB MIX, 4 COMB TUNE. Screen bottom: FADE / FILT, COMB / TUNE.
 - PERF: the last three black keys do nothing for now (were fade jumps);
   saved for a future use.
-- 16-step sequencer only (LEN 1..16). One SEQ page replaces Felucca's STEP /
+- Sequencer: LEN 1..64, up to 4 pages of 16 (SEQ mode: black keys 8-11 pick the page
+  shown, ui.bank / ui_input.c gbs_base; lit = shown, breathing = playing; the bottom says
+  "SEQ 2/4"). For fast parts use more steps at x1, not x1/4. One SEQ page replaces Felucca's STEP /
   DETAIL / AUTOMATION (hidden, not deleted). Knobs: LEN, SPEED (x1/4 x1/2 x1
   x2 x4), CHANCE, TRIG (Elektron's list: - 1:2 2:2 1:3 .. 8:8 FILL !FILL PRE
   !PRE NEI !NEI 1ST !1ST; core.h GB_TC0, seq.c gb_tc_miss). All per track.
@@ -78,8 +80,8 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   step's own chance (TRK = follow the track). A step can have chance AND trig.
 - Step keys: empty step turns on at press; a lit step turns off on release,
   unless a knob was turned while holding it (hold-to-edit, like Elektron).
-- Storage: track CHANCE lives in P_APROB; step i's TRIG lives in step[i+16]'s
-  chance byte as GB_TC0 + n (core.h GB_TRIG; patterns are never saved).
+- Storage: track CHANCE lives in P_APROB; a step's TRIG lives in its acc
+  byte as GB_TC0 + n (core.h gb_tc; patterns are never saved).
 - SEQ button: a tap = KEY <-> SEQ mode, the page stays (from PARAM / LOCKS: SEQ).
   A double tap (350 ms) = open the SEQ page, the mode as it was.
   Hold SEQ 700 ms = PARAM / LOCKS picking (ui_input.c seq_pick), like the LFO
@@ -262,6 +264,11 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   (assets/logo/MEE.jpg, tools/gen_splash_logo.py), "BBL JAM BOX v0.1-beta", "BASED ON FELUCCA". The logo is
   not under the GPL. The site's package is bbl-jam-box-X.Y.fwsc.
 
+- Live recording is unquantized: each note goes on the nearest step and keeps its NUDGE
+  (-8..+7 sixteenths of a step, core.h step_nudge; notes on one step = a chord, the first
+  note's timing). QUANTIZE per track (P_SQNT), OFF by default; hold REC 500 ms = ON/OFF
+  ("QUANTIZE OFF" pop-up). Hold step(s) + SELECT = nudge, the ruler pop-up (ui_gb.c
+  gb_nudge; "QUANTIZED" as its title when it won't play). Off-grid steps don't breathe.
 - Screen font: Blair's own BLB Pixel 7 Chunky (assets/fonts/BLBPixel7-Chunky.ttf, SIL OFL 1.1),
   sizes from the Screen Lab app: S 12 px, M 15 px (+0.5 px tracking), L 28 px (gen_aa_font.py
   preset bbl-pixel). Not the Square Pixel-7 font (personal-use licence).
