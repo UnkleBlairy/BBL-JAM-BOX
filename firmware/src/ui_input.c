@@ -1100,12 +1100,20 @@ static void sgrid_keys(uint32_t pressed)
         if (!((pressed >> k) & 1u))
             continue;
         if (key_black(k)) {
-            if (p >= GBS_PG && !fxl_on() && !kb_octup) {    /* black keys 8..11: the page of steps shown */
-                if ((p - GBS_PG) * 16u < len && p - GBS_PG != ui.bank) {
-                    gbs_off = gbs_kept = 0;             /* (the steps held were the other page's) */
-                    ui.bank = (uint8_t)(p - GBS_PG);
-                    ui.force = 1;
+            if (p >= GBS_PG && !fxl_on() && !kb_octup) {    /* black keys 8..11: the page of steps shown; one */
+                uint32_t pg = p - GBS_PG;                       /* past LEN adds it (LEN to its end) */
+                if (pg * 16u >= len) {
+                    int16_t was = TSEL->p[P_SLEN];
+                    TSEL->p[P_SLEN] = (int16_t)((pg + 1u) * 16u);
+                    pm_record(TSEL, &TSEL->p[P_SLEN], was);
+                    len = (uint32_t)TSEL->p[P_SLEN];
+                    ui_message(pg == 1u ? "PAGE 2 ADDED" : pg == 2u ? "PAGE 3 ADDED" : "PAGE 4 ADDED");
                 }
+                if (pg != ui.bank) {
+                    gbs_off = gbs_kept = 0;             /* (the steps held were the other page's) */
+                    ui.bank = (uint8_t)pg;
+                }
+                ui.force = 1;
                 continue;
             }
             if (p <= NTRK && !kb_octup) {               /* (OCT+ held: the track keys are the mutes, seq.c) */

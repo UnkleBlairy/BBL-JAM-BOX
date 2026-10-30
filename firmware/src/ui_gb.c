@@ -25,7 +25,6 @@ typedef struct {
     uint8_t kmode, pk, fx;                   /* the keys: 1 SEQ 2 PARAM 3 KEY 4 KIT; PARAM's knob + 1 (0: the keys play); the FX lane */
     uint8_t spg, snp;                        /* SEQ: the page of steps shown (0..3), the pages (LEN up to 64) */
     uint8_t nud;                             /* a step held + SELECT turned: its NUDGE + 9 (1..16), 0 no pop-up */
-    uint8_t nudq;                            /* .. the track is quantized (the nudge does not play) */
     uint8_t rec;                             /* the selected track is armed (REC): a red REC by the BPM, 1 + its glow 0..15 */
     uint8_t thit, tmute;                     /* the track squares (the bottom): bit k track k just hit, is muted */
     uint16_t brd;                            /* the loop border: how far round (1..960 px, the selected track's loop); 0 stopped */
@@ -309,7 +308,6 @@ static void gb_fill(gb_view_t *v)
         while (!((h >> i) & 1u))
             i++;
         v->nud = (uint8_t)(step_nudge(&TSEL->step[i]) + 9);
-        v->nudq = (uint8_t)(TSEL->p[P_SQNT] != 0);
     }
     v->pk = (uint8_t)(par_on() && par_id != 0xFFu && par_pg == ui.page && !ui.home ? par_k + 1u : 0u);
     if (par_on() && par_id != 0xFFu)
@@ -906,14 +904,14 @@ static void gb_popup(const gb_view_t *v, uint16_t bgc)
 }
 
 /* a step held + SELECT turned (ui_input.c): its NUDGE on a ruler, -8 .. +7 sixteenths of a step round its grid line
- * (the long tick); "QUANTIZED" for the title when the track plays every step on the grid (hold REC) */
+ * (the long tick) */
 static void gb_nudge(const gb_view_t *v, uint16_t bgc)
 {
     const uint16_t ink = bgc, bk = GB_W;
     int32_t n = (int32_t)v->nud - 9, i, x;
     char nb[8];
     cv_rrect(14, 42, 212, 152, 12, bk, bgc);
-    cv_text_in(14, 46, 212, &AF_L, v->nudq ? "QUANTIZED" : "NUDGE", ink, bk);
+    cv_text_in(14, 46, 212, &AF_L, "NUDGE", ink, bk);
     cv_rect(28, 118, 184, 3, ink);                           /* the ruler */
     for (i = -8; i <= 8; i++) {
         int32_t h = i == 0 ? 36 : (i & 3) == 0 ? 20 : 10;

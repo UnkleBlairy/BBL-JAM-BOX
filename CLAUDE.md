@@ -266,9 +266,11 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
 
 - Live recording is unquantized: each note goes on the nearest step and keeps its NUDGE
   (-8..+7 sixteenths of a step, core.h step_nudge; notes on one step = a chord, the first
-  note's timing). QUANTIZE per track (P_SQNT), OFF by default; hold REC 500 ms = ON/OFF
-  ("QUANTIZE OFF" pop-up). Hold step(s) + SELECT = nudge, the ruler pop-up (ui_gb.c
-  gb_nudge; "QUANTIZED" as its title when it won't play). Off-grid steps don't breathe.
+  note's timing). QUANTIZE per track (P_SQNT), OFF by default, is for RECORDING only (ON =
+  new notes go in with no nudge); nudges always play (seq.c SEQ_QPLAY). Hold REC 500 ms =
+  ON/OFF ("QUANTIZE OFF" pop-up). Hold step(s) + SELECT = nudge, the ruler pop-up (ui_gb.c
+  gb_nudge). Off-grid steps don't breathe.
+- A page key past LEN adds that page (LEN = its end, "PAGE 3 ADDED").
 - Screen font: Blair's own BLB Pixel 7 Chunky (assets/fonts/BLBPixel7-Chunky.ttf, SIL OFL 1.1),
   sizes from the Screen Lab app: S 12 px, M 15 px (+0.5 px tracking), L 28 px (gen_aa_font.py
   preset bbl-pixel). Not the Square Pixel-7 font (personal-use licence).

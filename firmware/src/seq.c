@@ -538,7 +538,7 @@ static void rec_note(track_t *t, uint32_t note, uint32_t vel)
         s->n = 0;                                   /* a fresh step */
         s->flags = 0;
         s->vel = 0;
-        step_set_nudge(s, off);
+        step_set_nudge(s, FELUCCA_SIMPLE && t->p[P_SQNT] ? 0 : off);   /* (SIMPLE: QUANTIZE ON records on the grid) */
     }
     for (k = 0; k < s->n && s->note[k] != note; k++)
         ;
@@ -1229,9 +1229,11 @@ static __attribute__((noinline)) void seq_ratchet(track_t *t, uint32_t period)
 
 /* the nudge of step s in 1/NUDGE_DIV of the step (NUDGE, core.h) when it plays off its start: the track's QUANTIZE OFF,
  * a NOTE step that plays something, x1 (a ratcheted step's parts divide the step: on its start); else 0 */
+/* SIMPLE: QUANTIZE is recording's only (rec_note): a nudge always plays */
+#define SEQ_QPLAY(t) (!FELUCCA_SIMPLE && (t)->p[P_SQNT])
 static int32_t seq_nudge(const track_t *t, const step_t *s)
 {
-    if (t->p[P_SQNT] || s->time != ST_NOTE || (!s->n && !s->hit) || step_ratchet(s) != 1u)
+    if (SEQ_QPLAY(t) || s->time != ST_NOTE || (!s->n && !s->hit) || step_ratchet(s) != 1u)
         return 0;
     return step_nudge(s);
 }
@@ -1364,7 +1366,7 @@ static void seq_tick(track_t *t, uint32_t n)
         t->seq_pos = top ? 0u : t->seq_pos - cur_len;
         t->seq_idx = (uint16_t)((t->seq_idx + 1u) % len);
         seq_enter(t, top, len);
-        if (t->p[P_SQNT] && !t->nd_fired)
+        if (SEQ_QPLAY(t) && !t->nd_fired)
             seq_play_on(t, period);                 /* QUANTIZE ON: every step on its start, as before 1.2 */
         else
             seq_nd_start(t, period, len);
