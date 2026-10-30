@@ -132,7 +132,7 @@ static const param_desc_t TP[P_COUNT] = {
     [P_SCALE] = PE("SCL", N_SCALE, 0),
     [P_QUANT] = PE("QNT", N_QUANT, 0),
     [P_TRANS] = PD("PITCH", F_SEMI, -24, 24, 0),
-    [P_SLEN] = PD("LEN", F_STEPS, 1, 16, 16),           /* SIMPLE: 16 steps at most (steps 16..31 hold the TRIGs: core.h GB_TRIG) */
+    [P_SLEN] = PD("LEN", F_STEPS, 1, 64, 16),           /* SIMPLE: 4 pages of 16 (ui_input.c gbs_base) */
     [P_SDIV] = PE("DIV", N_SDIV, 2),
     [P_SSWING] = PD("SWG", F_PCT, 0, 100, 0),
     [P_SGATE] = PD("GATE", F_PCT, 1, 127, 64),
@@ -186,7 +186,7 @@ static const param_desc_t TP[P_COUNT] = {
     [P_LSYNC] = PE("SYNC", N_LSYNC, 0),
     [P_LTRIG] = PE("TRIG", N_LTRIG, 0),
     [P_LPOL] = PE("POL", N_LPOL, 0),
-    [P_SQNT] = PE("QNTZ", N_ONOFF, 1),            /* ON: every step on its start, as before 1.2 */
+    [P_SQNT] = PE("QNTZ", N_ONOFF, !FELUCCA_SIMPLE),   /* SIMPLE: OFF, live recording keeps its timing (hold REC) */            /* ON: every step on its start, as before 1.2 */
     [P_SPRD] = PD("SPRD", F_PCT, 0, 127, 0),      /* #148: 0 = every voice on PAN, as before (fx.c mix_spread) */
     /* the INSERT (1.5, fx.c track_insert): TYPE OFF = as before. A B C as the editor protocol names them; the device
      * shows the type's own labels (ins_desc) */

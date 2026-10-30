@@ -301,23 +301,41 @@ static uint32_t fxl_leds(void)                           /* the FX lane: its tri
     }
     return m;
 }
+/* SIMPLE, SEQ mode: the step keys show one page of 16 (ui.bank; black keys 8..11 pick it, LEN up to 64): the first
+ * step of the page shown (onto the last page there is when LEN got shorter; the FX lane has one page) */
+#define GBS_PG (NTRK + 1u)                               /* black key 8: page 1 (the keys after the track and FX keys) */
+static uint32_t gbs_base(void)
+{
+    uint32_t len = TSEL->p[P_SLEN] > 0 ? (uint32_t)TSEL->p[P_SLEN] : 1u;
+    if (fxl_on())
+        return 0;
+    if (ui.bank * 16u >= len)
+        ui.bank = (uint8_t)((len - 1u) / 16u);
+    return ui.bank * 16u;
+}
 static uint32_t sgrid_leds(uint32_t *br)                 /* (*br: the trigless steps, breathing) */
 {
     const track_t *t = TSEL;
-    uint32_t k, m = 0, len = (uint32_t)t->p[P_SLEN];
+    uint32_t k, m = 0, len = (uint32_t)t->p[P_SLEN], b, npg = (len + 15u) / 16u, ppg;
     if (fxl_on())
         return fxl_leds();
-    uint32_t ph = song.playing && t->seq_idx < len && t->seq_idx < 16u ? t->seq_idx : 0xFFu;
+    b = gbs_base();
+    uint32_t ph = song.playing && t->seq_idx < len ? t->seq_idx : 0xFFu;
+    ppg = ph != 0xFFu ? ph / 16u : 0xFFu;                /* (the page playing) */
     for (k = 0; k < 27u; k++) {
-        uint32_t p = key_place(k), on;
+        uint32_t p = key_place(k), i = b + p, on;
         if (!key_black(k)) {
-            on = p < len && t->step[p].time == ST_NOTE && t->step[p].n != 0u;
-            on ^= (uint32_t)(p == ph);
-            if (br && p < len && (gbs_trigless(t, p) || (t->step[p].time == ST_NOTE && t->step[p].n && p < GB_TRIG &&
-                                                 gb_tc(&t->step[p + GB_TRIG]) == GB_TC_FILL))) {
+            on = i < len && t->step[i].time == ST_NOTE && t->step[i].n != 0u;
+            on ^= (uint32_t)(i == ph);
+            if (br && i < len && (gbs_trigless(t, i) || (t->step[i].time == ST_NOTE && t->step[i].n &&
+                                                         gb_tc(&t->step[i]) == GB_TC_FILL))) {
                 *br |= 1u << k;                         /* (trigless, FILL: breathing, not lit) */
-                on = p == ph;
+                on = i == ph;
             }
+        } else if (p >= GBS_PG && p < GBS_PG + npg && npg > 1u) {   /* the page keys: the one shown lit, the one */
+            on = p - GBS_PG == ui.bank;                              /* playing (another) breathing */
+            if (br && !on && p - GBS_PG == ppg)
+                *br |= 1u << k;
         } else {
             on = p < NTRK ? p == song.sel : 0u;
         }
@@ -888,45 +906,44 @@ static void g_capture(const int16_t *vp)
  * grid_note_of), a black key 1..4 selects the track (seq.c plays it). An empty step comes on at the press; a step that
  * is on goes when its key is let go, unless the SEQ page's knobs turned while it was held (its CHANCE, TRIG) */
 static uint32_t gbs_off, gbs_kept;                       /* keys: its step goes when let go; .. turned while held: it stays */
-static void gbs_step_off(step_t *st)                     /* the step and its TRIG (core.h GB_TRIG) */
+static void gbs_step_off(step_t *st)                     /* the step (its TRIG with it: core.h gb_tc) and its locks */
 {
-    uint32_t i = (uint32_t)(st - TSEL->step);
     step_clear(st);
-    (void)motion_clear_locks(TSEL, i);
-    if (i < GB_TRIG)
-        TSEL->step[i + GB_TRIG].probability = 0;
+    (void)motion_clear_locks(TSEL, (uint32_t)(st - TSEL->step));
 }
 static void gbs_keep(void)                               /* the step keys held stay on when let go (they were edited) */
 {
     uint32_t k;
     for (k = 0; k < 27u; k++)
-        if (((fm1_in.notes >> k) & 1u) && !key_black(k) && key_place(k) < GB_TRIG)
+        if (((fm1_in.notes >> k) & 1u) && !key_black(k))
             gbs_kept |= 1u << k;
 }
 /* the steps held (bit p: step p), for the SEQ page's knobs */
-static uint32_t gbs_held(void)
+static uint64_t gbs_held(void)
 {
-    uint32_t k, m = 0, len = fxl_on() ? 16u : (uint32_t)TSEL->p[P_SLEN];
+    uint32_t k, len = fxl_on() ? 16u : (uint32_t)TSEL->p[P_SLEN], b;
+    uint64_t m = 0;
     if (!sgrid_on())
         return 0;
+    b = gbs_base();
     for (k = 0; k < 27u; k++) {
-        uint32_t p = key_place(k);
-        if (((fm1_in.notes >> k) & 1u) && !key_black(k) && p < len && p < GB_TRIG)
-            m |= 1u << p;
+        uint32_t p = b + key_place(k);
+        if (((fm1_in.notes >> k) & 1u) && !key_black(k) && p < len)
+            m |= (uint64_t)1 << p;
     }
     return m;
 }
 /* SIMPLE, SEQ mode: hold a step + SAVE = copy it (its notes, CHANCE, TRIG, locks); hold an empty one (it came on at the
  * press) + SAVE = paste over it. Not saved, any track (the locks' ids as they were) */
 #define CLIP_LK 16u
-static struct { uint8_t full, trig, nl, lid[CLIP_LK]; int8_t lv[CLIP_LK]; step_t st; } clip;
+static struct { uint8_t full, nl, lid[CLIP_LK]; int8_t lv[CLIP_LK]; step_t st; } clip;   /* (st: its TRIG too) */
 static int clip_key(uint32_t *kp)                        /* the one step key held: its key, 1 */
 {
     uint32_t k, n = 0, len = (uint32_t)TSEL->p[P_SLEN];
     if (!sgrid_on() || fxl_on())
         return 0;
     for (k = 0; k < 27u; k++)
-        if (((fm1_in.notes >> k) & 1u) && !key_black(k) && key_place(k) < len && key_place(k) < GB_TRIG) {
+        if (((fm1_in.notes >> k) & 1u) && !key_black(k) && gbs_base() + key_place(k) < len) {
             *kp = k;
             n++;
         }
@@ -943,11 +960,10 @@ static int clip_save(void)                               /* SAVE pressed: 1 = it
     track_t *t = TSEL;
     if (!clip_key(&k))
         return 0;
-    p = key_place(k);
+    p = gbs_base() + key_place(k);
     place = trk_index(t) << 6 | p;
     if ((gbs_off >> k) & 1u) {                          /* a step that was on: copy */
         clip.st = t->step[p];
-        clip.trig = t->step[p + GB_TRIG].probability;
         clip.nl = 0;
         for (i = 0; i < motion.count && clip.nl < CLIP_LK; i++)
             if (motion.event[i].place == place && (motion.event[i].param & MOTION_LOCK)) {
@@ -960,7 +976,6 @@ static int clip_save(void)                               /* SAVE pressed: 1 = it
     } else if (clip.full) {                             /* an empty one: paste */
         (void)motion_clear_locks(t, p);
         t->step[p] = clip.st;
-        t->step[p + GB_TRIG].probability = clip.trig;
         for (i = 0; i < clip.nl; i++)
             (void)motion_set_lock(t, p, clip.lid[i], clip.lv[i]);
         gbs_keep();
@@ -975,12 +990,12 @@ static void sgrid_release(void)                          /* every input pass: th
 {
     uint32_t k, up = (gbs_off | gbs_kept) & ~fm1_in.notes;
     for (k = 0; k < 27u; k++)
-        if ((up >> k) & 1u && ((gbs_off & ~gbs_kept) >> k) & 1u && key_place(k) < GB_TRIG) {
+        if ((up >> k) & 1u && ((gbs_off & ~gbs_kept) >> k) & 1u) {
             if (fxl_on()) {
                 fxl.trig &= (uint16_t)~(1u << key_place(k));
                 fxl.lk[key_place(k)] = 0;
             } else {
-                gbs_step_off(&TSEL->step[key_place(k)]);
+                gbs_step_off(&TSEL->step[gbs_base() + key_place(k)]);
             }
             ui.force = 1;
         }
@@ -1085,6 +1100,14 @@ static void sgrid_keys(uint32_t pressed)
         if (!((pressed >> k) & 1u))
             continue;
         if (key_black(k)) {
+            if (p >= GBS_PG && !fxl_on() && !kb_octup) {    /* black keys 8..11: the page of steps shown */
+                if ((p - GBS_PG) * 16u < len && p - GBS_PG != ui.bank) {
+                    gbs_off = gbs_kept = 0;             /* (the steps held were the other page's) */
+                    ui.bank = (uint8_t)(p - GBS_PG);
+                    ui.force = 1;
+                }
+                continue;
+            }
             if (p <= NTRK && !kb_octup) {               /* (OCT+ held: the track keys are the mutes, seq.c) */
                 gbs_off = gbs_kept = 0;                 /* (the steps held were the other track's) */
                 fxl_sel = (uint8_t)(p == NTRK);         /* black key 7: the FX lane */
@@ -1106,6 +1129,7 @@ static void sgrid_keys(uint32_t pressed)
             }
             continue;
         }
+        p += gbs_base();
         if (p >= len)
             continue;
         {
@@ -1122,24 +1146,25 @@ static void sgrid_keys(uint32_t pressed)
                 st->time = ST_NOTE;
                 st->n = (uint8_t)grid_chord(TSEL, st->note);
                 st->vel = 100;
-                if (seq_fill && p < GB_TRIG)            /* FILL MODE (PLAY held): a FILL trig */
-                    st[GB_TRIG].probability = (uint8_t)(GB_TC0 + GB_TC_FILL);
+                if (seq_fill)                           /* FILL MODE (PLAY held): a FILL trig */
+                    st->acc = (uint8_t)(GB_TC0 + GB_TC_FILL);
             }
         }
         cursor_set((int32_t)p);
     }
 }
 
-/* SIMPLE, the SEQ page: KNOB 1 LEN (1..16), 2 SPEED (x1/4 .. x4: DIV 1/4 .. 1/64), 3 CHANCE: the track's, or with
- * steps held their own (TRK: none, the track's), 4 TRIG: the held steps' (- 1/4 2/4 3/4 4/4: core.h GB_TRIG) */
+/* SIMPLE, the SEQ page: KNOB 1 LEN (1..64), 2 SPEED (x1/4 .. x4: DIV 1/4 .. 1/64), 3 CHANCE: the track's, or with
+ * steps held their own (TRK: none, the track's), 4 TRIG: the held steps' (core.h gb_tc) */
 static void gbseq_knob(uint32_t slot, int32_t steps)
 {
     track_t *t = TSEL;
-    uint32_t held = gbs_held(), p;
+    uint64_t held = gbs_held();
+    uint32_t p;
     int16_t was;
     if (slot >= 2u && held) {                            /* the held steps' own: they stay when let go */
         gbs_keep();
-        for (p = 0; p < GB_TRIG; p++) {
+        for (p = 0; p < NSTEP; p++) {
             step_t *s = &t->step[p];
             if (!((held >> p) & 1u))
                 continue;
@@ -1148,7 +1173,7 @@ static void gbseq_knob(uint32_t slot, int32_t steps)
                 s->probability = (uint8_t)(c < 0 ? 0 : c == 0 ? 101 : c);
             } else {
                 int32_t g = clamp((int32_t)gb_trig(s) + accel(EN_K1 + slot, steps, (int32_t)GB_NTC), 0, (int32_t)GB_NTC);
-                s[GB_TRIG].probability = (uint8_t)(g ? GB_TC0 + (uint32_t)g : 0u);
+                s->acc = (uint8_t)(g ? GB_TC0 + (uint32_t)g : 0u);
             }
         }
         ui.force = 1;
@@ -1160,7 +1185,7 @@ static void gbseq_knob(uint32_t slot, int32_t steps)
     }
     if (slot == 0u) {
         was = t->p[P_SLEN];
-        t->p[P_SLEN] = (int16_t)clamp(was + (steps > 0 ? 1 : -1), 1, 16);
+        t->p[P_SLEN] = (int16_t)clamp(was + (steps > 0 ? 1 : -1), 1, NSTEP);
         pm_record(t, &t->p[P_SLEN], was);
     } else if (slot == 1u) {
         was = t->p[P_SDIV];
@@ -1185,7 +1210,7 @@ static void gbseq_knob(uint32_t slot, int32_t steps)
 static uint64_t lock_held(void)
 {
     const track_t *t = TSEL;
-    uint32_t k, len = (uint32_t)t->p[P_SLEN], keys = fm1_in.notes & ~kb_layer;
+    uint32_t k, len = (uint32_t)t->p[P_SLEN], keys = fm1_in.notes & ~kb_layer, b;
     uint64_t m = 0;
     if (sgrid_on()) {
         if (ui.home || !keys || !lock_page_ok(ui.page))
@@ -1193,9 +1218,10 @@ static uint64_t lock_held(void)
         ui.plk_src = (uint8_t)(ui.page + 1u);           /* (the page shown: lock_id) */
         if (fxl_on())
             len = 16u;                                  /* (the FX lane's 16) */
+        b = gbs_base();
         for (k = 0; k < 27u; k++)
-            if (((keys >> k) & 1u) && !key_black(k) && key_place(k) < len && key_place(k) < GB_TRIG)
-                m |= (uint64_t)1 << key_place(k);
+            if (((keys >> k) & 1u) && !key_black(k) && b + key_place(k) < len)
+                m |= (uint64_t)1 << (b + key_place(k));
         return m;
     }
     if (ui.home || ui.confirm || !song.seq_mode || cur_page()->graph != GR_ROLL ||
@@ -1623,6 +1649,19 @@ static void ui_input(void)
     }
     home = btn_hold(&ui.home_t0, B_HOME, now, 1);
     rec = btn_hold(&ui.rec_t0, B_REC, now, 0);          /* (a tap; held, the REC layer: ui_layer.c) */
+    if (FELUCCA_SIMPLE) {                               /* SIMPLE: hold REC = the track's QUANTIZE on / off (no tap then) */
+        static uint32_t rq_t0;
+        if (!((fm1_in.buttons >> panel.btn[B_REC]) & 1u))
+            rq_t0 = 0;
+        else if (((pressed >> panel.btn[B_REC]) & 1u))
+            rq_t0 = fm1_ms | 1u;
+        else if (rq_t0 && (int32_t)(fm1_ms - rq_t0) >= (int32_t)HINT_MS && !ui.confirm) {
+            rq_t0 = 0;
+            layer_kill();
+            TSEL->p[P_SQNT] = (int16_t)!TSEL->p[P_SQNT];
+            ui_message(TSEL->p[P_SQNT] ? "QUANTIZE ON" : "QUANTIZE OFF");
+        }
+    }
     save = btn_hold(&ui.save_t0, B_SAVE, now, !ui.confirm);
     layer_arm(pressed, now);
     if (((pressed >> panel.btn[B_REC]) & 1u) && ui.ly == LAYER_REC)
@@ -1838,6 +1877,16 @@ static void ui_input(void)
             tm_t = fm1_ms;
             ui.force = 1;
         }
+    } else if (s && FELUCCA_SIMPLE && !fxl_on() && gbs_held()) {   /* SIMPLE, steps held + SELECT: their NUDGE */
+        uint64_t h = gbs_held();
+        for (k = 0; k < NSTEP; k++) {
+            step_t *st = &TSEL->step[k];
+            if ((h >> k) & 1u && st->time == ST_NOTE && st->n)
+                step_set_nudge(st, step_nudge(st) + (s > 0 ? 1 : -1));
+        }
+        gbs_keep();                                     /* (they stay when let go) */
+        gb_nd_t = fm1_ms | 1u;
+        ui.force = 1;
     } else if (s) {                                     /* SELECT: the tempo */
         int16_t was = song.g[G_BPM];
         song.g[G_BPM] = (int16_t)clamp(song.g[G_BPM] + accel(EN_SELECT, s, 200), GP[G_BPM].min, GP[G_BPM].max);

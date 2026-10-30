@@ -1099,10 +1099,9 @@ static __attribute__((noinline)) int gb_tc_miss(const track_t *tc, uint32_t c, u
 static int seq_miss(const track_t *t, const step_t *s, uint32_t idx)
 {
     uint32_t c;
-    const step_t *tg = idx < GB_TRIG ? &t->step[idx + GB_TRIG] : 0;
     if (s->probability >= COND_FIRST && seq_cond_miss(t, s, idx))
         return 1;
-    if (tg && gb_tc(tg) && gb_tc_miss(t, gb_tc(tg), idx))
+    if (gb_tc(s) && gb_tc_miss(t, gb_tc(s), idx))
         return 1;
     c = s->probability && s->probability < COND_FIRST ? step_chance(s) : (uint32_t)t->p[P_APROB];
     return c < 100u && rng() % 100u >= c;

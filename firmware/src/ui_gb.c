@@ -23,6 +23,9 @@ typedef struct {
     int16_t dj, cmix, ctune;                 /* PERF: the master DJ filter and comb */
     uint8_t fill[8], rel, bpm_alt;           /* PERF: each held macro's tile filled 0..26 rows; the release fade; the tempo is held by a macro */                           /* a macro holds this value: its dial is drawn inverted */
     uint8_t kmode, pk, fx;                   /* the keys: 1 SEQ 2 PARAM 3 KEY 4 KIT; PARAM's knob + 1 (0: the keys play); the FX lane */
+    uint8_t spg, snp;                        /* SEQ: the page of steps shown (0..3), the pages (LEN up to 64) */
+    uint8_t nud;                             /* a step held + SELECT turned: its NUDGE + 9 (1..16), 0 no pop-up */
+    uint8_t nudq;                            /* .. the track is quantized (the nudge does not play) */
     uint8_t rec;                             /* the selected track is armed (REC): a red REC by the BPM, 1 + its glow 0..15 */
     uint8_t thit, tmute;                     /* the track squares (the bottom): bit k track k just hit, is muted */
     uint16_t brd;                            /* the loop border: how far round (1..960 px, the selected track's loop); 0 stopped */
@@ -50,7 +53,7 @@ static gb_view_t gb_v, gb_last;
 static uint8_t gb_have;
 
 static int name_on(void);
-static uint32_t gbs_held(void);                    /* (ui_input.c) the steps held */
+static uint64_t gbs_held(void);                    /* (ui_input.c) the steps held */
 static uint32_t gbsv_leds(void);                   /* (ui_input.c) the SAVE screen's keys */
 static int gbs_used(uint32_t mach, uint32_t slot); /* (gb_store.c) the sounds and kits */
 static int gbk_used(uint32_t k);
@@ -77,7 +80,7 @@ static int32_t gb_own(const step_t *s)                   /* a step's own CHANCE,
 {
     return s->probability && s->probability < COND_FIRST ? (int32_t)step_chance(s) : -1;
 }
-static uint32_t gb_trig(const step_t *s) { return gb_tc(s + GB_TRIG); }   /* a step's TRIG 0..GB_NTC (core.h) */
+static uint32_t gb_trig(const step_t *s) { return gb_tc(s); }   /* a step's TRIG 0..GB_NTC (core.h) */
 static void gb_trig_name(char *b, uint32_t c)            /* "-", "1:2" .. "8:8", "FILL" .. "!1ST" */
 {
     static const char *const NM[8] = {"FILL", "!FILL", "PRE", "!PRE", "NEI", "!NEI", "1ST", "!1ST"};
@@ -296,6 +299,18 @@ static void gb_fill(gb_view_t *v)
     }
     str_cpy(v->title, pg->title, sizeof v->title);
     v->kmode = (uint8_t)(ui.sgrid == 1u ? 1u : ui.sgrid == 2u ? 2u : ui.sgrid == 3u ? 4u : 3u);
+    if (v->kmode == 1u && !fxl_on()) {
+        v->snp = (uint8_t)((TSEL->p[P_SLEN] + 15) / 16);
+        v->spg = ui.bank;
+    }
+    if (gb_nd_t && (int32_t)(fm1_ms - gb_nd_t) < (int32_t)TM_SHOW_MS && gbs_held()) {
+        uint64_t h = gbs_held();
+        uint32_t i = 0;
+        while (!((h >> i) & 1u))
+            i++;
+        v->nud = (uint8_t)(step_nudge(&TSEL->step[i]) + 9);
+        v->nudq = (uint8_t)(TSEL->p[P_SQNT] != 0);
+    }
     v->pk = (uint8_t)(par_on() && par_id != 0xFFu && par_pg == ui.page && !ui.home ? par_k + 1u : 0u);
     if (par_on() && par_id != 0xFFu)
         str_cpy(v->pname, (par_id < P_COUNT ? track_desc(TSEL, par_id) : motion_desc(TSEL, par_id))->label, sizeof v->pname);
@@ -395,7 +410,8 @@ static void gb_fill(gb_view_t *v)
         static const char *const SPN[5] = {"x1/4", "x1/2", "x1", "x2", "x4"};
         static const char *const LB[4] = {"LEN", "SPEED", "CHANCE", "TRIG"};
         const track_t *t = TSEL;
-        uint32_t held = gbs_held(), p = 0, sp = gb_speed(t->p[P_SDIV]);
+        uint64_t held = gbs_held();
+        uint32_t p = 0, sp = gb_speed(t->p[P_SDIV]);
         int32_t ch = t->p[P_APROB] > 100 ? 100 : t->p[P_APROB], tr = -1;
         while (held && !((held >> p) & 1u))
             p++;
@@ -412,7 +428,7 @@ static void gb_fill(gb_view_t *v)
             v->mask |= (uint8_t)(1u << k);
         }
         fmt_int(v->val[0], t->p[P_SLEN]);
-        v->ratio[0] = (int16_t)((t->p[P_SLEN] - 1) * 1000 / 15);
+        v->ratio[0] = (int16_t)((t->p[P_SLEN] - 1) * 1000 / (NSTEP - 1));
         str_cpy(v->val[1], SPN[sp], sizeof v->val[1]);
         v->ratio[1] = (int16_t)(sp * 250u);
         if (ch < 0) {
@@ -840,6 +856,10 @@ static void gb_scene(const gb_view_t *v, uint16_t bgc)
         int32_t x0 = 8, x1 = 232 - pw - 6;
         const aafont_t *kf = &AF_L;
         str_cpy(kb, KM[v->kmode % 5u], sizeof kb);
+        if (v->snp > 1u) {                                        /* SEQ over 16 steps: the page shown, "SEQ 2/4" */
+            char pb[6] = {' ', (char)('1' + v->spg), '/', (char)('0' + v->snp), 0, 0};
+            str_cpy(kb + str_len(kb), pb, sizeof kb - str_len(kb));
+        }
         if (v->kmode == 2u && v->pname[0]) {                      /* PARAM: its knob's name (it stays on other pages) */
             str_cpy(kb + str_len(kb), " ", sizeof kb - str_len(kb));
             str_cpy(kb + str_len(kb), v->pname, sizeof kb - str_len(kb));
@@ -883,6 +903,30 @@ static void gb_popup(const gb_view_t *v, uint16_t bgc)
     if (amt > 0)
         nb[0] = '+';
     cv_text_in(14, 162, 212, &AF_L, nb, ink, bk);
+}
+
+/* a step held + SELECT turned (ui_input.c): its NUDGE on a ruler, -8 .. +7 sixteenths of a step round its grid line
+ * (the long tick); "QUANTIZED" for the title when the track plays every step on the grid (hold REC) */
+static void gb_nudge(const gb_view_t *v, uint16_t bgc)
+{
+    const uint16_t ink = bgc, bk = GB_W;
+    int32_t n = (int32_t)v->nud - 9, i, x;
+    char nb[8];
+    cv_rrect(14, 42, 212, 152, 12, bk, bgc);
+    cv_text_in(14, 46, 212, &AF_L, v->nudq ? "QUANTIZED" : "NUDGE", ink, bk);
+    cv_rect(28, 118, 184, 3, ink);                           /* the ruler */
+    for (i = -8; i <= 8; i++) {
+        int32_t h = i == 0 ? 36 : (i & 3) == 0 ? 20 : 10;
+        x = 120 + i * 11;
+        cv_rect(x - (i == 0 ? 1 : 0), 120 - h / 2, i == 0 ? 3 : 1, h, ink);
+    }
+    x = 120 + n * 11;                                        /* the step: a block on its place */
+    cv_rect(x - 5, 92, 11, 14, ink);
+    cv_rect(x - 2, 106, 5, 6, ink);
+    fmt_int(nb + (n > 0 ? 1 : 0), n);
+    if (n > 0)
+        nb[0] = '+';
+    cv_text_in(14, 150, 212, &AF_L, nb, ink, bk);
 }
 
 /* OCT+ held + a knob turned (ui_input.c mom_*): a banner at the bottom, the dials above it still seen */
@@ -988,6 +1032,8 @@ static void gb_draw(void)
         gb_scene(&gb_v, c);
         if (gb_v.tmod == 2u)
             gb_popup(&gb_v, c);
+        else if (gb_v.nud)
+            gb_nudge(&gb_v, c);
         else if (gb_v.bn)                         /* a banner: its page */
             gb_banner(c, gb_v.bt[2u * gb_v.bpg], gb_v.bt[2u * gb_v.bpg + 1u]);
         gb_overlay(&gb_v, c, 0);

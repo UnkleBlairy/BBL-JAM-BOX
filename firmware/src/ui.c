@@ -560,6 +560,7 @@ static int kit_on(void)
 #define TM_MS 700u              /* a long, meant hold (a tap on the panel can last 250 ms) */
 #define TM_SHOW_MS 1000u         /* the amount's pop-up stays this long after the last turn, then picking ends */
 static uint32_t tm_t;            /* the last turn */
+static uint32_t gb_nd_t;          /* SIMPLE: a step held + SELECT, its last turn (fm1_ms | 1; the NUDGE pop-up) */
 /* SIMPLE: a button held past HINT_MS shows what it does held (ui_input.c hint_poll, ui_gb.c's banner): 1 SEQ, 2 OCT+ */
 #define HINT_MS 500u
 static uint8_t gb_hint;

@@ -172,10 +172,8 @@ typedef struct {                 /* a step as formats 1..4 (projects to FUN4) st
 #define COND_FILL 10u                    /* FILL, NOT FILL: the last two */
 #define COND_NFILL 11u
 #define CHANCE_V_MAX (100u + NCOND)
-/* SIMPLE: a step has its CHANCE (its own byte: 0 none, the track's CHANCE then, P_APROB) and a TRIG too, 1/4 2/4 3/4
- * 4/4 (conditions 6..9: 1:4 .. 4:4): step i's TRIG is the condition in step i + GB_TRIG's byte (LEN is 16 at most
- * there, steps 16..31 never play), so the formats stay as they are (seq.c seq_miss, ui_input.c gbseq_knob) */
-#define GB_TRIG 16u
+/* SIMPLE: a step has its CHANCE (its own byte: 0 none, the track's CHANCE then, P_APROB) and a TRIG too, in its acc
+ * byte (the DRUM grid's accents: unused here), so all 64 steps have one (seq.c seq_miss, ui_input.c gbseq_knob) */
 /* .. its TRIG c (1..GB_NTC) is the byte GB_TC0 + c, Elektron's list: A:B (1:2 2:2 1:3 .. 8:8, plays on loop A of every
  * B: a 16-step pattern that sounds up to 8 bars long), then FILL !FILL PRE !PRE NEI !NEI 1ST !1ST (seq.c gb_tc_miss).
  * Patterns are never saved, so the byte is free to mean this */
@@ -184,9 +182,9 @@ typedef struct {                 /* a step as formats 1..4 (projects to FUN4) st
 #define GB_NTC (GB_NAB + 8u)
 #define GB_TC_FILL (GB_NAB + 1u)
 #define GB_LOOPS 840u                    /* (a multiple of 2..8) */
-static uint32_t gb_tc(const step_t *s)   /* step i + GB_TRIG's byte: its TRIG 1..GB_NTC, 0 none */
+static uint32_t gb_tc(const step_t *s)   /* the step's TRIG 1..GB_NTC, 0 none */
 {
-    return s->probability > GB_TC0 && s->probability <= GB_TC0 + GB_NTC ? s->probability - GB_TC0 : 0u;
+    return s->acc > GB_TC0 && s->acc <= GB_TC0 + GB_NTC ? s->acc - GB_TC0 : 0u;
 }
 static void gb_tc_ab(uint32_t c, uint32_t *a, uint32_t *b)   /* A:B TRIG c (1..GB_NAB): its A and B */
 {
