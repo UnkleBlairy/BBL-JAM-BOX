@@ -5,7 +5,7 @@
  *          picks the pool; a sound keeps its machine (loading it switches the track's). Its sequencer and mixer
  *          settings left out. (Before: 16 a track, GB_MAGIC; moved into the pools once, gb_pool_move)
  *   KIT    11 slots: the six tracks' sounds, the macros, the PERF fade, the FX and COMB globals (not the tempo,
- *          the DJ filter, MIDI or the clock)
+ *          the DJ filter, MIDI or the clock), the LOCKS keys (GB_KLK bytes of them: gbk_lk_pack)
  * Seven storage objects (storage.c OBJ_GB0..): three of 32 sounds (two machines each), four of 3 kits. They live in
  * Felucca's old projects', user presets' and autosave's sectors (st_sector). Kits of the four-track build (four to
  * an object, GB_MAGIC) load into these (gb_kit_old: tracks 5 and 6 as they are). A RAM mirror of each
@@ -22,6 +22,9 @@ _Static_assert(GB_NPOOL <= GB_MACH, "more pools: more sound objects (GB_SOBJ, st
 #define GB_MAGIC 0x31534247u                             /* "GBS1": the sounds; the four-track build's kits */
 #define GB_KMAGIC 0x324B4247u                            /* "GBK2": the six-track kits */
 #define GB_PMAGIC 0x33534247u                            /* "GBS3": the sounds by pool */
+#define GB_K3MAGIC 0x334B4247u                           /* "GBK3": the kits with their LOCKS keys */
+#define GB_KLK 264u                                      /* a kit's LOCKS keys: a count, then each key with locks: track << 4 |
+                                                          * key, n, n ids, n values (int16) */
 typedef struct { uint8_t used, np; int8_t p[P_COUNT]; } gb_snd_t;   /* values - 64 (all of them fit in -64..127: project.c);
                                                                     * used: 1 a DIGITAL sound (all before the 808s), 2 ANALOG,
                                                                     * 3 SAMPLER */
@@ -31,8 +34,17 @@ typedef struct {
     gb_snd_t s[NTRK];
     perf_mac_t mac[PM_NM];
     int16_t g[G_COUNT];
+    uint8_t lk[GB_KLK];
 } gb_kit_t;
 typedef struct { uint32_t magic; uint16_t np, kind; gb_kit_t k[GB_KPER]; } gb_kobj_t;
+/* the kits before the LOCKS keys (GB_KMAGIC): the same up to lk; read once, written as gb_kobj_t */
+typedef struct {
+    uint8_t used, rel, fade, rsv;
+    gb_snd_t s[NTRK];
+    perf_mac_t mac[PM_NM];
+    int16_t g[G_COUNT];
+} gb_kit2_t;
+typedef struct { uint32_t magic; uint16_t np, kind; gb_kit2_t k[GB_KPER]; } gb_kobj2_t;
 /* the four-track build's kit objects (OBJ_GB0 + 3 .. 5, four kits each): read once, then written as gb_kobj_t */
 typedef struct {
     uint8_t used, rel, fade, rsv;
@@ -89,7 +101,7 @@ static void gb_kit_old_load(uint32_t o)
                     kt->mac[j].trk[n] = PM_G;
         }
         memcpy(kt->g, ok->g, sizeof kt->g);
-        gb_ko[k / GB_KPER].magic = GB_KMAGIC;
+        gb_ko[k / GB_KPER].magic = GB_K3MAGIC;
         gb_ko[k / GB_KPER].np = old.np;
         gb_dirty |= (uint8_t)(1u << (GB_SOBJ + k / GB_KPER));
     }
@@ -150,13 +162,24 @@ static void gb_store_init(void)
         gb_pool_move();
     for (o = 0; o < GB_KOBJ; o++) {
 #if FELUCCA_FLASH
-        if (st_load(OBJ_GB0 + GB_SOBJ + o, &gb_ko[o], sizeof gb_ko[o]) == (int)sizeof gb_ko[o] && gb_ko[o].magic == GB_KMAGIC)
+        static gb_kobj2_t k2 __attribute__((section(".pool")));
+        if (st_load(OBJ_GB0 + GB_SOBJ + o, &gb_ko[o], sizeof gb_ko[o]) == (int)sizeof gb_ko[o] && gb_ko[o].magic == GB_K3MAGIC)
             continue;
+        if (st_load(OBJ_GB0 + GB_SOBJ + o, &k2, sizeof k2) == (int)sizeof k2 && k2.magic == GB_KMAGIC) {
+            uint32_t i;                                  /* (kits before the LOCKS keys: none in them) */
+            memset(&gb_ko[o], 0, sizeof gb_ko[o]);
+            gb_ko[o].magic = GB_K3MAGIC;
+            gb_ko[o].np = k2.np;
+            for (i = 0; i < GB_KPER; i++)
+                memcpy(&gb_ko[o].k[i], &k2.k[i], sizeof k2.k[i]);
+            gb_dirty |= (uint8_t)(1u << (GB_SOBJ + o));
+            continue;
+        }
 #endif
         memset(&gb_ko[o], 0, sizeof gb_ko[o]);
     }
 #if FELUCCA_FLASH
-    for (o = 0; o < GB_KOBJ && gb_ko[o].magic != GB_KMAGIC; o++)
+    for (o = 0; o < GB_KOBJ && gb_ko[o].magic != GB_K3MAGIC; o++)
         ;
     if (o == GB_KOBJ)                                    /* no six-track kits yet: the four-track build's, once */
         for (o = 0; o < 3u; o++)
@@ -248,6 +271,53 @@ static int gbs_load_sound(uint32_t slot)
     ui.force = 1;
     return 1;
 }
+/* the LOCKS keys (seq.c kit) into a kit's lk: 0 when they did not all fit (the first ones kept) */
+static int gbk_lk_pack(uint8_t *lk)
+{
+    uint32_t k, o = 1, n = 0;
+    memset(lk, 0, GB_KLK);
+    for (k = 0; k < NTRK * 16u; k++) {
+        const kit_key_t *kk = &kit[k / 16u][k % 16u];
+        uint32_t c = kk->n > KIT_N ? KIT_N : kk->n;
+        if (!c)
+            continue;
+        if (o + 2u + 3u * c > GB_KLK || n == 255u) {
+            lk[0] = (uint8_t)n;
+            return 0;
+        }
+        lk[o++] = (uint8_t)((k / 16u) << 4 | (k % 16u));
+        lk[o++] = (uint8_t)c;
+        memcpy(lk + o, kk->id, c);
+        o += c;
+        memcpy(lk + o, kk->v, 2u * c);
+        o += 2u * c;
+        n++;
+    }
+    lk[0] = (uint8_t)n;
+    return 1;
+}
+/* a kit's lk back into the LOCKS keys (all six tracks': a kit with none empties them) */
+static void gbk_lk_unpack(const uint8_t *lk)
+{
+    uint32_t i, o = 1, k;
+    for (k = 0; k < NTRK; k++)
+        if (kit_cur[k])
+            kit_undo(&trk[k]);                           /* (a key's locks sounding: put back first) */
+    memset(kit, 0, sizeof kit);
+    for (i = 0; i < lk[0]; i++) {
+        uint32_t at = lk[o], c = lk[o + 1u];
+        kit_key_t *kk;
+        if (c > KIT_N || o + 2u + 3u * c > GB_KLK)
+            break;
+        kk = (at >> 4) < NTRK ? &kit[at >> 4][at & 15u] : 0;
+        if (kk) {
+            kk->n = (uint8_t)c;
+            memcpy(kk->id, lk + o + 2u, c);
+            memcpy(kk->v, lk + o + 2u + c, 2u * c);
+        }
+        o += 2u + 3u * c;
+    }
+}
 static int gbk_save(uint32_t k)
 {
     gb_kit_t *kt;
@@ -265,7 +335,9 @@ static int gbk_save(uint32_t k)
     kt->fade = pm_fade;
     for (i = 0; i < G_COUNT; i++)
         kt->g[i] = song.g[i];
-    gb_ko[k / GB_KPER].magic = GB_KMAGIC;
+    if (!gbk_lk_pack(kt->lk))
+        ui_message("KEY LOCKS PART SAVED");
+    gb_ko[k / GB_KPER].magic = GB_K3MAGIC;
     gb_ko[k / GB_KPER].np = (uint16_t)P_COUNT;
     gb_dirty |= (uint8_t)(1u << (GB_SOBJ + k / GB_KPER));
     return 1;
@@ -297,6 +369,7 @@ static int gbk_load(uint32_t k)
     pm_fade = kt->fade > 4u ? 0u : kt->fade;
     for (i = 0; i < NELEM(GB_KIT_G); i++)
         song.g[GB_KIT_G[i]] = (int16_t)clamp(kt->g[GB_KIT_G[i]], GP[GB_KIT_G[i]].min, GP[GB_KIT_G[i]].max);
+    gbk_lk_unpack(kt->lk);
     ui.force = 1;
     return 1;
 }

@@ -184,7 +184,8 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
 - Saving (gb_store.c): 16 sound slots per machine (6 machines = 96; more
   machines later). Hold SAVE = SAVE screen: white key = save the selected
   track's sound, black key (11) = save kit (6 sounds + macros + FADE + FX/COMB
-  globals; not tempo/DJ). Tap SAVE = LOAD screen: key loads and the screen
+  globals + the LOCKS keys, 264 bytes of them: ~30-40 keys, gb_store.c GB_KLK;
+  not tempo/DJ). Tap SAVE = LOAD screen: key loads and the screen
   closes so the keys play it at once; SAVE or a page button closes it. Patterns
   are NEVER saved: it's for jamming from scratch.
 - SAVE?/LOAD? screen is plain text only (no slot boxes): "SOUND - WHITE KEY",
