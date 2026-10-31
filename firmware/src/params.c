@@ -86,7 +86,7 @@ static const char *const N_MDST[] = {"OFF", "PITCH", "CUT", "SHP", "AMP", "PAN",
                                      "DTIME", "DFDBK", "DTONE", "RTIME", "RDAMP", "GRIT", "RES", "F.AMT", "F.ATK",
                                      "F.DEC", "F.SUS", "F.REL", "C.MIX", "CTUNE", "CFDBK", "CDAMP", "DJ",
                                      "LEVEL", "AGE", "GATE",   /* (5 letters fit) (ANALOG's LEVEL and AGE, SAMPLER's GATE) */
-                                     "TYPE", "WAVE", "PHASE", "L.FAD", "SYNC", "L.TRG", "POL"};   /* (they step) */
+                                     "TYPE", "WAVE", "PHASE", "L.FAD", "SYNC", "L.TRG", "POL", "VOL"};   /* (they step) */
 static const char *const N_ENGNAME[] = {"ANALOG", FELUCCA_FM4 ? "DIGITAL" : "-", "PHASE", "LOFI", "SAMPLE", "VOICE", "TRIO", "WHEEL", "GRAIN", "PHYS",
                                              "DRUM", "NOISE", "FM6",
 };
@@ -323,7 +323,7 @@ static const uint8_t DTIME_ORDER[13] = {9, 8, 7, 6, 12, 0, 10, 1, 11, 4, 2, 5, 3
  * FILTER, FILTER ENV, ENV, ENV DEST, LFO, LFO DEST, DELAY, VERB, COMB, DJ), then PITCH and AMP. Left out: PAN SHP
  * DEPTH VEL TIME, E8 (MACH) and DIST CHO (a sound saved with one keeps it). The stored values (mod.c MD_*) stay */
 static const uint8_t MDST_ORDER[] = {0, 12, 13, 14, 15, 16, 17, 18, 51, 52, 53, 2, 40, 41, 42, 43, 44, 45, 23, 24, 25,
-                                     26, 10, 8, 34, 35, 36, 9, 37, 38, 39, 46, 47, 48,
+                                     26, 61, 5, 10, 8, 34, 35, 36, 9, 37, 38, 39, 46, 47, 48,
                                      49, 50, 1, 4};   /* (the old ENV DEST / LFO DEST depths 27..33 and VIB: off their pages) */
 static int32_t mdst_rank(int32_t v)               /* v's place in MDST_ORDER (one left out: OFF's) */
 {
@@ -497,6 +497,7 @@ typedef struct {
  * COMB, SEQ, HOME MIXER / CLOCK. No ARP, no SAVE pages (SAVE: ui_input.c gbsv_*) */
 static const page_t PAGES[] = {
     {"ENV", FAM_ENV, SC_TRACK, GR_ADSR, {P_ATK, P_DEC, P_SUS, P_REL}},
+    {"VOL PAN", FAM_ENV, SC_TRACK, GR_NONE, {P_LEVEL, P_PAN, 0xFF, 0xFF}},   /* the track's level, pan: lockable, LFO-able */
     {"ENV DEST", FAM_ENV, SC_TRACK, GR_NONE, {P_M2DST, P_M2AMT, 0xFF, 0xFF}},   /* the envelope's DEST and AMT (matrix slot 2,
                                                                                   * SRC ENV: ui_input.c msrc_fix; hold ENV too) */
     {"LFO", FAM_LFO, SC_TRACK, GR_LFO, {P_LRATE, P_LWAVE, P_M1DST, P_M1AMT}},   /* .. the LFO's (slot 1, SRC LFO; hold LFO too) */

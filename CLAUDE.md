@@ -106,8 +106,9 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   step: only a step that plays a note puts the earlier locks back. Trigless
   lock steps add theirs on top. Stopping puts everything back.
 - OCT- clear (SEQ mode, on release) wipes the track's locks and automation too.
-- CLEAR ALL: hold OCT- 1 s alone (any mode) = "CLEAR ALL? / PRESS OCT+"; OCT+ = every track's steps and locks
-  and the FX lane gone (sounds and LENs stay); let go = cancel (ui_input.c cla_*). No instant OCT- + OCT+ any more.
+- CLEAR ALL: hold OCT- 1 s alone (any mode) = "CLEAR ALL? / PRESS OCT+"; OCT+ = a fresh start: every track's
+  steps, locks, LOCKS keys and the FX lane gone, the power-on sounds, mix and FX back (tempo, swing, clock, macros
+  stay); let go = cancel (ui_input.c cla_*). No instant OCT- + OCT+ any more.
 - Parameter locks: with step keys on, hold step(s) on any sound page and turn
   a knob = lock. Locked dials show inverted (like macros). Hold step + OCT-
   clears that step's locks. Every knob locks: all sound pages incl. machine,
@@ -119,7 +120,8 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
 - GLO pages: PERF, COMB, DJ (the DJ filter's own page, so it can be locked), AMP (AMP = the whole mix's level,
   G_AMP; PAN = the whole mix's balance, G_PAN, lockable and an FX LFO DEST "PAN"; lockable, LFO-able: ducking / pulsing; ~3 ms slew so a square never clicks, fx.c gain_ramp).
 - LFO pages: LFO (RATE WAVE DEST AMT: matrix slot 1, SRC always LFO, ui_input.c msrc_fix), SYNC (SYNC TRIG POL
-  FADE; PHASE on no page). ENV DEST page = DEST AMT (slot 2, SRC always ENV). The old fixed-depth LFO DEST /
+  FADE; PHASE on no page). ENV DEST page = DEST AMT (slot 2, SRC always ENV).
+  ENV button: ENV -> VOL PAN (the track's LVL and PAN, lockable, LFO/ENV DESTs "VOL" (mod.c MDX) and "PAN") -> ENV DEST. The old fixed-depth LFO DEST /
   ENV DEST knobs are gone from the pages (a saved sound keeps its values).
 - Holds are 500 ms (HINT_MS, FILL_MS); the mod picker needs 700 ms (TM_MS). A
   panel tap can last 250 ms. Timestamps stored as fm1_ms | 1 can be 1 ms ahead:

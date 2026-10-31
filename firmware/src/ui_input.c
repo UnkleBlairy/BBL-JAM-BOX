@@ -102,8 +102,9 @@ static void hint_poll(void)
 /* SIMPLE, FILL MODE: PLAY pressed while playing arms it (fill_arm); held FILL_MS it is FILL (seq.c seq_fill: FILL trigs
  * play, a step entered gets FILL, ui_gb.c's banner), let go sooner it stops as ever */
 #define FILL_MS 500u
-/* SIMPLE, CLEAR ALL (cla_poll): OCT- held CLA_MS alone = "CLEAR ALL? / PRESS OCT+"; OCT+ then = every track's steps
- * and locks and the FX lane gone (sounds, LENs stay); OCT- let go = cancel. In SEQ mode a short OCT- = the track (the
+/* SIMPLE, CLEAR ALL (cla_poll): OCT- held CLA_MS alone = "CLEAR ALL? / PRESS OCT+"; OCT+ then = a fresh start: every
+ * track's steps and locks, the FX lane, the LOCKS keys gone, the power-on sounds, FX and mix back (macros, tempo stay);
+ * OCT- let go = cancel. In SEQ mode a short OCT- = the track (the
  * FX lane on the FX track), done when let go */
 #define CLA_MS 1000u
 static int8_t cla_oct;                                  /* (the octave before OCT- went down: KEY mode's press takes one off) */
@@ -120,12 +121,31 @@ static void cla_clear(int all)
         ui_message("FX CLEARED");
         return;
     }
-    for (a = all ? 0u : song.sel; a < (all ? NTRK : song.sel + 1u); a++) {
-        for (i = 0; i < NSTEP; i++)
-            step_clear(&trk[a].step[i]);
-        motion_clear(&trk[a]);                          /* (its locks and automation too) */
+    if (all) {                                          /* a fresh start: the power-on sounds, FX and mix too */
+        for (i = 0; i < G_COUNT; i++)                   /* (not the tempo, swing, clock, tuning, MIDI routing) */
+            if (i != G_BPM && i != G_SWING && i != G_CLOCK && i != G_TUNE && i != G_ROUTE)
+                song.g[i] = GP[i].def;
+        undo_depth++;                                   /* (no undo copies: main.c felucca_init's way) */
+        for (a = 0; a < NTRK; a++) {
+            track_t *t = &trk[a];
+            kit_undo(t);                                /* (the LOCKS keys go: their sound is gone) */
+            for (i = 0; i < 16u; i++)
+                kit[a][i].n = 0;
+            fm1_irq_off();
+            track_defaults(t);                          /* (its steps and locks too) */
+            fm1_irq_on();
+            set_engine_of(t, ENGI_DIGITAL);
+            apply_preset_to(t, TRK_DEF[a]);
+        }
+        undo_depth--;
+        panic_req |= (uint8_t)((1u << NTRK) - 1u);
+        ui_message("ALL CLEARED");
+        return;
     }
-    ui_message(all ? "ALL CLEARED" : "TRACK CLEARED");
+    for (i = 0; i < NSTEP; i++)
+        step_clear(&TSEL->step[i]);
+    motion_clear(TSEL);                                 /* (its locks and automation too) */
+    ui_message("TRACK CLEARED");
 }
 static void cla_poll(uint32_t pressed)
 {

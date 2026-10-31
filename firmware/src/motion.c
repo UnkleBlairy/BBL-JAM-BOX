@@ -76,7 +76,7 @@ static int motion_param(uint32_t id)
     if (FELUCCA_SIMPLE && (id == P_LSYNC || id == P_LTRIG || id == P_LPOL))
         return 1;                                        /* (SIMPLE: every LFO setting) */
     return (id <= P_REL || (id >= P_ED_FLT && id <= P_LD_AMP) ||
-        (id >= P_DIST && id <= P_REV) || id == P_GLIDE || id == P_PAN ||
+        (id >= P_DIST && id <= P_REV) || id == P_GLIDE || id == P_PAN || (FELUCCA_SIMPLE && id == P_LEVEL) ||
         id == P_DETUNE || (id >= P_FM1_ATK && id <= P_FM4_LEVEL) || (id >= P_LN0 && id <= P_LN7) ||
         id == P_SPRD || (id >= P_ITYPE && id <= P_IMIX) || id >= P_E0 ||
         (FELUCCA_SIMPLE && (id == P_M1AMT || id == P_M1DST || id == P_M2AMT || id == P_M2DST || id == P_FTYPE || id == P_TRANS)));   /* (SIMPLE: every knob of the sound
