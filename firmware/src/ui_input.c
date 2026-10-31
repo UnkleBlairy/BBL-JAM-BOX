@@ -1492,6 +1492,35 @@ static void msrc_fix(void)
             trk[i].p[P_M2SRC] = MS_ENV;
     }
 }
+/* SIMPLE: OCT- with a page button held (FX SCL ENV LFO EDIT GLO ARP; not SEQ, HOME, SAVE): its page (the one shown,
+ * else the one it opens) back to the start (ui.c page_reset); the button's release opens nothing, holding on picks no
+ * DEST (tm_eat). 1: done */
+static int page_btn_reset(void)
+{
+    static const uint8_t RB[7] = {B_FX, B_SCL, B_ENV, B_LFO, B_EDIT, B_GLO, B_ARP};
+    uint32_t i, f, b = 0xFFu;
+    char m[24];
+    for (i = 0; i < 7u && b == 0xFFu; i++)
+        if ((fm1_in.buttons >> panel.btn[RB[i]]) & 1u)
+            b = RB[i];
+    if (b == 0xFFu || tm_dn)
+        return 0;
+    for (f = 0; f < FAM_COUNT && !(FAM_BTN[f] == b && page_first(f) < NPAGES && PAGES[page_first(f)].fam == f); f++)
+        ;
+    if (f == FAM_COUNT)
+        return 0;
+    if (ui.home || cur_page()->fam != f)
+        open_family(f);
+    ui.pg_down &= (uint16_t)~(1u << panel.btn[b]);
+    layer_kill();                                       /* (its release: no tap) */
+    for (i = 0; i < 3u; i++)
+        if (TM_BTN[i] == b)
+            tm_eat |= (uint8_t)(1u << i);
+    str_cpy(m, cur_page()->title, sizeof m);
+    str_cpy(m + str_len(m), page_reset() ? " RESET" : ": NOTHING", sizeof m - str_len(m));
+    ui_message(m);
+    return 1;
+}
 static void edit_param(uint32_t slot, int32_t steps)
 {
     int16_t *vp;
@@ -1840,6 +1869,8 @@ static void ui_input(void)
             break;
         case B_OCTDN:
         case B_OCTUP: {
+            if (FELUCCA_SIMPLE && b == B_OCTDN && page_btn_reset())   /* a page button held: its page back to the start */
+                break;
             if (FELUCCA_SIMPLE && b == B_OCTDN && pm_h.n == 1u) {   /* a macro key held (alone): OCT- empties it */
                 pm_clear();
                 ui_message("MACRO CLEARED");

@@ -1319,27 +1319,53 @@ static uint32_t preset_orig(const engine_t *e, uint32_t k)
 static void set_engine_of(track_t *t, uint32_t ei);
 /* preset pi of the engine the track asked for: the sound only (not the steps, not param_kept) */
 /* MACH turned: the machine's own starting sound (its factory preset's values and envelope), the rest of the track kept */
-static void machine_defaults(track_t *t)
+static void machine_defaults_p(const track_t *t, int16_t *p)   /* (into p: t's values, or a page's reset) */
 {
     const machine_t *m = trk_machine(t);
     const engine_t *e = ENGINES[m->engine];
     const preset_t *pr = &e->presets[m->preset % e->npresets];
     uint32_t i;
     for (i = 0; i < 7u; i++)
-        t->p[P_E0 + i] = (int16_t)pr->e[i];
-    t->p[P_TRANS] = 0;                                /* PITCH (SYN, SAMPLE): in tune */
-    t->p[P_ATK] = pr->env[0];
-    t->p[P_DEC] = pr->env[1];
-    t->p[P_SUS] = pr->env[2];
-    t->p[P_REL] = pr->env[3];
+        p[P_E0 + i] = (int16_t)pr->e[i];
+    p[P_TRANS] = 0;                                   /* PITCH (SYN, SAMPLE): in tune */
+    p[P_ATK] = pr->env[0];
+    p[P_DEC] = pr->env[1];
+    p[P_SUS] = pr->env[2];
+    p[P_REL] = pr->env[3];
     if (m->engine == ENGI_ANALOG) {                   /* an 808: its LEVEL (the eighth knob), AGE */
-        t->p[P_LN0] = AN_DEF[m->sub % AN_N][7];
-        t->p[P_LN1] = 0;                              /* AGE: clean at the start (the user's choice) */
+        p[P_LN0] = AN_DEF[m->sub % AN_N][7];
+        p[P_LN1] = 0;                                 /* AGE: clean at the start (the user's choice) */
     } else if (m->engine == ENGI_SAMPLER) {           /* the sampler: LEVEL, GATE, track n's slot n */
-        t->p[P_LN0] = 100;
-        t->p[P_LN2] = TP[P_LN2].def;
-        t->p[P_E5] = (int16_t)(trk_index(t) % SMP_MAX);
+        p[P_LN0] = 100;
+        p[P_LN2] = TP[P_LN2].def;
+        p[P_E5] = (int16_t)(trk_index(t) % SMP_MAX);
     }
+}
+static void machine_defaults(track_t *t) { machine_defaults_p(t, t->p); }
+/* SIMPLE: a page button held + OCT-: the page's knobs back to where they start (the machine's starting sound on its
+ * pages, else each value's default; not MACH). 0: nothing on it to reset */
+static int page_reset(void)
+{
+    const page_t *pg = cur_page();
+    int16_t md[P_COUNT], *vp;
+    uint32_t k, n = 0;
+    if (ui.home || fxt_x(pg) || pg->scope == SC_TRK || pg->fam == FAM_TRK || pg->graph == GR_PERF)
+        return 0;
+    for (k = 0; k < P_COUNT; k++)
+        md[k] = track_desc(TSEL, k)->def;
+    machine_defaults_p(TSEL, md);
+    for (k = 0; k < 4u; k++) {
+        const param_desc_t *d = page_desc(pg, k, &vp);
+        if (!d || !vp || d->max == d->min || vp == &TSEL->p[P_E7])
+            continue;
+        if (vp >= TSEL->p && vp < TSEL->p + P_COUNT)
+            *vp = (int16_t)param_fit(d, md[vp - TSEL->p]);
+        else if (vp >= song.g && vp < song.g + G_COUNT)
+            *vp = GP[vp - song.g].def;
+        n++;
+    }
+    ui.force = 1;
+    return n != 0u;
 }
 /* SIMPLE: track t becomes machine mach (the PRESETS knob): its engine (the old one's voices fade, voice.c
  * engine_block) and its starting sound; the rest of the track (filter, sends, LFO, sequence) stays */

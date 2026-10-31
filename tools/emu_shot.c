@@ -14,6 +14,7 @@ int main(int argc,char**argv){
     if(!strncmp(s,"tap:",4)) tap((uint32_t)atoi(s+4));
     else if(!strncmp(s,"ms:",3)) run(atof(s+3));
     else if(!strncmp(s,"hold:",5)) { web_buttons(1u<<atoi(s+5)); run(80);} 
+    else if(!strncmp(s,"both:",5)) { int a2,b2; sscanf(s+5,"%d,%d",&a2,&b2); web_buttons(1u<<a2); run(120); web_buttons((1u<<a2)|(1u<<b2)); run(100); web_buttons(1u<<a2); run(80); web_buttons(0); run(150);}
     else if(!strcmp(s,"rel")) { web_buttons(0); run(150);} 
     else if(!strncmp(s,"key:",4)) { web_keys(1u<<atoi(s+4)); run(80); web_keys(0); run(100);} 
     else if(!strncmp(s,"keyd:",5)) { web_keys(1u<<atoi(s+5)); run(100);} 
