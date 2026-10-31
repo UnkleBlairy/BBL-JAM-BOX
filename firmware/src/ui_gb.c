@@ -118,7 +118,7 @@ static uint32_t gb_page_icon(const page_t *pg, uint32_t mach)
         return IC_VERB;
     if (str_eq(pg->title, "SENDS"))
         return IC_DELAY;
-    if (pg->fxt && pg->id[0] != G_DTIME && pg->id[0] != G_RSIZE)   /* the FX track's LFOs: the wave (DOWN: SAW's) */
+    if (pg->id[0] == G_F1RATE || pg->id[0] == G_F2RATE || pg->id[0] == G_F3RATE)   /* the FX track's LFOs: the wave (DOWN: SAW's) */
         return IC_SINE + (uint32_t)(song.g[pg->id[1]] % 6 < 3 ? song.g[pg->id[1]] % 6 : song.g[pg->id[1]] % 6 - 1);
     if (str_eq(pg->title, "AMP"))
         return IC_NONE;
@@ -253,6 +253,8 @@ static void gb_ban_fill(gb_view_t *v)
         ban_put(v, "RELEASE TO", "REVERT");
     } else if (v->hint == 2u) {                   /* OCT+ held */
         ban_put(v, "TEMP CHANGE", "WIGGLE KNOB");
+    } else if (cla_st == 2u) {                    /* OCT- held: CLEAR ALL? */
+        ban_put(v, "CLEAR ALL?", "PRESS OCT+");
     } else if (v->hint == 3u) {                   /* an empty step held, a trig copied */
         ban_put(v, "PASTE TRIG", "PRESS SAVE");
     } else if (v->hint == 1u) {                   /* SEQ held */

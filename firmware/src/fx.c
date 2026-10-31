@@ -445,7 +445,7 @@ static void fx_panic(void)
     memset(&rev_u, 0, sizeof rev_u);
     memset(mfx_cb, 0, sizeof mfx_cb);
 }
-static int32_t fxs_cur[4] = {32767, 32767, 32767, 32767}, amp_cur = 32767;   /* (mod.c fxs_gain's, AMP's, as the last block ended) */
+static int32_t fxs_cur[4] = {32767, 32767, 32767, 32767}, amp_cur = 32767, amp_cr = 32767;   /* (mod.c fxs_gain's, AMP's, as the last block ended) */
 static void fx_buses(const int32_t *dly_in, const int32_t *rev_in, int32_t *wet,
                      uint32_t n)
 {
@@ -729,9 +729,9 @@ static uint32_t mix_split(void)
 /* SIMPLE: buf's n by a gain going from *cur to to (Q15, 32767 none: a block at it is left alone), no steps (no clicks) */
 static void amp_block(uint32_t n)                       /* SIMPLE: AMP (G_AMP, as modulated), the whole mix; squared */
 {
-    int32_t v = song.g[G_AMP], to = v >= 127 ? 32767 : (v * v * 32767) / (127 * 127), c = amp_cur;
-    gain_ramp(mix_l, n, &c, to);
-    gain_ramp(mix_r, n, &amp_cur, to);
+    int32_t v = song.g[G_AMP], to = v >= 127 ? 32767 : (v * v * 32767) / (127 * 127), p = song.g[G_PAN];
+    gain_ramp(mix_l, n, &amp_cur, p > 0 ? to * (64 - p) / 64 : to);   /* PAN: the other side quieter (a balance) */
+    gain_ramp(mix_r, n, &amp_cr, p < 0 ? to * (64 + p) / 64 : to);
 }
 
 static void mix_block(int32_t *out, uint32_t n)

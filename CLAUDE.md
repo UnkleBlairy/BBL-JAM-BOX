@@ -105,7 +105,9 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
 - A lock stays until the track's next trig (Elektron-style), not just one
   step: only a step that plays a note puts the earlier locks back. Trigless
   lock steps add theirs on top. Stopping puts everything back.
-- OCT- clear (SEQ mode) wipes the track's locks and automation too.
+- OCT- clear (SEQ mode, on release) wipes the track's locks and automation too.
+- CLEAR ALL: hold OCT- 1 s alone (any mode) = "CLEAR ALL? / PRESS OCT+"; OCT+ = every track's steps and locks
+  and the FX lane gone (sounds and LENs stay); let go = cancel (ui_input.c cla_*). No instant OCT- + OCT+ any more.
 - Parameter locks: with step keys on, hold step(s) on any sound page and turn
   a knob = lock. Locked dials show inverted (like macros). Hold step + OCT-
   clears that step's locks. Every knob locks: all sound pages incl. machine,
@@ -114,8 +116,8 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   P_COUNT+j). Not the CLOCK page. Removing a step removes its locks.
 - No OCT+ second sets of knobs. OCT+ held + knob = a temporary change (ui_input.c
   mom_*): let go of OCT+ and it snaps back (no keep).
-- GLO pages: PERF, COMB, DJ (the DJ filter's own page, so it can be locked), AMP (the whole mix's level,
-  G_AMP; lockable, LFO-able: ducking / pulsing; ~3 ms slew so a square never clicks, fx.c gain_ramp).
+- GLO pages: PERF, COMB, DJ (the DJ filter's own page, so it can be locked), AMP (AMP = the whole mix's level,
+  G_AMP; PAN = the whole mix's balance, G_PAN, lockable and an FX LFO DEST "PAN"; lockable, LFO-able: ducking / pulsing; ~3 ms slew so a square never clicks, fx.c gain_ramp).
 - LFO pages: LFO (RATE WAVE DEST AMT: matrix slot 1, SRC always LFO, ui_input.c msrc_fix), SYNC (SYNC TRIG POL
   FADE; PHASE on no page). ENV DEST page = DEST AMT (slot 2, SRC always ENV). The old fixed-depth LFO DEST /
   ENV DEST knobs are gone from the pages (a saved sound keeps its values).

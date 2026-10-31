@@ -272,7 +272,7 @@ static uint32_t mg_slot(uint32_t g, int32_t *off)       /* global g's place in m
 static const uint8_t FXL_ID[3][4] = {{G_F1RATE, G_F1WAVE, G_F1DEST, G_F1AMT}, {G_F2RATE, G_F2WAVE, G_F2DEST, G_F2AMT},
                                      {G_F3RATE, G_F3WAVE, G_F3DEST, G_F3AMT}};   /* RATE WAVE DEST AMT */
 static const uint8_t FXD_G[NELEM(N_FXDST)] = {0xFFu, G_AMP, G_MIDI, G_SYNC, G_CRATE, G_CDEPTH, G_INFO, G_DTIME, G_DFDBK,
-                                              G_DCOLOR, G_RSIZE, G_RDAMP, G_RTYPE, 0xFFu, 0xFFu, 0xFFu, 0xFFu};
+                                              G_DCOLOR, G_RSIZE, G_RDAMP, G_RTYPE, 0xFFu, 0xFFu, 0xFFu, 0xFFu, G_PAN};
 static struct { uint32_t ph, rnd; } fxlfo[3];
 static uint32_t fxlfo_seed = 0x6C8E9CF5u;
 static int32_t fxs_gain[4] = {32767, 32767, 32767, 32767};   /* this block's: the delay's sends, the reverb's, the
@@ -330,7 +330,7 @@ static __attribute__((noinline)) void mod_g_begin(uint32_t nb)
         a = j < mg_n ? mg_base[j] : song.g[FXL_ID[k][3]];   /* (its AMT locked on the FX lane: that) */
         if (!d || !a || d >= NELEM(FXD_G))
             continue;
-        if (d >= FXD_DSND) {                            /* D.SND R.SND D.OUT R.OUT */
+        if (d >= FXD_DSND && d < FXD_DSND + 4u) {       /* D.SND R.SND D.OUT R.OUT */
             int32_t *gp = &fxs_gain[(d - FXD_DSND) & 3u];
             *gp = clamp(*gp + ((v * a) >> 6), 0, 32767);
             continue;

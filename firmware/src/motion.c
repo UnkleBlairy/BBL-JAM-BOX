@@ -11,8 +11,8 @@
 /* SIMPLE: the master's controls a lock can hold too (the DJ filter, the COMB, the delay, the reverb): ids P_COUNT + j,
  * j their place in MOTION_G. Their value is song.g's, one for all the tracks (each keeps its own base) */
 static const uint8_t MOTION_G[] = {G_MIDI, G_SYNC, G_CRATE, G_CDEPTH, G_INFO, G_DTIME, G_DFDBK, G_DCOLOR, G_RSIZE, G_RDAMP,
-                                   G_RTYPE, G_AMP, G_F1AMT, G_F2AMT, G_F3AMT};   /* (append-only: the ids are stored) */
-#define MOTION_NG 15u
+                                   G_RTYPE, G_AMP, G_F1AMT, G_F2AMT, G_F3AMT, G_PAN};   /* (append-only: the ids are stored) */
+#define MOTION_NG 16u
 _Static_assert(MOTION_NG <= 16u, "the FX lane's lk: 16 bits (seq.c fxl)");
 #define MOTION_N (P_COUNT + MOTION_NG)                   /* the ids a record can hold */
 _Static_assert(MOTION_N <= 128u, "a record's id is 7 bits (MOTION_ID)");

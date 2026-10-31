@@ -367,7 +367,9 @@ enum { LAYER_NONE, LAYER_FX, LAYER_GLO, LAYER_SCL, LAYER_EDIT, LAYER_SEQ, LAYER_
 /* FM operator pages belong to DIGITAL; they never appear on other instruments (without FELUCCA_FM4: never). SLICES:
  * a SLICE track's (ui_slice.c); LANES / LANES 2 a DRUM track's (its lane levels); FILTER an ANALOG track's; OPERATOR, OP ENV, OPERATOR 2 an FM6
  * track's (its patch's operators, ui_fm6op.c) */
-static uint8_t fxl_sel;                               /* SIMPLE: the FX track is selected (black key 7, ALGO past 6) */
+static uint8_t fxl_sel;
+static uint8_t cla_st;                                /* SIMPLE, ui_input.c cla_poll: 1 SEQ mode's OCT- down (a clear when
+                                                       * let go), 2 asking CLEAR ALL? (ui_gb.c's pop-up), 3 done */                               /* SIMPLE: the FX track is selected (black key 7, ALGO past 6) */
 /* SIMPLE: a page that is not the selected track's (a big X, ui_gb.c; its knobs and keys do nothing): on the FX track
  * a track's (its sound, its SEQ ..), on a track the FX track's (fxt: the effects, PERF) */
 static int fxt_x(const page_t *pg)                    /* (the SEQ page is both's: the FX lane's LEN) */

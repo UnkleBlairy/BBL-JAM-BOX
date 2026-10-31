@@ -12,8 +12,8 @@ static const uint8_t LSYNC_DIV[11] = {0, 9, 8, 7, 6, 0, 1, 4, 2, 5, 3};
 static const char *const N_FXRATE[] = {"4BAR", "2BAR", "1/1", "1/2", "1/4", "1/8", "8T", "1/16", "16T", "1/32"};
 static const char *const N_FXWAVE[] = {"SIN", "TRI", "UP", "DOWN", "SQR", "S&H"};
 static const char *const N_FXDST[] = {"OFF", "AMP", "DJ", "C.MIX", "CTUNE", "CFDBK", "CDAMP", "DTIME", "DFDBK", "DTONE",
-                                      "RTIME", "RDAMP", "GRIT", "D.SND", "R.SND", "D.OUT", "R.OUT"};
-enum { FXD_DSND = 13 };                                  /* (D.SND R.SND D.OUT R.OUT: mod.c fxs_gain 0..3) */
+                                      "RTIME", "RDAMP", "GRIT", "D.SND", "R.SND", "D.OUT", "R.OUT", "PAN"};
+enum { FXD_DSND = 13, FXD_PAN = 17 };                                  /* (D.SND R.SND D.OUT R.OUT: mod.c fxs_gain 0..3) */
 static const char *const N_LTRIG[] = {"NOTE", "FREE"};
 static const char *const N_LPOL[] = {"BI", "UNI"};
 static const char *const N_AMODE[] = {"OFF", "UP", "DN", "UPDN", "RND", "ORD", "REPEAT",   /* (append-only: seq.c AM_*) */
@@ -258,6 +258,7 @@ static const param_desc_t GP[G_COUNT] = {
     [G_RTYPE] = PD("GRIT", F_PCT, 0, 127, 0),   /* SIMPLE: one reverb (fx.c rev_quad); this is its GRIT, clean at 0 */
     [G_F3AMT] = PD("AMT", F_BIPCT, -64, 63, 0),
     [G_AMP] = PD("AMP", F_PCT, 0, 127, 127),               /* SIMPLE: the whole mix's level, 127 as it is (fx.c amp_block) */
+    [G_PAN] = PD("PAN", F_BIPCT, -64, 63, 0),               /* SIMPLE: the whole mix's pan (fx.c amp_block) */
     [G_F1WAVE] = PE("WAVE", N_FXWAVE, 0),
     [G_F2WAVE] = PE("WAVE", N_FXWAVE, 0),
     [G_F3WAVE] = PE("WAVE", N_FXWAVE, 0),
@@ -516,7 +517,7 @@ static const page_t PAGES[] = {
     {"PERF", FAM_GLO, SC_GLOBAL, GR_PERF, {0xFF, 0xFF, 0xFF, 0xFF}, 1},        /* GLO: the performance macros (ui.c perf_*) */
     {"COMB", FAM_GLO, SC_GLOBAL, GR_NONE, {G_SYNC, G_CRATE, G_CDEPTH, G_INFO}, 1},   /* the master comb: MIX TUNE FDBK DAMP (mfx.c) */
     {"DJ", FAM_GLO, SC_GLOBAL, GR_NONE, {G_MIDI, 0xFF, 0xFF, 0xFF}, 1},             /* the DJ filter (a step locks it) */
-    {"AMP", FAM_GLO, SC_GLOBAL, GR_NONE, {G_AMP, 0xFF, 0xFF, 0xFF}, 1},             /* the whole mix's level (ducking, pulsing) */
+    {"AMP", FAM_GLO, SC_GLOBAL, GR_NONE, {G_AMP, G_PAN, 0xFF, 0xFF}, 1},            /* the whole mix's level (ducking, pulsing), pan */
     {"SEQ", FAM_SEQ, SC_TRACK, GR_GBSEQ, {P_SLEN, P_SDIV, P_APROB, 0xFF}},
     {"ARP", FAM_ARP, SC_TRACK, GR_NONE, {P_AHOLD, P_AMODE, P_ARATE, P_ASWING}},   /* ARP MODE RATE FADE (seq.c ARP_*) */   /* LEN SPEED CHANCE TRIG (ui_input.c gbseq_knob) */
     {"MIX 1-2", FAM_TRK, SC_TRK, GR_TRK, {0, MIX_PAN | 0, 1, MIX_PAN | 1}},   /* KNOB k: track id[k]'s level, + MIX_PAN its pan */

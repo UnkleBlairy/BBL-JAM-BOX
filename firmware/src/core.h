@@ -104,7 +104,8 @@ enum {                          /* global parameters */
                                  * G_DRCH, the GM drum part's MIDI channel (inert since 1.0, never read); projects
                                  * of formats before FUN7 load it as ROOM (project.c proj_rtype_room) */
     G_F3AMT, G_AMP,             /* (were G_DRLVL G_DRREV, the GM drum part's, inert) */
-    G_F1WAVE, G_F2WAVE, G_F3WAVE,   /* SIMPLE: the FX LFOs' WAVEs (new: a kit holds them in its rsv byte, gb_store.c) */
+    G_F1WAVE, G_F2WAVE, G_F3WAVE,
+    G_PAN,                          /* SIMPLE: the whole mix's pan (the AMP page; fx.c amp_block) */   /* SIMPLE: the FX LFOs' WAVEs (new: a kit holds them in its rsv byte, gb_store.c) */
     G_COUNT
 };
 

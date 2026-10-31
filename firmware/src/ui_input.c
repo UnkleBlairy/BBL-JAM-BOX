@@ -102,6 +102,58 @@ static void hint_poll(void)
 /* SIMPLE, FILL MODE: PLAY pressed while playing arms it (fill_arm); held FILL_MS it is FILL (seq.c seq_fill: FILL trigs
  * play, a step entered gets FILL, ui_gb.c's banner), let go sooner it stops as ever */
 #define FILL_MS 500u
+/* SIMPLE, CLEAR ALL (cla_poll): OCT- held CLA_MS alone = "CLEAR ALL? / PRESS OCT+"; OCT+ then = every track's steps
+ * and locks and the FX lane gone (sounds, LENs stay); OCT- let go = cancel. In SEQ mode a short OCT- = the track (the
+ * FX lane on the FX track), done when let go */
+#define CLA_MS 1000u
+static int8_t cla_oct;                                  /* (the octave before OCT- went down: KEY mode's press takes one off) */
+static void cla_clear(int all)
+{
+    uint32_t a, i;
+    if (all || fxl_on()) {
+        int16_t fl = fxl.len;                           /* (its LEN stays) */
+        memset(&fxl, 0, sizeof fxl);
+        fxl.len = fl;
+        fxl_refresh();
+    }
+    if (!all && fxl_on()) {
+        ui_message("FX CLEARED");
+        return;
+    }
+    for (a = all ? 0u : song.sel; a < (all ? NTRK : song.sel + 1u); a++) {
+        for (i = 0; i < NSTEP; i++)
+            step_clear(&trk[a].step[i]);
+        motion_clear(&trk[a]);                          /* (its locks and automation too) */
+    }
+    ui_message(all ? "ALL CLEARED" : "TRACK CLEARED");
+}
+static void cla_poll(uint32_t pressed)
+{
+    static uint32_t t0;
+    uint32_t dn = panel.btn[B_OCTDN];
+    if ((pressed >> dn) & 1u)
+        t0 = fm1_ms | 1u;
+    if (!((fm1_in.buttons >> dn) & 1u)) {
+        if (cla_st == 1u)
+            cla_clear(0);
+        else if (cla_st == 2u) {
+            ui_message("CANCELLED");
+            ui.force = 1;
+        }
+        cla_st = t0 = 0;
+        return;
+    }
+    if (!t0 || cla_st >= 2u || (int32_t)(fm1_ms - t0) < (int32_t)CLA_MS)
+        return;
+    if ((fm1_in.buttons & ~(1u << dn)) || fm1_in.notes || tm_dn || ui.home || ui.confirm) {
+        t0 = 0;                                         /* (OCT- with something else: not this) */
+        return;
+    }
+    cla_st = 2;
+    song.octave = cla_oct;                              /* (KEY mode: the octave as before the hold) */
+    ui.msg_t = 0;
+    ui.force = 1;
+}
 static uint8_t fill_arm;
 static uint32_t fill_t0;
 #define PANIC_MS 400u                                   /* stopped, PLAY again this soon: every sound off (seq.c panic) */
@@ -1797,6 +1849,8 @@ static void ui_input(void)
         return;                                         /* (before the buttons' timers: no tap or hold after it) */
     pressed = tm_poll(pressed);                         /* SIMPLE: LFO held, touch modulation */
     fill_poll();                                        /* .. PLAY held, FILL MODE */
+    if (FELUCCA_SIMPLE)
+        cla_poll(pressed);                              /* .. OCT- held, CLEAR ALL? */
     hint_poll();                                        /* .. what a held button does */
     if (mom.n && !mom_down()) {                         /* MOMENTARY: LFO let go (or the menu, a layer ..): back */
         mom_restore();
@@ -1919,6 +1973,13 @@ static void ui_input(void)
             break;
         case B_OCTDN:
         case B_OCTUP: {
+            if (FELUCCA_SIMPLE && b == B_OCTUP && cla_st == 2u) {   /* CLEAR ALL? asked: OCT+ = yes */
+                cla_clear(1);
+                cla_st = 3;
+                break;
+            }
+            if (b == B_OCTDN)
+                cla_oct = (int8_t)song.octave;
             if (FELUCCA_SIMPLE && b == B_OCTDN && page_btn_reset())   /* a page button held: its page back to the start */
                 break;
             if (FELUCCA_SIMPLE && b == B_OCTDN && pm_h.n == 1u) {   /* a macro key held (alone): OCT- empties it */
@@ -1951,26 +2012,10 @@ static void ui_input(void)
                     ui_message("STEP LOCKS CLEARED");
                     break;
                 }
-                if ((b == B_OCTDN || all) && (all || fxl_on())) {   /* (the FX lane: OCT- clears it; with OCT+ it too) */
-                    {
-                        int16_t fl = fxl.len;           /* (its LEN stays) */
-                        memset(&fxl, 0, sizeof fxl);
-                        fxl.len = fl;
-                    }
-                    fxl_refresh();
-                    if (!all) {
-                        ui_message("FX CLEARED");
-                        break;
-                    }
-                }
-                if (b == B_OCTDN || all) {
-                    for (a = all ? 0u : song.sel; a < (all ? NTRK : song.sel + 1u); a++) {
-                        for (i2 = 0; i2 < NSTEP; i2++)
-                            step_clear(&trk[a].step[i2]);
-                        motion_clear(&trk[a]);          /* (its locks and automation too) */
-                    }
-                    ui_message(all ? "ALL TRACKS CLEARED" : "TRACK CLEARED");
-                }
+                (void)a;
+                (void)i2;
+                if (b == B_OCTDN && !all)
+                    cla_st = 1;                         /* (let go soon: the track / FX lane cleared, cla_poll) */
                 break;
             }
             uint32_t both = (1u << panel.btn[B_OCTDN]) | (1u << panel.btn[B_OCTUP]);

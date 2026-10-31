@@ -582,7 +582,7 @@ static int jam_apply(uint8_t *in, uint32_t len)
     uint32_t magic = 0, sel, rel, fade, ng, sz, np, ssz, k, i, n;
     static const uint8_t JAM_G[] = {G_BPM, G_SWING, G_DTIME, G_DFDBK, G_DCOLOR, G_DMIX, G_RSIZE, G_RDAMP, G_RTYPE,
                                     G_SYNC, G_CRATE, G_CDEPTH, G_INFO, G_AMP, G_F1RATE, G_F1WAVE, G_F1DEST, G_F1AMT,
-                                    G_F2RATE, G_F2WAVE, G_F2DEST, G_F2AMT, G_F3RATE, G_F3WAVE, G_F3DEST, G_F3AMT};
+                                    G_F2RATE, G_F2WAVE, G_F2DEST, G_F2AMT, G_F3RATE, G_F3WAVE, G_F3DEST, G_F3AMT, G_PAN};
                                     /* (the tempo + GB_KIT_G, AMP and the FX track's LFOs: not the DJ) */
     int16_t g[G_COUNT];
     jam_r(&r, &magic, 4);
@@ -625,6 +625,15 @@ static int jam_apply(uint8_t *in, uint32_t len)
         memcpy(fxl.lk, ob + 2, 32);
         for (i = 0; i < 16u; i++)
             memcpy(fxl.v[i], ob + 34u + ng * i, ng);
+    } else if (sz == 8u + 2u + 2u * FXN + FXN * 15u + 6u) {   /* (64 steps, 15 locks a step: before PAN) */
+        static uint8_t ob[8u + 2u + 2u * FXN + FXN * 15u + 6u];
+        jam_r(&r, ob, sz);
+        memset(&fxl, 0, sizeof fxl);
+        memcpy(&fxl.trig, ob, 8);
+        memcpy(&fxl.len, ob + 8, 2);
+        memcpy(fxl.lk, ob + 10, 2u * FXN);
+        for (i = 0; i < FXN; i++)
+            memcpy(fxl.v[i], ob + 10u + 2u * FXN + 15u * i, 15);
     } else {
         jam_r(&r, sz == sizeof fxl ? (void *)&fxl : 0, sz);
     }
