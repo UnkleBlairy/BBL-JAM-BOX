@@ -225,7 +225,9 @@ static void arp_remove(track_t *t, uint32_t note)
 #define ND_NONE 0u                      /* track_t nd_late / nd_early: nothing latched (seq_tick; else its seq_pos + 1) */
 static void rec_note(track_t *t, uint32_t note, uint32_t vel);
 static void rec_release(track_t *t, uint32_t note);
-static int rec_on(const track_t *t) { return ((song.rec >> trk_index(t)) & 1u) && song.playing; }
+/* SIMPLE: REC armed records every track played (finger drumming on the track keys: each hit on its own track) */
+static int rec_armed(uint32_t i) { return FELUCCA_SIMPLE ? song.rec != 0u : ((song.rec >> i) & 1u) != 0u; }
+static int rec_on(const track_t *t) { return rec_armed(trk_index(t)) && song.playing; }
 
 #include "motion.c"
 
@@ -578,7 +580,7 @@ static void rec_hold(track_t *t, uint32_t idx, uint32_t len)
     uint32_t k;
     if (!t->rh_n)
         return;
-    if (!((song.rec >> trk_index(t)) & 1u) || t->rh_ties + 1u >= len) {
+    if (!rec_armed(trk_index(t)) || t->rh_ties + 1u >= len) {
         t->rh_n = 0;                                /* disarmed, or the whole pattern is this note */
         return;
     }
@@ -615,7 +617,7 @@ static void rec_release(track_t *t, uint32_t note)
 static __attribute__((noinline)) void cin_keep(track_t *t, uint32_t note, uint32_t vel)
 {
     uint32_t i = trk_index(t), k;
-    if (cin_left != 1u || cin_pos < click_beat_len() / 2u || !((song.rec >> i) & 1u) || arp_am(t))
+    if (cin_left != 1u || cin_pos < click_beat_len() / 2u || !rec_armed(i) || arp_am(t))
         return;
     for (k = 0; k < cin_n[i] && cin_note[i][k] != note; k++)
         ;

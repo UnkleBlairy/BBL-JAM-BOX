@@ -336,9 +336,9 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
 - Machine names and order (engines.c MACHINES, by type, 808 then FM): 8BD FMBD
   8SD FMSD 8TOM 8RIM 8CLP 8COW 8HH FMHH 8CYM FMCYM FMPRC FMSYN SMPL.
 - 808s start with AGE 0 (clean).
-- REC armed (the selected track): a red "REC" pill left of the BPM; playing, it
-  breathes twice a bar. Recording follows the track: change tracks, keep
-  recording (ui.c track_select).
+- REC armed: a red "REC" pill left of the BPM; playing, it breathes twice a bar.
+  It records EVERY track you play (seq.c rec_armed), so finger drumming on the
+  black track keys in SEQ mode records each hit on its own track.
 - LFO DEST order = the knobs as their pages show them, left to right (params.c
   MDST_ORDER), then PITCH AMP. PAN SHP DEPTH VEL TIME E8 are left out. VIB is
   called L.PIT.
