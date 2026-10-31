@@ -1450,15 +1450,18 @@ static __attribute__((noinline)) void cin_record(void)
         cin_n[i] = 0;
     }
 }
-/* SIMPLE, the FX lane (black key 7 in SEQ mode, ui_input.c fxl_*): 16 straight 1/16 steps (the metronome's count) that
- * make no sound. A trig's locks (the master's: delay, reverb, comb, DJ filter: motion.c MOTION_G) lay over those knobs
+/* SIMPLE, the FX lane (black key 7 in SEQ mode, ui_input.c fxl_*): LEN (1..64, the SEQ page's; pages of 16 as a
+ * track's) straight 1/16 steps (the metronome's count, fxl_pos) that make no sound. A trig's locks (the master's: delay, reverb, comb, DJ filter: motion.c MOTION_G) lay over those knobs
  * from it to the lane's next trig (mod.c mg_ov: over the knob's own value, which the knob still sets); a trig with none
  * puts them back. Stopping puts them back. Not saved (patterns never are) */
-static struct { uint16_t trig, lk[16]; int8_t v[16][MOTION_NG]; } fxl;
+#define FXN 64u
+static struct { uint64_t trig; int16_t len; uint16_t lk[FXN]; int8_t v[FXN][MOTION_NG]; } fxl = {0, 16};
+static uint32_t fxl_pos;                                /* the step playing */
+static uint32_t fxl_len(void) { return fxl.len >= 1 && fxl.len <= (int16_t)FXN ? (uint32_t)fxl.len : 16u; }
 static void fxl_step(uint32_t s)
 {
     uint32_t j, n = 0;
-    s &= 15u;
+    s %= FXN;
     if (!((fxl.trig >> s) & 1u))
         return;
     for (j = 0; j < MOTION_NG; j++)
@@ -1477,13 +1480,15 @@ static void click_tick(uint32_t adv)
         clk_pos = 0;
         clk_step = 0;
         beat = 2;
+        fxl_pos = 0;
         fxl_step(0);
     } else {
         clk_pos += adv;
         while (clk_pos >= p) {                      /* (as seq_tick: the remainder kept) */
             clk_pos -= p;
             clk_step = (clk_step + 1u) & 15u;
-            fxl_step(clk_step);
+            fxl_pos = (fxl_pos + 1u) % fxl_len();
+            fxl_step(fxl_pos);
             if (!(clk_step & 3u))
                 beat = clk_step ? 1u : 2u;
         }

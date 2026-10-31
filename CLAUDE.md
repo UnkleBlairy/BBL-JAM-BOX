@@ -116,7 +116,9 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   mom_*): let go of OCT+ and it snaps back (no keep).
 - GLO pages: PERF, COMB, DJ (the DJ filter's own page, so it can be locked), AMP (the whole mix's level,
   G_AMP; lockable, LFO-able: ducking / pulsing; ~3 ms slew so a square never clicks, fx.c gain_ramp).
-- LFO pages: LFO (RATE WAVE PHASE FADE), SYNC (SYNC TRIG POL), LFO DEST.
+- LFO pages: LFO (RATE WAVE DEST AMT: matrix slot 1, SRC always LFO, ui_input.c msrc_fix), SYNC (SYNC TRIG POL
+  FADE; PHASE on no page). ENV DEST page = DEST AMT (slot 2, SRC always ENV). The old fixed-depth LFO DEST /
+  ENV DEST knobs are gone from the pages (a saved sound keeps its values).
 - Holds are 500 ms (HINT_MS, FILL_MS); the mod picker needs 700 ms (TM_MS). A
   panel tap can last 250 ms. Timestamps stored as fm1_ms | 1 can be 1 ms ahead:
   compare them signed ((int32_t)(fm1_ms - t0)), or a fresh press reads as held
@@ -138,8 +140,8 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   Same for hold ENV = "AMP ENV" (slot 2, SRC ENV) and hold the FILTER button
   (SCL) = "FILT ENV" (slot 3, SRC FENV: the filter envelope, mod.c MS_FENV, set
   by eng_digital.c / eng_sampler.c; 0 on an 808). One DEST per source.
-- Later plan: drop the LFO DEST / ENV DEST pages; a fixed routing worth keeping
-  becomes an amount knob on its own page.
+- Reset a page: hold its page button (FX SCL ENV LFO EDIT GLO ARP, not SEQ) + OCT- = its knobs back to the
+  start (the machine's starting sound on its pages, else defaults; not MACH). "OSC 1 RESET" (ui.c page_reset).
 - Pop-ups (ui_gb.c gb_banner): a white box with the page's colour as ink, at the
   bottom over the mode/pill line and the track squares (hidden under it). Big
   chunky text only (AF_L, the title's size): pages of two lines (ui_gb.c
@@ -235,12 +237,12 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   arp note. Stored in the old arp ids (ARP = P_AHOLD, FADE = P_ASWING); no
   latch, swing or arp chance in this build.
 - FX track = the FX lane (seq.c fxl, not a 7th track): in SEQ mode black key 7
-  selects it (screen grey, oval "FX"; black keys 1-6 go back to a track). 16
-  straight 1/16 steps that make no sound: tap a step = a trig, hold it + turn a
+  selects it (screen grey, oval "FX"; black keys 1-6 go back to a track). LEN 1..64
+  straight 1/16 steps (its SEQ page shows LEN only; page keys as a track's) that make no sound: tap a step = a trig, hold it + turn a
   delay/reverb/comb/DJ knob = a lock (other knobs: "FX: MASTER ONLY"). A trig's
   locks lay over those knobs until the lane's next trig (mod.c mg_ov; the knob
   keeps its own value, LFOs wobble on top). Hold step + OCT- clears its locks,
-  OCT- clears the lane. No LEN/SPEED/CHANCE of its own yet.
+  OCT- clears the lane (LEN stays). No SPEED/CHANCE of its own.
 - FX TRACK (fxl_sel; black key 7 in SEQ mode, or ALGO turned past 6; ui.c fxt_set): its own pages, the
   others show a big X (ui.c fxt_x; both ways: on a track the FX track's pages are the X; knobs/keys do
   nothing there). GLO (PERF COMB DJ AMP) is the FX track's only. FX button = DELAY (TIME FDBK TONE) / VERB (TIME DAMP GRIT), only here;

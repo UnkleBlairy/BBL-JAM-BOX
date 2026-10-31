@@ -613,14 +613,18 @@ static int jam_apply(uint8_t *in, uint32_t len)
     pm_rel = (uint8_t)(rel > 16u ? 16u : rel);
     pm_fade = (uint8_t)(fade > 4u ? 0u : fade);
     sz = jam_r16(&r);
-    if (sz == 2u + 32u + 16u * 11u) {                    /* (a jam from before AMP and the FX LFOs' locks: 11 a step) */
-        uint8_t ob[2u + 32u + 16u * 11u];
+    if (sz == 2u + 32u + 16u * 11u || sz == 2u + 32u + 16u * 15u) {   /* (a jam of the 16-step lane: 11 locks a step, or 15) */
+        uint8_t ob[2u + 32u + 16u * 15u];
+        uint32_t ng = (sz - 34u) / 16u;
+        uint16_t t16;
         memset(&fxl, 0, sizeof fxl);
+        fxl.len = 16;
         jam_r(&r, ob, sz);
-        memcpy(&fxl.trig, ob, 2);
+        memcpy(&t16, ob, 2);
+        fxl.trig = t16;
         memcpy(fxl.lk, ob + 2, 32);
         for (i = 0; i < 16u; i++)
-            memcpy(fxl.v[i], ob + 34u + 11u * i, 11);
+            memcpy(fxl.v[i], ob + 34u + ng * i, ng);
     } else {
         jam_r(&r, sz == sizeof fxl ? (void *)&fxl : 0, sz);
     }

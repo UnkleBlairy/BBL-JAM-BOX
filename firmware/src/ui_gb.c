@@ -305,8 +305,8 @@ static void gb_fill(gb_view_t *v)
     }
     str_cpy(v->title, pg->title, sizeof v->title);
     v->kmode = (uint8_t)(ui.sgrid == 1u ? 1u : ui.sgrid == 2u ? 2u : ui.sgrid == 3u ? 4u : 3u);
-    if (v->kmode == 1u && !fxl_on()) {
-        v->snp = (uint8_t)((TSEL->p[P_SLEN] + 15) / 16);
+    if (v->kmode == 1u) {
+        v->snp = (uint8_t)((sq_len() + 15u) / 16u);   /* (the FX lane's too) */
         v->spg = ui.bank;
     }
     if (gb_nd_t && (int32_t)(fm1_ms - gb_nd_t) < (int32_t)TM_SHOW_MS && gbs_held()) {
@@ -414,6 +414,13 @@ static void gb_fill(gb_view_t *v)
             v->ratio[k] = (int16_t)(RATIO(d, t->p[P_LEVEL]) < 0 ? 0 : RATIO(d, t->p[P_LEVEL]));
             v->mask |= (uint8_t)(1u << k);
         }
+        return;
+    }
+    if (pg->graph == GR_GBSEQ && fxl_sel) {       /* the FX track: its lane's LEN */
+        str_cpy(v->lab[0], "LEN", sizeof v->lab[0]);
+        fmt_int(v->val[0], (int32_t)fxl_len());
+        v->ratio[0] = (int16_t)((fxl_len() - 1u) * 1000u / (FXN - 1u));
+        v->mask = 1u;
         return;
     }
     if (pg->graph == GR_GBSEQ) {                  /* LEN SPEED CHANCE TRIG; a step held: STEP n, its own CHANCE and TRIG */

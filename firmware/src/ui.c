@@ -370,7 +370,10 @@ enum { LAYER_NONE, LAYER_FX, LAYER_GLO, LAYER_SCL, LAYER_EDIT, LAYER_SEQ, LAYER_
 static uint8_t fxl_sel;                               /* SIMPLE: the FX track is selected (black key 7, ALGO past 6) */
 /* SIMPLE: a page that is not the selected track's (a big X, ui_gb.c; its knobs and keys do nothing): on the FX track
  * a track's (its sound, its SEQ ..), on a track the FX track's (fxt: the effects, PERF) */
-static int fxt_x(const page_t *pg) { return fxl_sel ? pg->scope == SC_TRACK || pg->scope == SC_ENGINE : pg->fxt != 0u; }
+static int fxt_x(const page_t *pg)                    /* (the SEQ page is both's: the FX lane's LEN) */
+{
+    return fxl_sel ? (pg->scope == SC_TRACK || pg->scope == SC_ENGINE) && pg->graph != GR_GBSEQ : pg->fxt != 0u;
+}
 static int page_visible(uint32_t i)
 {
     if (i >= NPAGES || fxt_x(&PAGES[i]))                /* (the FX track's pages, a track's) */
@@ -550,6 +553,8 @@ static int16_t pm_ui_u;                                  /* .. how far (0..1024)
 static int pm_page(void) { return !ui.home && !ui.confirm && cur_page()->graph == GR_PERF && !fxt_x(cur_page()); }
 static int pm_down(void) { return pm_h.n != 0u; }   /* a macro key held (on any page) */
 static int fxl_on(void) { return fxl_sel && sgrid_on(); }   /* the step keys are the FX lane's (seq.c fxl) */
+static int16_t *sq_lenp(void) { return fxl_on() ? &fxl.len : &TSEL->p[P_SLEN]; }   /* LEN: the track's, the FX lane's */
+static uint32_t sq_len(void) { return fxl_on() ? fxl_len() : (uint32_t)TSEL->p[P_SLEN]; }
 /* the lane edited (a trig or its locks gone): its locks now as its latest trig up to the step playing lays them (none:
  * the knobs' own values) */
 static void fxl_refresh(void)
@@ -557,9 +562,9 @@ static void fxl_refresh(void)
     uint32_t k;
     fm1_irq_off();
     mg_ov_n = 0;
-    for (k = 0; song.playing && k < 16u; k++)
-        if ((fxl.trig >> ((clk_step - k) & 15u)) & 1u) {
-            fxl_step((clk_step - k) & 15u);
+    for (k = 0; song.playing && k < fxl_len(); k++)
+        if ((fxl.trig >> ((fxl_pos + fxl_len() - k) % fxl_len())) & 1u) {
+            fxl_step((fxl_pos + fxl_len() - k) % fxl_len());
             break;
         }
     fm1_irq_on();
