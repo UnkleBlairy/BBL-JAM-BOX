@@ -1480,6 +1480,18 @@ static void lock_clear(uint64_t held)
 
 
 
+/* SIMPLE: matrix slot 1 is the LFO's (the LFO page's DEST AMT), slot 2 the envelope's (ENV DEST): their SRC always so
+ * (a sound of before, a lock, a macro: the DEST works as soon as it is set) */
+static void msrc_fix(void)
+{
+    uint32_t i;
+    for (i = 0; FELUCCA_SIMPLE && i < NTRK; i++) {
+        if (trk[i].p[P_M1SRC] != MS_LFO)
+            trk[i].p[P_M1SRC] = MS_LFO;
+        if (trk[i].p[P_M2SRC] != MS_ENV)
+            trk[i].p[P_M2SRC] = MS_ENV;
+    }
+}
 static void edit_param(uint32_t slot, int32_t steps)
 {
     int16_t *vp;
@@ -1925,6 +1937,7 @@ static void ui_input(void)
     gbs_page_poll();
     gb_store_poll();
     jam_poll();
+    msrc_fix();
     if (song.grid == 5u) {
         gbsv_keys(notes);
     } else if (song.grid == 4u) {

@@ -526,6 +526,8 @@ static void gb_fill(gb_view_t *v)
             cur = kv;
         }
         param_format(d, cur, v->val[k], &u);
+        if (d->names == N_MDST)                       /* (a DEST: the machine's knob by its own name, as the picker) */
+            str_cpy(v->val[k], tm_name(TSEL, (uint32_t)cur % MD_N), sizeof v->val[k]);
         if (smp && vp >= TSEL->p && vp < TSEL->p + P_COUNT)
             v->vic[k] = (uint8_t)smp_format((uint32_t)(vp - TSEL->p), cur, v->val[k]);
         if (vp == &song.g[G_RSIZE] && cur >= 127)       /* the reverb's TIME at the top: FREEZE (fx.c rev_quad) */

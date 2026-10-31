@@ -163,7 +163,8 @@ static const param_desc_t TP[P_COUNT] = {
 #define MSLOT(k) [P_M##k##SRC] = PE("SRC" #k, N_MSRC, 0), [P_M##k##DST] = PE("DST" #k, N_MDST, 0), \
                  [P_M##k##AMT] = PD("AMT" #k, F_BIPCT, -64, 63, 0)
     [P_M1SRC] = PE("SRC", N_MSRC, 1), [P_M1DST] = PE("DEST", N_MDST, 0), [P_M1AMT] = PD("AMT", F_BIPCT, -64, 63, 0),
-    MSLOT(2), MSLOT(3), MSLOT(4),
+    [P_M2SRC] = PE("SRC2", N_MSRC, 0), [P_M2DST] = PE("DEST", N_MDST, 0), [P_M2AMT] = PD("AMT", F_BIPCT, -64, 63, 0),
+    MSLOT(3), MSLOT(4),
 #undef MSLOT
 /* the OP ENV / OP LEVEL values of DIGITAL (ids 61..80): with FELUCCA_FM4 its operator envelopes; without it
  * inert, on no page and in no editor layout, read only when a DIGITAL sound converts (fm4_convert.c). Their labels
@@ -321,8 +322,8 @@ static const uint8_t DTIME_ORDER[13] = {9, 8, 7, 6, 12, 0, 10, 1, 11, 4, 2, 5, 3
  * FILTER, FILTER ENV, ENV, ENV DEST, LFO, LFO DEST, DELAY, VERB, COMB, DJ), then PITCH and AMP. Left out: PAN SHP
  * DEPTH VEL TIME, E8 (MACH) and DIST CHO (a sound saved with one keeps it). The stored values (mod.c MD_*) stay */
 static const uint8_t MDST_ORDER[] = {0, 12, 13, 14, 15, 16, 17, 18, 51, 52, 53, 2, 40, 41, 42, 43, 44, 45, 23, 24, 25,
-                                     26, 27, 28, 29, 30, 10, 11, 31, 32, 33, 8, 34, 35, 36, 9, 37, 38, 39, 46, 47, 48,
-                                     49, 50, 1, 4};
+                                     26, 10, 8, 34, 35, 36, 9, 37, 38, 39, 46, 47, 48,
+                                     49, 50, 1, 4};   /* (the old ENV DEST / LFO DEST depths 27..33 and VIB: off their pages) */
 static int32_t mdst_rank(int32_t v)               /* v's place in MDST_ORDER (one left out: OFF's) */
 {
     int32_t r;
@@ -494,10 +495,11 @@ typedef struct {
  * COMB, SEQ, HOME MIXER / CLOCK. No ARP, no SAVE pages (SAVE: ui_input.c gbsv_*) */
 static const page_t PAGES[] = {
     {"ENV", FAM_ENV, SC_TRACK, GR_ADSR, {P_ATK, P_DEC, P_SUS, P_REL}},
-    {"ENV DEST", FAM_ENV, SC_TRACK, GR_NONE, {P_ED_FLT, P_ED_PIT, P_ED_SHP, P_ED_FX}},   /* (P_ED_FX: R2, eng_digital.c) */
-    {"LFO", FAM_LFO, SC_TRACK, GR_LFO, {P_LRATE, P_LWAVE, P_LPHASE, P_LFADE}},   /* (its DEST and AMT: hold LFO, ui_input.c) */
-    {"SYNC", FAM_LFO, SC_TRACK, GR_NONE, {P_LSYNC, P_LTRIG, P_LPOL, 0xFF}},
-    {"LFO DEST", FAM_LFO, SC_TRACK, GR_NONE, {P_LD_PIT, P_LD_FLT, P_LD_SHP, P_LD_AMP}},
+    {"ENV DEST", FAM_ENV, SC_TRACK, GR_NONE, {P_M2DST, P_M2AMT, 0xFF, 0xFF}},   /* the envelope's DEST and AMT (matrix slot 2,
+                                                                                  * SRC ENV: ui_input.c msrc_fix; hold ENV too) */
+    {"LFO", FAM_LFO, SC_TRACK, GR_LFO, {P_LRATE, P_LWAVE, P_M1DST, P_M1AMT}},   /* .. the LFO's (slot 1, SRC LFO; hold LFO too) */
+    {"SYNC", FAM_LFO, SC_TRACK, GR_NONE, {P_LSYNC, P_LTRIG, P_LPOL, P_LFADE}},   /* (PHASE: on no page, 0; the old fixed
+                                                                                  * depths LFO DEST / ENV DEST too) */
     {"SENDS", FAM_FX, SC_TRACK, GR_NONE, {P_DLY, P_REV, 0xFF, 0xFF}},   /* the track's sends (the effects: the FX track's) */
     /* the FX track's (black key 7 / ALGO past 6): the delay, the reverb, three LFOs on the FILTER ENV LFO buttons */
     {"DELAY", FAM_FX, SC_GLOBAL, GR_NONE, {G_DTIME, G_DFDBK, G_DCOLOR, 0xFF}, 1},
