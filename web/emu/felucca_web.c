@@ -297,6 +297,7 @@ static void web_power_on(void)
     panel_init();
     felucca_init();
     master_boot();                        /* main.c (#137): the pot's level from the first block */
+    jam_boot();                           /* gb_store.c: the last jam back */
     kb_boot_hold = 1;                     /* main.c (#137): the keys silent under the splash */
     audio_init();
     boot_leds();                          /* main.c: the power-on LED sweep, from the scan's start */

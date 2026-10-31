@@ -391,3 +391,269 @@ static const uint8_t *smp_peaks(uint32_t sl)
     }
     return smp_pk;
 }
+
+/* ------------------------------------------------------------ LAST JAM --- */
+/* SIMPLE: what you were doing, kept over power-off: every track's machine, sound and sequencer settings, its steps
+ * (all 64), the locks and automation (motion.c), the LOCKS keys (seq.c kit), the macros and the PERF fade, the FX lane,
+ * the tempo and the kit's globals (not the DJ filter: it starts open), the selected track. Written a second after it all
+ * goes quiet (persist.c autosave_quiet: stopped, no key, nothing sounding; an erase stops the audio ~40 ms), when it
+ * changed. Two storage objects: OBJ_AUTOSAVE, then OBJ_JAM2 only for a jam over one (each starts with the same
+ * generation; two that differ were cut by a power-off between them: nothing restored). Restored at power-on
+ * ("LAST JAM"). A stream of sections, each with its sizes, so a later build skips what it can't read */
+#define JAM_MAGIC 0x314D414Au                            /* "JAM1" */
+#define JAM_PART (ST_PAYLOAD_MAX - 4u)                   /* a part's stream bytes (after its generation) */
+#define JAM_CAP (2u * JAM_PART)
+static uint8_t jam_buf[JAM_CAP] __attribute__((section(".pool")));    /* the stream just made / read */
+static uint8_t jam_old[JAM_CAP] __attribute__((section(".pool")));    /* .. as flash holds it */
+static uint8_t jam_img[ST_PAYLOAD_MAX] __attribute__((section(".pool")));
+static uint32_t jam_n, jam_oldn, jam_gen, jam_q0, jam_t;
+static uint8_t jam_pend;                                 /* bit o: part o of the snapshot in jam_buf to write */
+
+typedef struct { uint8_t *p; uint32_t n, cap, bad; } jam_io_t;
+static void jam_w(jam_io_t *w, const void *src, uint32_t len)
+{
+    if (w->n + len > w->cap) {
+        w->bad = 1;                                      /* (too big: the rest left out, what came first kept) */
+        return;
+    }
+    memcpy(w->p + w->n, src, len);
+    w->n += len;
+}
+static void jam_w8(jam_io_t *w, uint32_t v) { uint8_t b = (uint8_t)v; jam_w(w, &b, 1); }
+static void jam_w16(jam_io_t *w, uint32_t v) { uint16_t b = (uint16_t)v; jam_w(w, &b, 2); }
+static int jam_r(jam_io_t *r, void *dst, uint32_t len)
+{
+    if (r->bad || r->n + len > r->cap) {
+        r->bad = 1;
+        return 0;
+    }
+    if (dst)
+        memcpy(dst, r->p + r->n, len);
+    r->n += len;
+    return 1;
+}
+static uint32_t jam_r8(jam_io_t *r) { uint8_t b = 0; jam_r(r, &b, 1); return b; }
+static uint32_t jam_r16(jam_io_t *r) { uint16_t b = 0; jam_r(r, &b, 2); return b; }
+
+static int jam_step_used(const step_t *s)
+{
+    return s->n || s->hit || s->acc || s->probability || s->flags || s->time == ST_TIE || s->time == ST_LOCK;
+}
+static uint32_t jam_make(uint8_t *out)                  /* the stream: its length */
+{
+    jam_io_t w = {out, 0, JAM_CAP, 0};
+    uint32_t k, i, n;
+    jam_w(&w, &(uint32_t){JAM_MAGIC}, 4);
+    jam_w8(&w, song.sel);
+    jam_w8(&w, pm_rel);
+    jam_w8(&w, pm_fade);
+    jam_w8(&w, G_COUNT);
+    jam_w(&w, song.g, sizeof song.g);
+    jam_w16(&w, sizeof pm_mac);
+    jam_w(&w, pm_mac, sizeof pm_mac);
+    jam_w16(&w, sizeof fxl);
+    jam_w(&w, &fxl, sizeof fxl);
+    jam_w8(&w, motion.count);
+    jam_w8(&w, motion.on);
+    jam_w(&w, motion.event, motion.count * sizeof motion.event[0]);
+    jam_w8(&w, P_COUNT);
+    jam_w8(&w, sizeof(step_t));
+    for (k = 0; k < NTRK; k++) {
+        const track_t *t = &trk[k];
+        jam_w8(&w, t->eng_req);
+        jam_w(&w, t->p, sizeof t->p);
+        for (i = n = 0; i < NSTEP; i++)
+            n += (uint32_t)jam_step_used(&t->step[i]);
+        jam_w8(&w, n);
+        for (i = 0; i < NSTEP; i++)
+            if (jam_step_used(&t->step[i])) {
+                jam_w8(&w, i);
+                jam_w(&w, &t->step[i], sizeof(step_t));
+            }
+    }
+    for (k = n = 0; k < NTRK * 16u; k++)                 /* the LOCKS keys with locks */
+        n += kit[k / 16u][k % 16u].n != 0u;
+    jam_w8(&w, n);
+    for (k = 0; k < NTRK * 16u; k++) {
+        const kit_key_t *kk = &kit[k / 16u][k % 16u];
+        if (!kk->n)
+            continue;
+        jam_w8(&w, k);
+        jam_w8(&w, kk->n);
+        jam_w(&w, kk->id, kk->n);
+        jam_w(&w, kk->v, kk->n * sizeof kk->v[0]);
+    }
+    return w.n;
+}
+
+/* the stream back: 1 when it was one */
+static int jam_apply(uint8_t *in, uint32_t len)
+{
+    jam_io_t r = {in, 0, len, 0};
+    uint32_t magic = 0, sel, rel, fade, ng, sz, np, ssz, k, i, n;
+    static const uint8_t JAM_G[] = {G_BPM, G_SWING, G_DTIME, G_DFDBK, G_DCOLOR, G_DMIX, G_RSIZE, G_RDAMP, G_RTYPE,
+                                    G_SYNC, G_CRATE, G_CDEPTH, G_INFO};   /* (the tempo + GB_KIT_G: not the DJ) */
+    int16_t g[G_COUNT];
+    jam_r(&r, &magic, 4);
+    if (magic != JAM_MAGIC)
+        return 0;
+    sel = jam_r8(&r);
+    rel = jam_r8(&r);
+    fade = jam_r8(&r);
+    ng = jam_r8(&r);
+    memcpy(g, song.g, sizeof g);
+    for (i = 0; i < ng; i++) {
+        int16_t v = 0;
+        jam_r(&r, &v, 2);
+        if (i < G_COUNT)
+            g[i] = v;
+    }
+    for (i = 0; i < NELEM(JAM_G); i++)
+        song.g[JAM_G[i]] = (int16_t)clamp(g[JAM_G[i]], GP[JAM_G[i]].min, GP[JAM_G[i]].max);
+    sz = jam_r16(&r);
+    if (sz == sizeof pm_mac) {
+        jam_r(&r, pm_mac, sz);
+        for (i = 0; i < PM_NM; i++)
+            if (pm_mac[i].n > PM_N)
+                pm_mac[i].n = 0;
+    } else {
+        jam_r(&r, 0, sz);
+    }
+    pm_rel = (uint8_t)(rel > 16u ? 16u : rel);
+    pm_fade = (uint8_t)(fade > 4u ? 0u : fade);
+    sz = jam_r16(&r);
+    jam_r(&r, sz == sizeof fxl ? (void *)&fxl : 0, sz);
+    n = jam_r8(&r);
+    motion.on = (uint8_t)jam_r8(&r);
+    motion.count = 0;
+    for (i = 0; i < n; i++) {
+        motion_event_t e;
+        if (!jam_r(&r, &e, sizeof e))
+            break;
+        if ((e.place >> 6) < NTRK && motion.count < MOTION_MAX)
+            motion.event[motion.count++] = e;
+    }
+    np = jam_r8(&r);
+    ssz = jam_r8(&r);
+    for (k = 0; k < NTRK && !r.bad; k++) {
+        track_t *t = &trk[k];
+        int16_t in[128], def[P_COUNT], out[P_COUNT];
+        uint32_t eng = jam_r8(&r);
+        for (i = 0; i < np && i < 128u; i++)
+            in[i] = (int16_t)jam_r16(&r);
+        for (i = 0; i < P_COUNT; i++)
+            def[i] = t->p[i];
+        params_by_count(out, in, np > P_COUNT ? P_COUNT : np, def);
+        fm1_irq_off();                                   /* (the ISR sees the old engine or the new one, never a mix) */
+        t->eng_req = (uint8_t)(eng < NENGINES ? eng : t->eng_req);
+        t->p[P_E7] = out[P_E7];
+        for (i = 0; i < P_COUNT; i++)
+            t->p[i] = (int16_t)param_fit(track_desc(t, i), out[i]);
+        fm1_irq_on();
+        for (i = 0; i < NSTEP; i++)
+            step_clear(&t->step[i]);
+        n = jam_r8(&r);
+        for (i = 0; i < n; i++) {
+            uint32_t at = jam_r8(&r);
+            step_t s;
+            memset(&s, 0, sizeof s);
+            jam_r(&r, ssz == sizeof s ? (void *)&s : 0, ssz);
+            if (at < NSTEP && ssz == sizeof s)
+                t->step[at] = s;
+        }
+    }
+    memset(kit, 0, sizeof kit);
+    n = jam_r8(&r);
+    for (i = 0; i < n && !r.bad; i++) {
+        uint32_t at = jam_r8(&r), c = jam_r8(&r);
+        kit_key_t kk;
+        memset(&kk, 0, sizeof kk);
+        if (c > KIT_N)
+            break;
+        jam_r(&r, kk.id, c);
+        jam_r(&r, kk.v, c * sizeof kk.v[0]);
+        kk.n = (uint8_t)c;
+        if (at < NTRK * 16u && !r.bad)
+            kit[at / 16u][at % 16u] = kk;
+    }
+    for (k = 0; k < NTRK; k++)
+        motion_rebase(&trk[k]);
+    song.sel = (uint8_t)(sel < NTRK ? sel : 0u);
+    return 1;
+}
+
+/* power-on: the last jam back (main.c, after felucca_init) */
+static void jam_boot(void)
+{
+#if FELUCCA_FLASH
+    uint32_t g0, len;
+    int n0, n1;
+    if (!flash_ok)
+        return;
+    n0 = st_load(OBJ_AUTOSAVE, jam_img, ST_PAYLOAD_MAX);
+    if (n0 < 8)
+        return;
+    memcpy(&g0, jam_img, 4);
+    len = (uint32_t)n0 - 4u;
+    memcpy(jam_buf, jam_img + 4, len);
+    if (len == JAM_PART) {                               /* a full first part: the rest is in the second */
+        uint32_t g1;
+        n1 = st_load(OBJ_JAM2, jam_img, ST_PAYLOAD_MAX);
+        if (n1 >= 4) {
+            memcpy(&g1, jam_img, 4);
+            if (g1 != g0)
+                return;                                  /* (cut between the two: neither is trusted) */
+            memcpy(jam_buf + len, jam_img + 4, (uint32_t)n1 - 4u);
+            len += (uint32_t)n1 - 4u;
+        }
+    }
+    jam_gen = g0;
+    memcpy(jam_old, jam_buf, len);
+    jam_oldn = len;
+    if (jam_apply(jam_buf, len))
+        ui_message("LAST JAM");
+#endif
+}
+
+/* every input pass: the jam to flash a second after it all went quiet, when it changed (one object a pass) */
+static void jam_poll(void)
+{
+#if FELUCCA_FLASH
+    uint32_t o;
+    if (!flash_ok)
+        return;
+    if (!autosave_quiet()) {
+        jam_q0 = 0;
+        return;
+    }
+    if (!jam_q0)
+        jam_q0 = fm1_ms | 1u;
+    if ((int32_t)(fm1_ms - jam_q0) < 1000)
+        return;
+    if (!jam_pend) {
+        if (jam_t && (int32_t)(fm1_ms - jam_t) < 1000)
+            return;                                      /* (looked a second ago) */
+        jam_t = fm1_ms | 1u;
+        jam_n = jam_make(jam_buf);
+        if (jam_n == jam_oldn && !memcmp(jam_buf, jam_old, jam_n))
+            return;
+        jam_gen++;
+        jam_pend = jam_n > JAM_PART ? 3u : 1u;           /* (the second part first: the first is the commit) */
+    }
+    o = (jam_pend & 2u) ? 1u : 0u;
+    memcpy(jam_img, &jam_gen, 4);
+    {
+        uint32_t off = o * JAM_PART, part = jam_n - off > JAM_PART ? JAM_PART : jam_n - off;
+        memcpy(jam_img + 4, jam_buf + off, part);
+        if (st_save(o ? OBJ_JAM2 : OBJ_AUTOSAVE, jam_img, 4u + part) != 0) {
+            jam_pend = 0;                                /* (tried again at the next look) */
+            return;
+        }
+    }
+    jam_pend &= (uint8_t)~(1u << o);
+    if (!jam_pend) {
+        memcpy(jam_old, jam_buf, jam_n);
+        jam_oldn = jam_n;
+    }
+#endif
+}

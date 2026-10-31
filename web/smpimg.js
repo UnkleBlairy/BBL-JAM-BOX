@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Copyright (C) 2026 Blair (blairysbeatlab), BBL JAM BOX
 // The sample memory image: what the sample uploader writes to the FM-1 (firmware/src/eng_sampler.c has the layout).
-// Flash 0xA0000..0xDBFFF: a 4 KiB table, then the chunks' data as 8-bit mu-law (G.711), one byte a sample.
+// Flash 0xA0000..0xD9FFF: a 4 KiB table, then the chunks' data as 8-bit mu-law (G.711), one byte a sample.
 // Shared by the emulator page (web/emu/index.html) and the uploader. No DOM here.
 
-export const SMP_BASE = 0xA0000, SMP_REGION = 0x3C000, SMP_TABLE = 0x1000;
-export const SMP_CAP = SMP_REGION - SMP_TABLE;          // 241664 bytes = samples: ~11 s at 22 kHz
+export const SMP_BASE = 0xA0000, SMP_REGION = 0x3A000, SMP_TABLE = 0x1000;   // (to 0xDA000: the FM-1's last jam above)
+export const SMP_CAP = SMP_REGION - SMP_TABLE;          // 233472 bytes = samples: ~10.6 s at 22 kHz
 export const SMP_MAX = 32;                              // chunks S01..S32
 export const SMP_RATES = [11025, 22050, 32000];
 const MAGIC = 0x324D5346, NAME = 12, ENTRY = 24;

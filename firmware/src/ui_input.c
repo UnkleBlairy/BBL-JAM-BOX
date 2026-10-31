@@ -1912,6 +1912,7 @@ static void ui_input(void)
     sgrid_release();
     gbs_page_poll();
     gb_store_poll();
+    jam_poll();
     if (song.grid == 5u) {
         gbsv_keys(notes);
     } else if (song.grid == 4u) {

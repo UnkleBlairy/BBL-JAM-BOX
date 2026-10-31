@@ -7,7 +7,9 @@ static void run(double ms){ uint32_t n=(uint32_t)(ms*44.1), k; for(k=0;k<n;k+=12
 static void tap(uint32_t b){ web_buttons(1u<<b); run(80); web_buttons(0); run(150); }
 static void dump(const char *fn){ FILE *f=fopen(fn,"wb"); fprintf(f,"P6 240 240 255\n"); for(int i=0;i<240*240;i++){ uint16_t c=web_fb[i]; c=(uint16_t)((c>>8)|(c<<8)); fputc((c>>11)<<3,f); fputc(((c>>5)&63)<<2,f); fputc((c&31)<<3,f);} fclose(f);}
 int main(int argc,char**argv){
-  web_nor_erase(); web_boot(); run(4000);
+  web_nor_erase();
+  if(argc>1 && !strncmp(argv[1],"nor:",4)) { FILE *f=fopen(argv[1]+4,"rb"); if(f){ fread(nor,1,sizeof nor,f); fclose(f);} argv++; argc--; }   /* the flash of an earlier run */
+  web_boot(); run(4000);
   for(int a=1;a<argc;a++){ char *s=argv[a];
     if(!strncmp(s,"tap:",4)) tap((uint32_t)atoi(s+4));
     else if(!strncmp(s,"ms:",3)) run(atof(s+3));
@@ -22,6 +24,8 @@ int main(int argc,char**argv){
     else if(!strcmp(s,"playing?")) printf("playing=%u\n", web_playing());
     else if(!strncmp(s,"encx:",5)) { int r,n; sscanf(s+5,"%d,%d",&r,&n); for(int i=0;i<(n<0?-n:n);i++){ web_enc(r,n<0?-1:1); run(30);} }
     else if(!strcmp(s,"mach?")) { for(int i=0;i<NTRK;i++) printf("%s%s ", i==song.sel?"*":"", MACHINES[trk_mach(&trk[i])].pill); printf(" pools:"); for(int q=0;q<GB_NPOOL;q++){ printf(" %s=",GB_POOL_NAME[q]); for(int k=0;k<16;k++) printf("%d",gbs_used(q,k)?1:0);} printf(" gbsv=%u\n",gbsv); }
+    else if(!strncmp(s,"norsave:",8)) { FILE *f=fopen(s+8,"wb"); fwrite(nor,1,sizeof nor,f); fclose(f); }
+    else if(!strcmp(s,"bpm?")) printf("bpm=%d sel=%u kitkeys=%u motion=%u\n", song.g[G_BPM], song.sel, (unsigned)({int c=0; for(int a=0;a<NTRK;a++) for(int b=0;b<16;b++) c+=kit[a][b].n; c;}), motion.count);
     else if(!strcmp(s,"steps?")) { track_t *t=TSEL; printf("len=%d bank=%u qntz=%d idx=%u:", t->p[P_SLEN], ui.bank, t->p[P_SQNT], t->seq_idx); for(int i=0;i<NSTEP;i++){ step_t *st=&t->step[i]; if(st->time==ST_NOTE&&st->n) printf(" %d[n%u nd%d tc%u]", i, st->n, (int)step_nudge(st), gb_tc(st)); } printf("\n"); }
     else if(!strncmp(s,"enc:",4)) { int r,n; sscanf(s+4,"%d,%d",&r,&n); web_enc(r,n); run(100);} 
     else dump(s);

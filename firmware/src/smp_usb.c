@@ -14,7 +14,7 @@
  * last, so an upload cut short leaves no table: the memory reads as empty, never half old, half new. A block that
  * fails is sent again from its sector's start. A session ends at END, or 10 s after the last request (then the
  * table is read as the flash has it). The audio is silent while it runs (an erase stops it ~40 ms). */
-#define SMP_REGION (0xDC000u - SMP_BASE)
+#define SMP_REGION (SMP_TOP - SMP_BASE)
 #define SMP_SESS_MS 10000u
 enum { SMP_BEGIN = 0x60, SMP_SUM, SMP_WRITE, SMP_END };
 

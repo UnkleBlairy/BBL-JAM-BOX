@@ -3,7 +3,7 @@
 /* SAMPLER: plays the chunks the sample uploader wrote to the flash (docs/samplelab.html is the spec: its render() and
  * stretchBuf() are the reference). One machine, one voice a track (a new hit takes over, its old sound fades in 4 ms).
  *
- * The sample memory: flash 0xA0000..0xDBFFF (Felucca's old user sample slots), read in place through the XIP window.
+ * The sample memory: flash 0xA0000..0xD9FFF (Felucca's old user sample slots), read in place through the XIP window.
  *   0xA0000  the table (4 KiB): u32 magic "FSM2", u16 version 1, u16 count (<= SMP_MAX), u32 data length, u32 data
  *            CRC32, 12 bytes 0, u32 table CRC32 (bytes 0..27, then the entries), then count entries of 24 bytes:
  *            char name[12] (NUL padded), u32 offset (in the data), u32 length (samples), u16 rate (Hz), u16 coding (0)
@@ -18,7 +18,8 @@
 #endif
 #define SMP_BASE 0xA0000u
 #define SMP_DATA (SMP_BASE + 0x1000u)
-#define SMP_CAP (0xDC000u - SMP_DATA)               /* 241664 bytes = samples: ~11 s at 22 kHz */
+#define SMP_TOP 0xDA000u                            /* (0xDA000..0xDBFFF: the last jam's second part, storage.c OBJ_JAM2) */
+#define SMP_CAP (SMP_TOP - SMP_DATA)                /* 233472 bytes = samples: ~10.6 s at 22 kHz */
 #define SMP_MAX 32u                                 /* chunks S01..S32 */
 #define SMP_MAGIC 0x324D5346u                       /* "FSM2" */
 #define SMP_NOTE 60                                 /* the note that plays a chunk at its own pitch */

@@ -61,6 +61,7 @@ static int gbs_load_sound(uint32_t slot);
 static int gbk_save(uint32_t k);
 static int gbk_load(uint32_t k);
 static void gb_store_poll(void);
+static void jam_poll(void);                       /* (gb_store.c) the last jam to flash when quiet */
 static uint64_t lock_held(void);                   /* (ui_input.c) .. on a sound page: its knobs lock */
 static int kit_shown(int16_t *vp, int16_t *cur);   /* (ui_input.c) LOCKS: a dial's value */
 static const uint8_t *smp_peaks(uint32_t sl);      /* (gb_store.c) SAMPLER: a chunk's waveform */

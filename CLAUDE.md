@@ -205,7 +205,11 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   power-on; loading one leaves tracks 5-6 as they are.
 - A PERF macro's global (BPM, DJ, COMB..) has track number PM_G (255), not
   NTRK, so adding tracks never turns a global into a track.
-- The FM-1 starts fresh at power-on (no Felucca autosave / "RESTORED").
+- LAST JAM (gb_store.c jam_*): a second after everything goes quiet (stopped, no key,
+  nothing sounding) the whole jam is written if it changed: machines, sounds, seq settings,
+  all steps, locks, LOCKS keys, macros, FADE, FX lane, tempo, kit globals, selected track
+  (not the DJ, it starts open; not the key mode). Power-on restores it ("LAST JAM"). Stop
+  before switching off. Storage: OBJ_AUTOSAVE + OBJ_JAM2 (0xDA000, taken from the samples).
 - LFO DEST skips DIST and CHO (their effects are gone; ids kept for old saves).
 - LFO DEST reaches every knob that moves smoothly (mod.c MDX, appended after
   TIME): ATK DEC SUS REL, the ENV DEST and LFO DEST amounts (E.x, L.x), the
@@ -319,9 +323,9 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
 - STRCH and LOFI follow the knob live while a sound plays (knob, macros, LFOs
   sweep them): grains always run (Hann pairs half a grain apart; at 1.00x they
   add back to the sample exactly), each new grain starts STRCH further on.
-- Sample memory: flash 0xA0000..0xDBFFF (240 KB), survives power-off and
-  firmware updates. 8-bit mu-law (the user chose twice the time over 16 bits):
-  ~11 s at 22 kHz in all. Table "FSM2" + CRCs; a bad table = no samples.
+- Sample memory: flash 0xA0000..0xD9FFF (232 KB; the last 8 KB went to the last jam),
+  survives power-off and firmware updates. 8-bit mu-law (the user chose twice the time
+  over 16 bits): ~10.6 s at 22 kHz in all. Table "FSM2" + CRCs; a bad table = no samples.
 - The uploader replaces the whole sample memory each Upload (up to 32 chunks).
   On the real FM-1: the installer site's Samples page (web/samples.html,
   webapp/samples/; web/fm1smp.js) over USB SysEx (firmware/src/smp_usb.c, the
