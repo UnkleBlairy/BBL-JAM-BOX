@@ -406,7 +406,7 @@ static void gb_fill(gb_view_t *v)
     }
     if (pg->graph == GR_GBSEQ) {                  /* LEN SPEED CHANCE TRIG; a step held: STEP n, its own CHANCE and TRIG */
         static const char *const SPN[5] = {"x1/4", "x1/2", "x1", "x2", "x4"};
-        static const char *const LB[4] = {"LEN", "SPEED", "CHANCE", "TRIG"};
+        static const char *const LB[4] = {"LEN", "SPD", "CHNC", "TRIG"};
         const track_t *t = TSEL;
         uint64_t held = gbs_held();
         uint32_t p = 0, sp = gb_speed(t->p[P_SDIV]);

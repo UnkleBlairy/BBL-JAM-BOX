@@ -70,8 +70,8 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
 - Sequencer: LEN 1..64, up to 4 pages of 16 (SEQ mode: black keys 8-11 pick the page
   shown, ui.bank / ui_input.c gbs_base; lit = shown, breathing = playing; the bottom says
   "SEQ 2/4"). For fast parts use more steps at x1, not x1/4. One SEQ page replaces Felucca's STEP /
-  DETAIL / AUTOMATION (hidden, not deleted). Knobs: LEN, SPEED (x1/4 x1/2 x1
-  x2 x4), CHANCE, TRIG (Elektron's list: - 1:2 2:2 1:3 .. 8:8 FILL !FILL PRE
+  DETAIL / AUTOMATION (hidden, not deleted). Knobs: LEN, SPD (speed: x1/4 x1/2 x1
+  x2 x4), CHNC (chance), TRIG (Elektron's list: - 1:2 2:2 1:3 .. 8:8 FILL !FILL PRE
   !PRE NEI !NEI 1ST !1ST; core.h GB_TC0, seq.c gb_tc_miss). All per track.
 - FILL MODE: while playing, hold PLAY (250 ms) = fill on, a "FILL MODE / ENTER
   TRIGS" banner; a step entered then gets the FILL trig. A quick PLAY tap
