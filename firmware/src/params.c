@@ -12,8 +12,8 @@ static const uint8_t LSYNC_DIV[11] = {0, 9, 8, 7, 6, 0, 1, 4, 2, 5, 3};
 static const char *const N_FXRATE[] = {"4BAR", "2BAR", "1/1", "1/2", "1/4", "1/8", "8T", "1/16", "16T", "1/32"};
 static const char *const N_FXWAVE[] = {"SIN", "TRI", "UP", "DOWN", "SQR", "S&H"};
 static const char *const N_FXDST[] = {"OFF", "AMP", "DJ", "C.MIX", "CTUNE", "CFDBK", "CDAMP", "DTIME", "DFDBK", "DTONE",
-                                      "RTIME", "RDAMP", "GRIT", "D.SND", "R.SND"};
-enum { FXD_DSND = 13, FXD_RSND = 14 };
+                                      "RTIME", "RDAMP", "GRIT", "D.SND", "R.SND", "D.OUT", "R.OUT"};
+enum { FXD_DSND = 13 };                                  /* (D.SND R.SND D.OUT R.OUT: mod.c fxs_gain 0..3) */
 static const char *const N_LTRIG[] = {"NOTE", "FREE"};
 static const char *const N_LPOL[] = {"BI", "UNI"};
 static const char *const N_AMODE[] = {"OFF", "UP", "DN", "UPDN", "RND", "ORD", "REPEAT",   /* (append-only: seq.c AM_*) */
@@ -499,21 +499,21 @@ static const page_t PAGES[] = {
     {"SYNC", FAM_LFO, SC_TRACK, GR_NONE, {P_LSYNC, P_LTRIG, P_LPOL, 0xFF}},
     {"LFO DEST", FAM_LFO, SC_TRACK, GR_NONE, {P_LD_PIT, P_LD_FLT, P_LD_SHP, P_LD_AMP}},
     {"SENDS", FAM_FX, SC_TRACK, GR_NONE, {P_DLY, P_REV, 0xFF, 0xFF}},   /* the track's sends (the effects: the FX track's) */
-    /* the FX track's (black key 7 / ALGO past 6): the delay, the reverb, three LFOs on the LFO ENV FILTER buttons */
+    /* the FX track's (black key 7 / ALGO past 6): the delay, the reverb, three LFOs on the FILTER ENV LFO buttons */
     {"DELAY", FAM_FX, SC_GLOBAL, GR_NONE, {G_DTIME, G_DFDBK, G_DCOLOR, 0xFF}, 1},
     {"VERB", FAM_FX, SC_GLOBAL, GR_NONE, {G_RSIZE, G_RDAMP, G_RTYPE, 0xFF}, 1},
-    {"LFO 1", FAM_LFO, SC_GLOBAL, GR_NONE, {G_F1RATE, G_F1WAVE, G_F1DEST, G_F1AMT}, 1},
+    {"LFO 1", FAM_FLT, SC_GLOBAL, GR_NONE, {G_F1RATE, G_F1WAVE, G_F1DEST, G_F1AMT}, 1},   /* (the buttons left to right) */
     {"LFO 2", FAM_ENV, SC_GLOBAL, GR_NONE, {G_F2RATE, G_F2WAVE, G_F2DEST, G_F2AMT}, 1},
-    {"LFO 3", FAM_FLT, SC_GLOBAL, GR_NONE, {G_F3RATE, G_F3WAVE, G_F3DEST, G_F3AMT}, 1},
+    {"LFO 3", FAM_LFO, SC_GLOBAL, GR_NONE, {G_F3RATE, G_F3WAVE, G_F3DEST, G_F3AMT}, 1},
     {"OSC 1", FAM_EDIT, SC_ENGINE, GR_NONE, {P_E0, P_E1, P_E2, P_E3}},   /* the machine's first four (the PRESETS knob: MACH) */
     {"OSC 2", FAM_EDIT, SC_ENGINE, GR_NONE, {P_E4, P_E5, P_E6, P_LN0}},  /* the rest (ANALOG: .. DRIVE LEVEL) */
     {"AGE", FAM_EDIT, SC_ENGINE, GR_NONE, {P_LN1, 0xFF, 0xFF, 0xFF}},   /* ANALOG's AGE, SAMPLER's GATE (page_id_an; ui.c page_visible) */
     {"FILTER", FAM_FLT, SC_TRACK, GR_NONE, {P_FLT_CUT, P_FLT_RES, P_FTYPE, P_FE_AMT}},    /* CUT RES TYPE AMT */
     {"FILTER ENV", FAM_FLT, SC_TRACK, GR_NONE, {P_FE_ATK, P_FE_DEC, P_FE_SUS, P_FE_REL}}, /* ATK DEC SUS REL */
-    {"PERF", FAM_GLO, SC_GLOBAL, GR_PERF, {0xFF, 0xFF, 0xFF, 0xFF}},        /* GLO: the performance macros (ui.c perf_*) */
-    {"COMB", FAM_GLO, SC_GLOBAL, GR_NONE, {G_SYNC, G_CRATE, G_CDEPTH, G_INFO}},   /* the master comb: MIX TUNE FDBK DAMP (mfx.c) */
-    {"DJ", FAM_GLO, SC_GLOBAL, GR_NONE, {G_MIDI, 0xFF, 0xFF, 0xFF}},             /* the DJ filter (a step locks it) */
-    {"AMP", FAM_GLO, SC_GLOBAL, GR_NONE, {G_AMP, 0xFF, 0xFF, 0xFF}},             /* the whole mix's level (ducking, pulsing) */
+    {"PERF", FAM_GLO, SC_GLOBAL, GR_PERF, {0xFF, 0xFF, 0xFF, 0xFF}, 1},        /* GLO: the performance macros (ui.c perf_*) */
+    {"COMB", FAM_GLO, SC_GLOBAL, GR_NONE, {G_SYNC, G_CRATE, G_CDEPTH, G_INFO}, 1},   /* the master comb: MIX TUNE FDBK DAMP (mfx.c) */
+    {"DJ", FAM_GLO, SC_GLOBAL, GR_NONE, {G_MIDI, 0xFF, 0xFF, 0xFF}, 1},             /* the DJ filter (a step locks it) */
+    {"AMP", FAM_GLO, SC_GLOBAL, GR_NONE, {G_AMP, 0xFF, 0xFF, 0xFF}, 1},             /* the whole mix's level (ducking, pulsing) */
     {"SEQ", FAM_SEQ, SC_TRACK, GR_GBSEQ, {P_SLEN, P_SDIV, P_APROB, 0xFF}},
     {"ARP", FAM_ARP, SC_TRACK, GR_NONE, {P_AHOLD, P_AMODE, P_ARATE, P_ASWING}},   /* ARP MODE RATE FADE (seq.c ARP_*) */   /* LEN SPEED CHANCE TRIG (ui_input.c gbseq_knob) */
     {"VOLUME 1-4", FAM_TRK, SC_TRK, GR_TRK, {0, 1, 2, 3}},   /* the tracks' levels, KNOB k track id[k] (0xFF: none) */

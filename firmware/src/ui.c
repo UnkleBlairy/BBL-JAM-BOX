@@ -368,11 +368,12 @@ enum { LAYER_NONE, LAYER_FX, LAYER_GLO, LAYER_SCL, LAYER_EDIT, LAYER_SEQ, LAYER_
  * a SLICE track's (ui_slice.c); LANES / LANES 2 a DRUM track's (its lane levels); FILTER an ANALOG track's; OPERATOR, OP ENV, OPERATOR 2 an FM6
  * track's (its patch's operators, ui_fm6op.c) */
 static uint8_t fxl_sel;                               /* SIMPLE: the FX track is selected (black key 7, ALGO past 6) */
-/* SIMPLE, the FX track selected: a track's page (its sound, its SEQ ..) is none of its own (a big X, ui_gb.c) */
-static int fxt_x(const page_t *pg) { return fxl_sel && (pg->scope == SC_TRACK || pg->scope == SC_ENGINE); }
+/* SIMPLE: a page that is not the selected track's (a big X, ui_gb.c; its knobs and keys do nothing): on the FX track
+ * a track's (its sound, its SEQ ..), on a track the FX track's (fxt: the effects, PERF) */
+static int fxt_x(const page_t *pg) { return fxl_sel ? pg->scope == SC_TRACK || pg->scope == SC_ENGINE : pg->fxt != 0u; }
 static int page_visible(uint32_t i)
 {
-    if (i >= NPAGES || (PAGES[i].fxt && !fxl_sel) || fxt_x(&PAGES[i]))   /* (the FX track's pages, a track's) */
+    if (i >= NPAGES || fxt_x(&PAGES[i]))                /* (the FX track's pages, a track's) */
         return 0;
     return PAGES[i].scope != SC_ENGINE || page_id_an(&PAGES[i], PAGES[i].id[0]) != 0xFFu;
 }                                                     /* (SIMPLE: AGE only on an ANALOG track) */
@@ -468,7 +469,7 @@ static void page_entered(void)
     if (!ui.home && lock_page_ok(ui.page))
         ui.plk_src = (uint8_t)(ui.page + 1u);
     song.seq_mode = !ui.home && pg->fam == FAM_SEQ;
-    if (FELUCCA_SIMPLE && !ui.home && pg->graph == GR_PERF)
+    if (FELUCCA_SIMPLE && !ui.home && pg->graph == GR_PERF && !fxt_x(pg))
         ui.sgrid = 0;                            /* SIMPLE: out of PERF the keys are the keyboard */
     ui.entry_open = 0;
     ui.hot_t = 0;                                /* clear the previous page's emphasis */
@@ -546,9 +547,23 @@ static uint8_t pm_rel;                                   /* the release fade in 
 static struct { uint8_t n, trk[32], id[32]; int16_t from[32], to[32]; uint32_t t0, dur; } pm_rl;   /* the parameters gliding back */
 static uint8_t pm_ui_a = 255, pm_ui_c = 255;             /* what the screen shows: the macro fading from, the one fading to / playing in the arp */
 static int16_t pm_ui_u;                                  /* .. how far (0..1024) */                 /* 0 none, 1..4 the fade time; FUNC 0..2; ARP 0..4 */
-static int pm_page(void) { return !ui.home && !ui.confirm && cur_page()->graph == GR_PERF; }
+static int pm_page(void) { return !ui.home && !ui.confirm && cur_page()->graph == GR_PERF && !fxt_x(cur_page()); }
 static int pm_down(void) { return pm_h.n != 0u; }   /* a macro key held (on any page) */
 static int fxl_on(void) { return fxl_sel && sgrid_on(); }   /* the step keys are the FX lane's (seq.c fxl) */
+/* the lane edited (a trig or its locks gone): its locks now as its latest trig up to the step playing lays them (none:
+ * the knobs' own values) */
+static void fxl_refresh(void)
+{
+    uint32_t k;
+    fm1_irq_off();
+    mg_ov_n = 0;
+    for (k = 0; song.playing && k < 16u; k++)
+        if ((fxl.trig >> ((clk_step - k) & 15u)) & 1u) {
+            fxl_step((clk_step - k) & 15u);
+            break;
+        }
+    fm1_irq_on();
+}
 /* SIMPLE, PARAM keys on: on a page whose knobs lock, the white keys set the chosen knob (par_k) and play (seq.c par_key) */
 static uint8_t par_k, par_pg;   /* the knob and its page (picked with SEQ held + a knob: it stays on other pages) */
 static int par_on(void)
@@ -578,9 +593,11 @@ static uint8_t tm_dn, tm_up, tm_k = 0xFFu;   /* picking for a source (1 + its sl
 static const char *const TM_NAME[6] = {"LFO", "AMP ENV", "FILT ENV", "LFO 1", "LFO 2", "LFO 3"};   /* (3..: the FX track's) */
 static const uint8_t TM_SRC[3] = {MS_LFO, MS_ENV, MS_FENV};
 static int16_t *tm_slot(track_t *t) { return &t->p[P_M1SRC + 3u * ((tm_dn - 1u) % 3u)]; }   /* SRC DST AMT */
-/* SIMPLE, the FX track (fxl_sel): LFO / ENV / FILTER pick for its LFO 1 / 2 / 3, their DEST (N_FXDST) and AMT */
-static int16_t *tm_fxd(void) { return &song.g[FXL_ID[(tm_dn - 1u) % 3u][2]]; }
-static int16_t *tm_fxa(void) { return &song.g[FXL_ID[(tm_dn - 1u) % 3u][3]]; }
+/* SIMPLE, the FX track (fxl_sel): FILTER / ENV / LFO (left to right) pick for its LFO 1 / 2 / 3, their DEST (N_FXDST)
+ * and AMT */
+static uint32_t tm_fxk(void) { return 2u - (tm_dn - 1u) % 3u; }   /* (tm_dn: 1 LFO, 2 ENV, 3 FILTER) */
+static int16_t *tm_fxd(void) { return &song.g[FXL_ID[tm_fxk()][2]]; }
+static int16_t *tm_fxa(void) { return &song.g[FXL_ID[tm_fxk()][3]]; }
 static uint32_t tm_fxmd(const page_t *pg, uint32_t k)   /* KNOB k of page pg as an FX LFO's DEST, 0: none */
 {
     uint32_t id = page_id_an(pg, pg->id[k & 3u]), j;
@@ -882,11 +899,12 @@ static void pm_clear(void)                               /* OCT-: the macro held
     pm_mac[pm_h.mac[0]].n = 0;
     pm_h.nb = 0;
 }
-/* the globals a macro can hold: the tempo and swing, the delay and the reverb, the master DJ filter and comb (not the actions, the clock mode, the names) */
+/* the globals a macro can hold: the tempo and swing, the delay and the reverb, the master DJ filter and comb, AMP and the
+ * FX LFOs (not the clock mode, MIDI's routing) */
 static int pm_global_ok(uint32_t id)
 {
     return id == G_BPM || id == G_SWING || (id >= G_DTIME && id <= G_CDEPTH) || id == G_MIDI || id == G_SYNC || id == G_INFO ||
-           id == G_RTYPE;
+           (id >= G_F1RATE && id < G_COUNT);             /* (SIMPLE: the reverb's GRIT, AMP, the FX track's LFOs) */
 }
 /* a knob turned the value vp of track t from `old`: with one macro key down it is kept in that macro, and left alone by the fade */
 static void pm_record(track_t *t, int16_t *vp, int16_t old)

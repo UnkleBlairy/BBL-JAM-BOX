@@ -185,7 +185,7 @@ static uint32_t tm_poll(uint32_t pressed)
             *tm_fxd() = 0;
         else
             tm_slot(TSEL)[1] = 0;
-        str_cpy(m, TM_NAME[tm_dn - 1u + (fxl_sel ? 3u : 0u)], sizeof m);
+        str_cpy(m, TM_NAME[fxl_sel ? 3u + tm_fxk() : tm_dn - 1u], sizeof m);
         str_cpy(m + str_len(m), " DEST OFF", sizeof m - str_len(m));
         ui_message(m);
         tm_dn = 0;
@@ -263,7 +263,7 @@ static int mom_turn(uint32_t k, int32_t s)
     }
     g = vp && vp >= song.g && vp < song.g + G_COUNT ? (uint32_t)(vp - song.g) : G_COUNT;
     if (!d || !vp || d->max == d->min ||
-        !((vp >= t->p && vp < t->p + P_COUNT) || (g <= G_CDEPTH && g != G_CLOCK) || (g >= G_F1RATE && g < G_COUNT)))
+        !((vp >= t->p && vp < t->p + P_COUNT) || (g < G_COUNT && g != G_CLOCK && g != G_TUNE && g != G_ROUTE)))
         return 0;                                      /* (only the values a sound and the FX are: no CLK, no actions) */
     for (i = 0; i < mom.n && mom.vp[i] != vp; i++)
         ;
@@ -834,6 +834,7 @@ static void pm_poll(void)
     if (was && !pm_h.n && !pm_page()) {                 /* all let go: back to the macros */
         for (i = 0; i < NPAGES; i++)
             if (PAGES[i].graph == GR_PERF) {
+                fxt_set(1);                             /* (SIMPLE: PERF is the FX track's) */
                 ui.home = 0;
                 ui.page = (uint8_t)i;
                 page_entered();
@@ -1006,6 +1007,7 @@ static void sgrid_release(void)                          /* every input pass: th
             if (fxl_on()) {
                 fxl.trig &= (uint16_t)~(1u << key_place(k));
                 fxl.lk[key_place(k)] = 0;
+                fxl_refresh();
             } else {
                 gbs_step_off(&TSEL->step[gbs_base() + key_place(k)]);
             }
@@ -1317,8 +1319,8 @@ static void fxl_turn(uint32_t k, int32_t s, uint64_t held)
 {
     uint32_t id = lock_id(k), j, i;
     const param_desc_t *d;
-    if (id == 0xFFu || id < P_COUNT) {
-        ui_message("FX: MASTER ONLY");
+    if (id == 0xFFu || id < P_COUNT) {                 /* (a track's knob, or one that switches: RATE WAVE DEST) */
+        ui_message(id == 0xFFu && cur_page()->fxt ? "AMT LOCKS ONLY" : "FX: MASTER ONLY");
         return;
     }
     j = id - P_COUNT;
@@ -1458,6 +1460,7 @@ static void lock_clear(uint64_t held)
                 n += fxl.lk[i] != 0u;
                 fxl.lk[i] = 0;
             }
+        fxl_refresh();
         ui_message(n ? "LOCKS CLEARED" : "NO LOCKS");
         return;
     }
@@ -1857,6 +1860,7 @@ static void ui_input(void)
                 }
                 if ((b == B_OCTDN || all) && (all || fxl_on())) {   /* (the FX lane: OCT- clears it; with OCT+ it too) */
                     memset(&fxl, 0, sizeof fxl);
+                    fxl_refresh();
                     if (!all) {
                         ui_message("FX CLEARED");
                         break;
@@ -1979,6 +1983,8 @@ static void ui_input(void)
         int16_t *hv;
         uint64_t held;
         if ((s = panel_enc(EN_K1 + k)) == 0)
+            continue;
+        if (!ui.home && fxt_x(pg))                      /* (SIMPLE: the X, not this track's page: nothing) */
             continue;
         if (tm_dn) {                                    /* picking (LFO / ENV / FILTER) + KNOB k: its DEST, its AMT */
             tm_turn(k, s);

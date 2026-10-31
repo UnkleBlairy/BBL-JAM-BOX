@@ -422,6 +422,22 @@ static int32_t part_buf[CTL];                            /* a part's block (mix_
 
 
 /* process the two buses (the delay, the reverb) for one block; sends in, wet stereo-equal out */
+#define GAIN_SLEW 256u                                  /* Q15 a sample at most: a whole swing in 128 samples (~3 ms) */
+static void gain_ramp(int32_t *buf, uint32_t n, int32_t *cur, int32_t to)
+{
+    int32_t g = *cur, st, mx = (int32_t)(GAIN_SLEW * n);
+    uint32_t i;
+    if (g == to && to >= 32767)
+        return;
+    to = clamp(to, g - mx, g + mx);                     /* (a jump, SQR's: a ~3 ms fade, no click) */
+    st = (to - g) / (int32_t)(n ? n : 1u);
+    for (i = 0; i < n; i++) {
+        g = i + 1u == n ? to : g + st;
+        buf[i] = (int32_t)(((int64_t)buf[i] * g) >> 15);
+    }
+    *cur = to;
+}
+static int32_t fxs_cur[4] = {32767, 32767, 32767, 32767}, amp_cur = 32767;   /* (mod.c fxs_gain's, AMP's, as the last block ended) */
 static void fx_buses(const int32_t *dly_in, const int32_t *rev_in, int32_t *wet,
                      uint32_t n)
 {
@@ -476,7 +492,20 @@ static void fx_buses(const int32_t *dly_in, const int32_t *rev_in, int32_t *wet,
     }
     hl.side = 0;
     (void)rt;
-    rev_quad(rev_in, wet, n);                           /* SIMPLE: the one reverb */
+    gain_ramp(wet, n, &fxs_cur[2], fxs_gain[2]);        /* (SIMPLE: the FX LFOs' D.OUT: the echoes) */
+    if (fxs_gain[3] >= 32767 && fxs_cur[3] >= 32767) {
+        rev_quad(rev_in, wet, n);                       /* SIMPLE: the one reverb */
+    } else {                                            /* (.. R.OUT: the reverb's own, its stereo side too) */
+        static int32_t rw[CTL];
+        int32_t c = fxs_cur[3];
+        for (i = 0; i < n; i++)
+            rw[i] = 0;
+        rev_quad(rev_in, rw, n);
+        gain_ramp(rev_side, n, &c, fxs_gain[3]);
+        gain_ramp(rw, n, &fxs_cur[3], fxs_gain[3]);
+        for (i = 0; i < n; i++)
+            wet[i] += rw[i];
+    }
 }
 
 /* after the buses: HALL's stereo difference to the left and from the right of the dry mix (the wet bus adds the
@@ -690,22 +719,6 @@ static uint32_t mix_split(void)
 #endif
 
 /* SIMPLE: buf's n by a gain going from *cur to to (Q15, 32767 none: a block at it is left alone), no steps (no clicks) */
-#define GAIN_SLEW 256u                                  /* Q15 a sample at most: a whole swing in 128 samples (~3 ms) */
-static void gain_ramp(int32_t *buf, uint32_t n, int32_t *cur, int32_t to)
-{
-    int32_t g = *cur, st, mx = (int32_t)(GAIN_SLEW * n);
-    uint32_t i;
-    if (g == to && to >= 32767)
-        return;
-    to = clamp(to, g - mx, g + mx);                     /* (a jump, SQR's: a ~3 ms fade, no click) */
-    st = (to - g) / (int32_t)(n ? n : 1u);
-    for (i = 0; i < n; i++) {
-        g = i + 1u == n ? to : g + st;
-        buf[i] = (int32_t)(((int64_t)buf[i] * g) >> 15);
-    }
-    *cur = to;
-}
-static int32_t fxs_cur[2] = {32767, 32767}, amp_cur = 32767;   /* (the sends' gains, AMP's, as the last block ended) */
 static void amp_block(uint32_t n)                       /* SIMPLE: AMP (G_AMP, as modulated), the whole mix; squared */
 {
     int32_t v = song.g[G_AMP], to = v >= 127 ? 32767 : (v * v * 32767) / (127 * 127), c = amp_cur;

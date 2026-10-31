@@ -28,7 +28,8 @@ int main(int argc,char**argv){
     else if(!strcmp(s,"bpm?")) printf("bpm=%d sel=%u kitkeys=%u motion=%u\n", song.g[G_BPM], song.sel, (unsigned)({int c=0; for(int a=0;a<NTRK;a++) for(int b=0;b<16;b++) c+=kit[a][b].n; c;}), motion.count);
     else if(!strcmp(s,"all?")) { for(int k=0;k<NTRK;k++){ track_t *t=&trk[k]; printf("T%d:",k+1); for(int i=0;i<NSTEP;i++){ step_t *st=&t->step[i]; if(st->time==ST_NOTE&&st->n) printf(" %d(nd%d)", i, (int)step_nudge(st)); } printf("\n"); } }
     else if(!strcmp(s,"steps?")) { track_t *t=TSEL; printf("len=%d bank=%u qntz=%d idx=%u:", t->p[P_SLEN], ui.bank, t->p[P_SQNT], t->seq_idx); for(int i=0;i<NSTEP;i++){ step_t *st=&t->step[i]; if(st->time==ST_NOTE&&st->n) printf(" %d[n%u nd%d tc%u]", i, st->n, (int)step_nudge(st), gb_tc(st)); } printf("\n"); }
-    else if(!strcmp(s,"fx?")) printf("sel=%u fxt=%u page=%s amp=%d L1=%d/%d/%d/%d L2=%d/%d/%d/%d dly=%d trig=%x lk0=%x v0amp=%d\n", song.sel, fxl_sel, PAGES[ui.page].title, song.g[G_AMP], song.g[G_F1RATE], song.g[G_F1WAVE], song.g[G_F1DEST], song.g[G_F1AMT], song.g[G_F2RATE], song.g[G_F2WAVE], song.g[G_F2DEST], song.g[G_F2AMT], TSEL->p[P_DLY], fxl.trig, fxl.lk[0], fxl.v[0][11]);
+    else if(!strcmp(s,"m1?")) printf("m1 src=%d dst=%d amt=%d tm_dn=%u\n", TSEL->p[P_M1SRC], TSEL->p[P_M1DST], TSEL->p[P_M1AMT], tm_dn);
+    else if(!strcmp(s,"fx?")) printf("sel=%u fxt=%u page=%s amp=%d L1=%d/%d/%d/%d L2=%d/%d/%d/%d dly=%d trig=%x lk0=%x v0amp=%d ov=%u\n", song.sel, fxl_sel, PAGES[ui.page].title, song.g[G_AMP], song.g[G_F1RATE], song.g[G_F1WAVE], song.g[G_F1DEST], song.g[G_F1AMT], song.g[G_F2RATE], song.g[G_F2WAVE], song.g[G_F2DEST], song.g[G_F2AMT], TSEL->p[P_DLY], fxl.trig, fxl.lk[0], fxl.v[0][11], mg_ov_n);
     else if(!strncmp(s,"enc:",4)) { int r,n; sscanf(s+4,"%d,%d",&r,&n); web_enc(r,n); run(100);} 
     else dump(s);
   }

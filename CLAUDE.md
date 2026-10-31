@@ -242,11 +242,14 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   keeps its own value, LFOs wobble on top). Hold step + OCT- clears its locks,
   OCT- clears the lane. No LEN/SPEED/CHANCE of its own yet.
 - FX TRACK (fxl_sel; black key 7 in SEQ mode, or ALGO turned past 6; ui.c fxt_set): its own pages, the
-  others show a big X (ui.c fxt_x). FX button = DELAY (TIME FDBK TONE) / VERB (TIME DAMP GRIT), only here;
-  LFO / ENV / FILTER buttons = its LFO 1 / 2 / 3 (RATE: synced note values, WAVE SIN TRI UP DOWN SQR S&H,
+  others show a big X (ui.c fxt_x; both ways: on a track the FX track's pages are the X; knobs/keys do
+  nothing there). GLO (PERF COMB DJ AMP) is the FX track's only. FX button = DELAY (TIME FDBK TONE) / VERB (TIME DAMP GRIT), only here;
+  FILTER / ENV / LFO buttons (left to right) = its LFO 1 / 2 / 3 (RATE: synced note values, WAVE SIN TRI UP DOWN SQR S&H,
   0..1 from the knob's value, DEST, AMT; mod.c fxlfo_*, restart at PLAY). DESTs: AMP DJ the comb's 4, the
-  delay's 3, the reverb's 3, D.SND R.SND (every track's sends: AMT left ducks them). Hold LFO/ENV/FILTER on
-  the FX track = the picker for LFO 1/2/3. Tracks' FX button = SENDS (DLY, REV). Storage: the old unused
+  delay's 3, the reverb's 3, D.SND R.SND (every track's sends: AMT left ducks them), D.OUT R.OUT (the
+  echoes / the reverb's sound: the sidechain duck). Hold FILTER/ENV/LFO on the FX track = the picker for
+  LFO 1/2/3. Macros can hold AMP and every FX LFO knob. Clearing an FX lane trig/lock puts the knobs back
+  at once (ui.c fxl_refresh). Tracks' FX button = SENDS (DLY, REV). Storage: the old unused
   globals (G_SLOT.. G_DRREV -> G_F1RATE.. G_AMP) + G_F1WAVE..G_F3WAVE; kits keep the LFOs (WAVEs in rsv),
   not AMP; the last jam keeps all. FX lane locks: AMP and the 3 AMTs too (MOTION_G).
 - Next: the ALL track (ALGO past FX): relative moves on every track first (maybe snap later), with a way to

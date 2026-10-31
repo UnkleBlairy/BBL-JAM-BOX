@@ -267,14 +267,16 @@ static uint32_t mg_slot(uint32_t g, int32_t *off)       /* global g's place in m
 
 /* SIMPLE: the FX track's three LFOs (params.c N_FX*): in time from PLAY (seq.c: fxlfo_reset), running on when stopped.
  * Each moves its DEST's global from the knob's value as a track's slot does (0..1 waves; AMT 64 the whole range, < 0
- * down), D.SND / R.SND every track's delay / reverb sends (fx.c fxs_gain: 1 .. 0, AMT < 0 ducks them) */
+ * down), D.SND / R.SND every track's delay / reverb sends, D.OUT / R.OUT the echoes / the reverb's sound (fx.c fxs_gain:
+ * 1 .. 0, AMT < 0 ducks them) */
 static const uint8_t FXL_ID[3][4] = {{G_F1RATE, G_F1WAVE, G_F1DEST, G_F1AMT}, {G_F2RATE, G_F2WAVE, G_F2DEST, G_F2AMT},
                                      {G_F3RATE, G_F3WAVE, G_F3DEST, G_F3AMT}};   /* RATE WAVE DEST AMT */
 static const uint8_t FXD_G[NELEM(N_FXDST)] = {0xFFu, G_AMP, G_MIDI, G_SYNC, G_CRATE, G_CDEPTH, G_INFO, G_DTIME, G_DFDBK,
-                                              G_DCOLOR, G_RSIZE, G_RDAMP, G_RTYPE, 0xFFu, 0xFFu};
+                                              G_DCOLOR, G_RSIZE, G_RDAMP, G_RTYPE, 0xFFu, 0xFFu, 0xFFu, 0xFFu};
 static struct { uint32_t ph, rnd; } fxlfo[3];
 static uint32_t fxlfo_seed = 0x6C8E9CF5u;
-static int32_t fxs_gain[2] = {32767, 32767};            /* this block's: the delay's sends, the reverb's (Q15) */
+static int32_t fxs_gain[4] = {32767, 32767, 32767, 32767};   /* this block's: the delay's sends, the reverb's, the
+                                                                 * delay's output, the reverb's (Q15) */
 static void fxlfo_reset(void) { fxlfo[0].ph = fxlfo[1].ph = fxlfo[2].ph = 0; }
 static uint32_t div_samples(uint32_t div);              /* (fx.c) */
 static int32_t fxlfo_block(uint32_t k, uint32_t n)      /* LFO k a block of n on: its value, 0..32767 */
@@ -319,7 +321,7 @@ static __attribute__((noinline)) void mod_g_begin(uint32_t nb)
         off[j] = 0;
         mg_n++;
     }
-    fxs_gain[0] = fxs_gain[1] = 32767;
+    fxs_gain[0] = fxs_gain[1] = fxs_gain[2] = fxs_gain[3] = 32767;
     for (k = 0; k < 3u; k++) {                          /* the FX track's LFOs */
         int32_t v = fxlfo_block(k, nb), a;
         uint32_t d = (uint32_t)song.g[FXL_ID[k][2]], g;
@@ -328,8 +330,8 @@ static __attribute__((noinline)) void mod_g_begin(uint32_t nb)
         a = j < mg_n ? mg_base[j] : song.g[FXL_ID[k][3]];   /* (its AMT locked on the FX lane: that) */
         if (!d || !a || d >= NELEM(FXD_G))
             continue;
-        if (d == FXD_DSND || d == FXD_RSND) {
-            int32_t *gp = &fxs_gain[d == FXD_RSND];
+        if (d >= FXD_DSND) {                            /* D.SND R.SND D.OUT R.OUT */
+            int32_t *gp = &fxs_gain[(d - FXD_DSND) & 3u];
             *gp = clamp(*gp + ((v * a) >> 6), 0, 32767);
             continue;
         }

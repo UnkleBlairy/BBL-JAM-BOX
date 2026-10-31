@@ -244,7 +244,7 @@ static void gb_ban_fill(gb_view_t *v)
                 ban_put(v, "WIGGLE", "KNOB");
             }
             str_cpy(a, "TAP ", sizeof a);
-            str_cpy(a + 4, BTN[v->tm_src % 3u], sizeof a - 4u);
+            str_cpy(a + 4, BTN[v->tm_src < 3u ? v->tm_src : 5u - v->tm_src % 6u], sizeof a - 4u);
             ban_put(v, a, "= CANCEL");
         }
     } else if (v->fillm) {                        /* PLAY held */
@@ -280,7 +280,7 @@ static void gb_fill(gb_view_t *v)
     char *p = (char *)v;
     for (i = 0; i < sizeof *v; i++)
         p[i] = 0;
-    v->perf = pg->graph == GR_PERF;
+    v->perf = pg->graph == GR_PERF && !fxt_x(pg);
     v->mixer = pg->graph == GR_TRK;
     v->sel = (uint8_t)song.sel;
     v->bpm = song.g[G_BPM];
@@ -292,7 +292,7 @@ static void gb_fill(gb_view_t *v)
     if (tm_dn) {                                  /* picking a DEST: 1 the banner, 2 (a knob picked) the amount's pop-up */
         uint32_t d = tm_dest();
         v->tmod = (uint8_t)(tm_up && d ? 2u : 1u);
-        v->tm_src = (uint8_t)((tm_dn - 1u) % 3u + (fxl_sel ? 3u : 0u));   /* (3..5: the FX track's LFO 1..3) */
+        v->tm_src = (uint8_t)(fxl_sel ? 3u + tm_fxk() : (tm_dn - 1u) % 3u);   /* (3..5: the FX track's LFO 1..3) */
         v->tm_amt = (int8_t)(d ? *tm_amt() : 0);
         if (d)
             str_cpy(v->tm_name, fxl_sel ? N_FXDST[d % NELEM(N_FXDST)] : tm_name(TSEL, d), sizeof v->tm_name);
