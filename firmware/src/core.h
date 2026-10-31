@@ -95,16 +95,16 @@ enum {                          /* global parameters */
     G_RSIZE, G_RDAMP, G_CRATE, G_CDEPTH,
     G_MIDI, G_SYNC, G_ROUTE, G_INFO,   /* G_ROUTE: MIDI IN, 0 CH1-4 (channels 1..4 -> parts 1..4, 5..16 ignored), 1 SEL;
                                         * 1.2: 2..4 CH5-8 CH9-12 CH13-16 (seq.c midi_base); 1.5.5: 5 TRACK (song.mch) */
-    G_SLOT, G_NAME, G_LOAD, G_SAVE,
-    G_ENGSEL, G_ENGGO,          /* no page: the editor switches the engine with a SET of G_ENGSEL; G_ENGGO is
-                                 * unused (ids are fixed by the formats and the protocol) */
-    G_CLRSEQ, G_INITSND,
+    /* SIMPLE: the FX track's three LFOs (RATE DEST AMT; their WAVEs after G_DRREV) on the ids of Felucca's SLOT NAME
+     * LOAD SAVE ENGSEL ENGGO CLRSEQ INITSND (G_DRLVL: LFO 3's AMT, G_DRREV: AMP, the whole mix) */
+    G_F1RATE, G_F1DEST, G_F1AMT, G_F2RATE,
+    G_F2DEST, G_F2AMT,
+    G_F3RATE, G_F3DEST,
     G_RTYPE,                    /* REVERB TYPE: 0 ROOM, 1 SPRING, 2 HALL (1.2, the power-on default) (fx.c). Was
                                  * G_DRCH, the GM drum part's MIDI channel (inert since 1.0, never read); projects
                                  * of formats before FUN7 load it as ROOM (project.c proj_rtype_room) */
-    G_DRLVL, G_DRREV,           /* inert (label "-", on no page): the GM drum part they set is gone; kept
-                                 * because the ids and G_COUNT are fixed by the formats and the protocol (only
-                                 * the import of an old project reads them: proj_drums_to_part) */
+    G_F3AMT, G_AMP,             /* (were G_DRLVL G_DRREV, the GM drum part's, inert) */
+    G_F1WAVE, G_F2WAVE, G_F3WAVE,   /* SIMPLE: the FX LFOs' WAVEs (new: a kit holds them in its rsv byte, gb_store.c) */
     G_COUNT
 };
 

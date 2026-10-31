@@ -244,12 +244,70 @@ static __attribute__((noinline)) int mod_begin(track_t *t)
 /* SIMPLE: the globals the tracks' slots move (MD_GLOBAL), around the master's block (fx.c mix_block): each track's
  * offset of its own sources (as mod_begin), added up; the values as they were go back after (mod_g_end), so nothing
  * outside the audio ISR sees them. TIME (reverb) stays short of FREEZE unless it is there */
-#define MG_N 16u
+#define MG_N 24u
 static uint8_t mg_n, mg_id[MG_N];
 static int16_t mg_keep[MG_N], mg_base[MG_N];
 static uint8_t mg_ov_n, mg_ov_g[MG_N];                  /* SIMPLE: values laid over globals (seq.c, the FX lane's locks) */
 static int16_t mg_ov_v[MG_N];
-static __attribute__((noinline)) void mod_g_begin(void)
+static uint32_t mg_slot(uint32_t g, int32_t *off)       /* global g's place in mg_* (a new one from its value), MG_N full */
+{
+    uint32_t j;
+    for (j = 0; j < mg_n && mg_id[j] != g; j++)
+        ;
+    if (j == mg_n) {
+        if (mg_n == MG_N)
+            return MG_N;
+        mg_id[j] = (uint8_t)g;
+        mg_keep[j] = mg_base[j] = song.g[g];
+        off[j] = 0;
+        mg_n++;
+    }
+    return j;
+}
+
+/* SIMPLE: the FX track's three LFOs (params.c N_FX*): in time from PLAY (seq.c: fxlfo_reset), running on when stopped.
+ * Each moves its DEST's global from the knob's value as a track's slot does (0..1 waves; AMT 64 the whole range, < 0
+ * down), D.SND / R.SND every track's delay / reverb sends (fx.c fxs_gain: 1 .. 0, AMT < 0 ducks them) */
+static const uint8_t FXL_ID[3][4] = {{G_F1RATE, G_F1WAVE, G_F1DEST, G_F1AMT}, {G_F2RATE, G_F2WAVE, G_F2DEST, G_F2AMT},
+                                     {G_F3RATE, G_F3WAVE, G_F3DEST, G_F3AMT}};   /* RATE WAVE DEST AMT */
+static const uint8_t FXD_G[NELEM(N_FXDST)] = {0xFFu, G_AMP, G_MIDI, G_SYNC, G_CRATE, G_CDEPTH, G_INFO, G_DTIME, G_DFDBK,
+                                              G_DCOLOR, G_RSIZE, G_RDAMP, G_RTYPE, 0xFFu, 0xFFu};
+static struct { uint32_t ph, rnd; } fxlfo[3];
+static uint32_t fxlfo_seed = 0x6C8E9CF5u;
+static int32_t fxs_gain[2] = {32767, 32767};            /* this block's: the delay's sends, the reverb's (Q15) */
+static void fxlfo_reset(void) { fxlfo[0].ph = fxlfo[1].ph = fxlfo[2].ph = 0; }
+static uint32_t div_samples(uint32_t div);              /* (fx.c) */
+static int32_t fxlfo_block(uint32_t k, uint32_t n)      /* LFO k a block of n on: its value, 0..32767 */
+{
+    uint32_t cyc = div_samples(LSYNC_DIV[1u + (uint32_t)song.g[FXL_ID[k][0]] % NELEM(N_FXRATE)]), q, r, old, ph;
+    cyc = cyc ? cyc : 1u;
+    q = 0xFFFFFFFFu / cyc;
+    r = 0xFFFFFFFFu % cyc;
+    old = fxlfo[k].ph;
+    ph = fxlfo[k].ph = old + q * n + (r * n + n) / cyc;
+    if (ph < old || !fxlfo[k].rnd) {                    /* a new cycle: S&H's next value */
+        fxlfo_seed ^= fxlfo_seed << 13;
+        fxlfo_seed ^= fxlfo_seed >> 17;
+        fxlfo_seed ^= fxlfo_seed << 5;
+        fxlfo[k].rnd = fxlfo_seed | 1u;
+    }
+    switch (song.g[FXL_ID[k][1]]) {
+    case 1:                                             /* TRI */
+        return (int32_t)((ph < 0x80000000u ? ph : ~ph) >> 16);
+    case 2:                                             /* UP */
+        return (int32_t)(ph >> 17);
+    case 3:                                             /* DOWN */
+        return 32767 - (int32_t)(ph >> 17);
+    case 4:                                             /* SQR */
+        return ph < 0x80000000u ? 32767 : 0;
+    case 5:                                             /* S&H */
+        return (int32_t)(fxlfo[k].rnd >> 17);
+    default:                                            /* SIN: from 0 (1 - cos) / 2 */
+        return (32767 + osc_sine(ph - 0x40000000u)) >> 1;
+    }
+}
+
+static __attribute__((noinline)) void mod_g_begin(uint32_t nb)
 {
     int32_t off[MG_N];
     uint32_t i, k, j;
@@ -260,6 +318,24 @@ static __attribute__((noinline)) void mod_g_begin(void)
         mg_base[j] = mg_ov_v[j];
         off[j] = 0;
         mg_n++;
+    }
+    fxs_gain[0] = fxs_gain[1] = 32767;
+    for (k = 0; k < 3u; k++) {                          /* the FX track's LFOs */
+        int32_t v = fxlfo_block(k, nb), a;
+        uint32_t d = (uint32_t)song.g[FXL_ID[k][2]], g;
+        for (j = 0; j < mg_n && mg_id[j] != FXL_ID[k][3]; j++)
+            ;
+        a = j < mg_n ? mg_base[j] : song.g[FXL_ID[k][3]];   /* (its AMT locked on the FX lane: that) */
+        if (!d || !a || d >= NELEM(FXD_G))
+            continue;
+        if (d == FXD_DSND || d == FXD_RSND) {
+            int32_t *gp = &fxs_gain[d == FXD_RSND];
+            *gp = clamp(*gp + ((v * a) >> 6), 0, 32767);
+            continue;
+        }
+        g = FXD_G[d];
+        if ((j = mg_slot(g, off)) < MG_N)
+            off[j] += (((v * a) >> 6) * (GP[g].max - GP[g].min)) >> 15;
     }
     for (i = 0; i < NTRK; i++) {
         const track_t *t = &trk[i];
@@ -279,17 +355,8 @@ static __attribute__((noinline)) void mod_g_begin(void)
                 have = 1;
             }
             g = MDX[d - MD_X0] & 0x7Fu;
-            for (j = 0; j < mg_n && mg_id[j] != g; j++)
-                ;
-            if (j == mg_n) {
-                if (mg_n == MG_N)
-                    continue;
-                mg_id[j] = (uint8_t)g;
-                mg_keep[j] = mg_base[j] = song.g[g];
-                off[j] = 0;
-                mg_n++;
-            }
-            off[j] += (((mod_tsrc(t, s, lfo) * a) >> 6) * (GP[g].max - GP[g].min)) >> 15;
+            if ((j = mg_slot(g, off)) < MG_N)
+                off[j] += (((mod_tsrc(t, s, lfo) * a) >> 6) * (GP[g].max - GP[g].min)) >> 15;
         }
     }
     for (j = 0; j < mg_n; j++) {

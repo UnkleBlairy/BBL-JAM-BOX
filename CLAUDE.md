@@ -114,7 +114,8 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   P_COUNT+j). Not the CLOCK page. Removing a step removes its locks.
 - No OCT+ second sets of knobs. OCT+ held + knob = a temporary change (ui_input.c
   mom_*): let go of OCT+ and it snaps back (no keep).
-- GLO pages: PERF, COMB, DJ (the DJ filter's own page, so it can be locked).
+- GLO pages: PERF, COMB, DJ (the DJ filter's own page, so it can be locked), AMP (the whole mix's level,
+  G_AMP; lockable, LFO-able: ducking / pulsing; ~3 ms slew so a square never clicks, fx.c gain_ramp).
 - LFO pages: LFO (RATE WAVE PHASE FADE), SYNC (SYNC TRIG POL), LFO DEST.
 - Holds are 500 ms (HINT_MS, FILL_MS); the mod picker needs 700 ms (TM_MS). A
   panel tap can last 250 ms. Timestamps stored as fm1_ms | 1 can be 1 ms ahead:
@@ -165,7 +166,7 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   check (jump ~20 = clean) before changing mfx.c.
 - ONE reverb only (streamlined): QUAD (fx.c rev_quad), a 90s rack plate
   (Dattorro tank at 11 kHz, stereo). ROOM/SPRING/HALL are not in this build.
-  VERB page: REV, TIME, DAMP, GRIT. Clean by default; GRIT (G_RTYPE's id,
+  VERB page (FX track): TIME, DAMP, GRIT. Clean by default; GRIT (G_RTYPE's id,
   squared so it only bites near the top) adds aliasing, sample-hold and down to
   8 bits. TIME 0..126 = RT60 0.3 s..~9 s (~3.5 s at 90); TIME 127 = FREEZE.
   QUAD maths is 64-bit and rounds toward 0 (qmul): no overflow crackle, and
@@ -239,7 +240,17 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   delay/reverb/comb/DJ knob = a lock (other knobs: "FX: MASTER ONLY"). A trig's
   locks lay over those knobs until the lane's next trig (mod.c mg_ov; the knob
   keeps its own value, LFOs wobble on top). Hold step + OCT- clears its locks,
-  OCT- clears the lane. Not saved. No LEN/SPEED/CHANCE of its own yet.
+  OCT- clears the lane. No LEN/SPEED/CHANCE of its own yet.
+- FX TRACK (fxl_sel; black key 7 in SEQ mode, or ALGO turned past 6; ui.c fxt_set): its own pages, the
+  others show a big X (ui.c fxt_x). FX button = DELAY (TIME FDBK TONE) / VERB (TIME DAMP GRIT), only here;
+  LFO / ENV / FILTER buttons = its LFO 1 / 2 / 3 (RATE: synced note values, WAVE SIN TRI UP DOWN SQR S&H,
+  0..1 from the knob's value, DEST, AMT; mod.c fxlfo_*, restart at PLAY). DESTs: AMP DJ the comb's 4, the
+  delay's 3, the reverb's 3, D.SND R.SND (every track's sends: AMT left ducks them). Hold LFO/ENV/FILTER on
+  the FX track = the picker for LFO 1/2/3. Tracks' FX button = SENDS (DLY, REV). Storage: the old unused
+  globals (G_SLOT.. G_DRREV -> G_F1RATE.. G_AMP) + G_F1WAVE..G_F3WAVE; kits keep the LFOs (WAVEs in rsv),
+  not AMP; the last jam keeps all. FX lane locks: AMP and the 3 AMTs too (MOTION_G).
+- Next: the ALL track (ALGO past FX): relative moves on every track first (maybe snap later), with a way to
+  leave tracks out.
 - Parameter ids (core.h P_*) never move: saved sounds map by count. New
   parameters go just before P_E0.
 - Machines (engines.c MACHINES): each is an engine + that engine's machine
@@ -306,7 +317,7 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   the pools once (gb_store.c gb_pool_move, magic GBS3).
 - 808 pages: OSC 1 (4 knobs), OSC 2 (3 knobs + LEVEL), AGE (one knob). LEVEL
   lives in P_LN0, AGE in P_LN1 (old drum-lane ids, so saved, lockable,
-  macroable, LFO-able). FM tracks skip the AGE page and hide LEVEL. 18 pages.
+  macroable, LFO-able). FM tracks skip the AGE page and hide LEVEL.
 - AGE = DRIFT/HISS/GRIT, weights in one block at the top of eng_analog.c
   (all 64 until the user sends the final ones).
 - 808s run their own envelopes and filters: the ENV and FILTER pages do

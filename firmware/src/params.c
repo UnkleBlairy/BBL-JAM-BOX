@@ -6,6 +6,14 @@ static const char *const N_LWAVE[] = {"SIN", "TRI", "SAW", "SQR", "S&H"};
  * TRIG: NOTE restarts it at PHS on a fresh phrase (as before), FREE never; POL: BI -1..+1 (as before), UNI 0..+1 */
 static const char *const N_LSYNC[] = {"OFF", "4BAR", "2BAR", "1/1", "1/2", "1/4", "1/8", "8T", "1/16", "16T", "1/32"};
 static const uint8_t LSYNC_DIV[11] = {0, 9, 8, 7, 6, 0, 1, 4, 2, 5, 3};
+/* SIMPLE: the FX track's LFOs (mod.c fxlfo_*): always in time, N_LSYNC's note values (no OFF); 0..1 waves from the
+ * knob's value (AMT < 0 the other way); their DESTs, the master's (FXD_G: the global each moves; D.SND R.SND scale
+ * every track's sends, 0xFF) */
+static const char *const N_FXRATE[] = {"4BAR", "2BAR", "1/1", "1/2", "1/4", "1/8", "8T", "1/16", "16T", "1/32"};
+static const char *const N_FXWAVE[] = {"SIN", "TRI", "UP", "DOWN", "SQR", "S&H"};
+static const char *const N_FXDST[] = {"OFF", "AMP", "DJ", "C.MIX", "CTUNE", "CFDBK", "CDAMP", "DTIME", "DFDBK", "DTONE",
+                                      "RTIME", "RDAMP", "GRIT", "D.SND", "R.SND"};
+enum { FXD_DSND = 13, FXD_RSND = 14 };
 static const char *const N_LTRIG[] = {"NOTE", "FREE"};
 static const char *const N_LPOL[] = {"BI", "UNI"};
 static const char *const N_AMODE[] = {"OFF", "UP", "DN", "UPDN", "RND", "ORD", "REPEAT",   /* (append-only: seq.c AM_*) */
@@ -237,21 +245,21 @@ static const param_desc_t GP[G_COUNT] = {
      * stored with the project as before. (was "--": stored 0 = CH1-4, as MIDI IN always was) */
     [G_ROUTE] = PE("ROUT", N_ROUTE, 0),
     [G_INFO] = PD("DAMP", F_PCT, 0, 127, 0),               /* SIMPLE: the master COMB's damping */
-    [G_SLOT] = PD("SLOT", F_INT, 1, 4, 1),
-    [G_NAME] = PE("NAME", N_DASH, 0),
-    [G_LOAD] = PE("LOAD", N_GO, 0),
-    [G_SAVE] = PE("SAVE", N_GO, 0),
-    [G_ENGSEL] = PE("ENG", N_ENGNAME, 0),
-    [G_ENGGO] = PE("SET", N_GO, 0),
-    [G_CLRSEQ] = PE("CLRSQ", N_GO, 0),
-    [G_INITSND] = PE("INIT", N_GO, 0),
+    [G_F1RATE] = PE("RATE", N_FXRATE, 4),              /* SIMPLE: the FX track's LFOs (were SLOT .. INIT) */
+    [G_F1DEST] = PE("DEST", N_FXDST, 0),
+    [G_F1AMT] = PD("AMT", F_BIPCT, -64, 63, 0),
+    [G_F2RATE] = PE("RATE", N_FXRATE, 4),
+    [G_F2DEST] = PE("DEST", N_FXDST, 0),
+    [G_F2AMT] = PD("AMT", F_BIPCT, -64, 63, 0),
+    [G_F3RATE] = PE("RATE", N_FXRATE, 4),
+    [G_F3DEST] = PE("DEST", N_FXDST, 0),
     /* the reverb's model on the REVERB page: the id of the old GM drum channel (G_DRCH, inert since 1.0) */
     [G_RTYPE] = PD("GRIT", F_PCT, 0, 127, 0),   /* SIMPLE: one reverb (fx.c rev_quad); this is its GRIT, clean at 0 */
-    /* inert: they set the GM drum part (level, reverb send), which is gone (drums are the DRUM engine
-     * on any part). On no page; kept so the ids and G_COUNT, which the project format and the
-     * editor protocol depend on, do not move */
-    [G_DRLVL] = PD("-", F_INT, 0, 0, 0),
-    [G_DRREV] = PD("-", F_INT, 0, 0, 0),
+    [G_F3AMT] = PD("AMT", F_BIPCT, -64, 63, 0),
+    [G_AMP] = PD("AMP", F_PCT, 0, 127, 127),               /* SIMPLE: the whole mix's level, 127 as it is (fx.c amp_block) */
+    [G_F1WAVE] = PE("WAVE", N_FXWAVE, 0),
+    [G_F2WAVE] = PE("WAVE", N_FXWAVE, 0),
+    [G_F3WAVE] = PE("WAVE", N_FXWAVE, 0),
 };
 
 static const param_desc_t AD_SUS = {"-", F_INT, 0, 127, 90, 0, 0}, AD_REL = {"-", F_INT, 0, 127, 60, 0, 0};
@@ -478,10 +486,11 @@ typedef struct {
     const char *title;
     uint8_t fam, scope, graph;
     uint8_t id[4];               /* param ids; 0xFF = empty slot */
+    uint8_t fxt;                 /* SIMPLE: 1 the FX track's only (ui.c page_visible; a track's pages are never its) */
 } page_t;
 
 /* SIMPLE: the groovebox's pages only (a family's go round in this order: ui.c open_family). EDIT button (FAM_EDIT)
- * OSC 1 / OSC 2, SCL button (FAM_FLT) FILTER / FILTER ENV, ENV, LFO, FX button (FAM_FX) DELAY / VERB, GLO PERF /
+ * OSC 1 / OSC 2, SCL button (FAM_FLT) FILTER / FILTER ENV, ENV, LFO, FX button (FAM_FX) SENDS (the FX track: DELAY / VERB), GLO PERF /
  * COMB, SEQ, HOME MIXER / CLOCK. No ARP, no SAVE pages (SAVE: ui_input.c gbsv_*) */
 static const page_t PAGES[] = {
     {"ENV", FAM_ENV, SC_TRACK, GR_ADSR, {P_ATK, P_DEC, P_SUS, P_REL}},
@@ -489,8 +498,13 @@ static const page_t PAGES[] = {
     {"LFO", FAM_LFO, SC_TRACK, GR_LFO, {P_LRATE, P_LWAVE, P_LPHASE, P_LFADE}},   /* (its DEST and AMT: hold LFO, ui_input.c) */
     {"SYNC", FAM_LFO, SC_TRACK, GR_NONE, {P_LSYNC, P_LTRIG, P_LPOL, 0xFF}},
     {"LFO DEST", FAM_LFO, SC_TRACK, GR_NONE, {P_LD_PIT, P_LD_FLT, P_LD_SHP, P_LD_AMP}},
-    {"DELAY", FAM_FX, SC_TRACK, GR_NONE, {P_DLY, 0x80 | G_DTIME, 0x80 | G_DFDBK, 0x80 | G_DCOLOR}},   /* the track's send, then the delay's own TIME FDBK TONE (0x80: a global) */
-    {"VERB", FAM_FX, SC_TRACK, GR_NONE, {P_REV, 0x80 | G_RSIZE, 0x80 | G_RDAMP, 0x80 | G_RTYPE}},   /* the track's send, then the reverb's SIZE DAMP TYPE */
+    {"SENDS", FAM_FX, SC_TRACK, GR_NONE, {P_DLY, P_REV, 0xFF, 0xFF}},   /* the track's sends (the effects: the FX track's) */
+    /* the FX track's (black key 7 / ALGO past 6): the delay, the reverb, three LFOs on the LFO ENV FILTER buttons */
+    {"DELAY", FAM_FX, SC_GLOBAL, GR_NONE, {G_DTIME, G_DFDBK, G_DCOLOR, 0xFF}, 1},
+    {"VERB", FAM_FX, SC_GLOBAL, GR_NONE, {G_RSIZE, G_RDAMP, G_RTYPE, 0xFF}, 1},
+    {"LFO 1", FAM_LFO, SC_GLOBAL, GR_NONE, {G_F1RATE, G_F1WAVE, G_F1DEST, G_F1AMT}, 1},
+    {"LFO 2", FAM_ENV, SC_GLOBAL, GR_NONE, {G_F2RATE, G_F2WAVE, G_F2DEST, G_F2AMT}, 1},
+    {"LFO 3", FAM_FLT, SC_GLOBAL, GR_NONE, {G_F3RATE, G_F3WAVE, G_F3DEST, G_F3AMT}, 1},
     {"OSC 1", FAM_EDIT, SC_ENGINE, GR_NONE, {P_E0, P_E1, P_E2, P_E3}},   /* the machine's first four (the PRESETS knob: MACH) */
     {"OSC 2", FAM_EDIT, SC_ENGINE, GR_NONE, {P_E4, P_E5, P_E6, P_LN0}},  /* the rest (ANALOG: .. DRIVE LEVEL) */
     {"AGE", FAM_EDIT, SC_ENGINE, GR_NONE, {P_LN1, 0xFF, 0xFF, 0xFF}},   /* ANALOG's AGE, SAMPLER's GATE (page_id_an; ui.c page_visible) */
@@ -499,6 +513,7 @@ static const page_t PAGES[] = {
     {"PERF", FAM_GLO, SC_GLOBAL, GR_PERF, {0xFF, 0xFF, 0xFF, 0xFF}},        /* GLO: the performance macros (ui.c perf_*) */
     {"COMB", FAM_GLO, SC_GLOBAL, GR_NONE, {G_SYNC, G_CRATE, G_CDEPTH, G_INFO}},   /* the master comb: MIX TUNE FDBK DAMP (mfx.c) */
     {"DJ", FAM_GLO, SC_GLOBAL, GR_NONE, {G_MIDI, 0xFF, 0xFF, 0xFF}},             /* the DJ filter (a step locks it) */
+    {"AMP", FAM_GLO, SC_GLOBAL, GR_NONE, {G_AMP, 0xFF, 0xFF, 0xFF}},             /* the whole mix's level (ducking, pulsing) */
     {"SEQ", FAM_SEQ, SC_TRACK, GR_GBSEQ, {P_SLEN, P_SDIV, P_APROB, 0xFF}},
     {"ARP", FAM_ARP, SC_TRACK, GR_NONE, {P_AHOLD, P_AMODE, P_ARATE, P_ASWING}},   /* ARP MODE RATE FADE (seq.c ARP_*) */   /* LEN SPEED CHANCE TRIG (ui_input.c gbseq_knob) */
     {"VOLUME 1-4", FAM_TRK, SC_TRK, GR_TRK, {0, 1, 2, 3}},   /* the tracks' levels, KNOB k track id[k] (0xFF: none) */

@@ -25,6 +25,8 @@ _Static_assert(GB_NPOOL <= GB_MACH, "more pools: more sound objects (GB_SOBJ, st
 #define GB_K3MAGIC 0x334B4247u                           /* "GBK3": the kits with their LOCKS keys */
 #define GB_KLK 264u                                      /* a kit's LOCKS keys: a count, then each key with locks: track << 4 |
                                                           * key, n, n ids, n values (int16) */
+#define GB_KG 27u                                        /* the globals a kit has room for (G_COUNT when kits began; the FX
+                                                          * LFOs' WAVEs after them go in rsv: gbk_wave) */
 typedef struct { uint8_t used, np; int8_t p[P_COUNT]; } gb_snd_t;   /* values - 64 (all of them fit in -64..127: project.c);
                                                                     * used: 1 a DIGITAL sound (all before the 808s), 2 ANALOG,
                                                                     * 3 SAMPLER */
@@ -33,7 +35,7 @@ typedef struct {
     uint8_t used, rel, fade, rsv;
     gb_snd_t s[NTRK];
     perf_mac_t mac[PM_NM];
-    int16_t g[G_COUNT];
+    int16_t g[GB_KG];
     uint8_t lk[GB_KLK];
 } gb_kit_t;
 typedef struct { uint32_t magic; uint16_t np, kind; gb_kit_t k[GB_KPER]; } gb_kobj_t;
@@ -42,7 +44,7 @@ typedef struct {
     uint8_t used, rel, fade, rsv;
     gb_snd_t s[NTRK];
     perf_mac_t mac[PM_NM];
-    int16_t g[G_COUNT];
+    int16_t g[GB_KG];
 } gb_kit2_t;
 typedef struct { uint32_t magic; uint16_t np, kind; gb_kit2_t k[GB_KPER]; } gb_kobj2_t;
 /* the four-track build's kit objects (OBJ_GB0 + 3 .. 5, four kits each): read once, then written as gb_kobj_t */
@@ -50,7 +52,7 @@ typedef struct {
     uint8_t used, rel, fade, rsv;
     gb_snd_t s[4];
     perf_mac_t mac[PM_NM];
-    int16_t g[G_COUNT];
+    int16_t g[GB_KG];
 } gb_kit_old_t;
 typedef struct { uint32_t magic; uint16_t np, kind; gb_kit_old_t k[4]; } gb_kobj_old_t;
 _Static_assert(sizeof(gb_kobj_old_t) == 3136u, "the four-track build's kit objects");
@@ -69,6 +71,10 @@ static int gb_sound_id(uint32_t id)
 /* the globals a kit holds: the delay, the reverb, the COMB, swing */
 static const uint8_t GB_KIT_G[] = {G_SWING, G_DTIME, G_DFDBK, G_DCOLOR, G_DMIX, G_RSIZE, G_RDAMP, G_RTYPE,
                                    G_SYNC, G_CRATE, G_CDEPTH, G_INFO};
+/* .. and the FX track's LFOs (not AMP: the level, as the tempo and the DJ): RATE DEST AMT in g, the WAVEs in rsv
+ * (1 + their three in base 6; 0 a kit from before them: the LFOs stay as they are) */
+static const uint8_t GB_KIT_FXL[] = {G_F1RATE, G_F1DEST, G_F1AMT, G_F2RATE, G_F2DEST, G_F2AMT, G_F3RATE, G_F3DEST, G_F3AMT};
+_Static_assert(G_F3AMT < GB_KG && G_AMP < GB_KG && G_F1WAVE >= GB_KG, "the kit's g: the old ids");
 
 static gb_kit_t *gb_kit(uint32_t k);
 /* old kit object o (four kits of four tracks) into the mirrors (gb_store_init: only while no new kit object is in
@@ -333,8 +339,10 @@ static int gbk_save(uint32_t k)
     memcpy(kt->mac, pm_mac, sizeof kt->mac);
     kt->rel = pm_rel;
     kt->fade = pm_fade;
-    for (i = 0; i < G_COUNT; i++)
+    for (i = 0; i < GB_KG; i++)
         kt->g[i] = song.g[i];
+    kt->rsv = (uint8_t)(1u + (uint32_t)song.g[G_F1WAVE] % 6u + 6u * ((uint32_t)song.g[G_F2WAVE] % 6u) +
+                        36u * ((uint32_t)song.g[G_F3WAVE] % 6u));
     if (!gbk_lk_pack(kt->lk))
         ui_message("KEY LOCKS PART SAVED");
     gb_ko[k / GB_KPER].magic = GB_K3MAGIC;
@@ -369,6 +377,14 @@ static int gbk_load(uint32_t k)
     pm_fade = kt->fade > 4u ? 0u : kt->fade;
     for (i = 0; i < NELEM(GB_KIT_G); i++)
         song.g[GB_KIT_G[i]] = (int16_t)clamp(kt->g[GB_KIT_G[i]], GP[GB_KIT_G[i]].min, GP[GB_KIT_G[i]].max);
+    if (kt->rsv) {                                       /* (a kit with the FX track's LFOs) */
+        uint32_t w = kt->rsv - 1u;
+        for (i = 0; i < NELEM(GB_KIT_FXL); i++)
+            song.g[GB_KIT_FXL[i]] = (int16_t)clamp(kt->g[GB_KIT_FXL[i]], GP[GB_KIT_FXL[i]].min, GP[GB_KIT_FXL[i]].max);
+        song.g[G_F1WAVE] = (int16_t)(w % 6u);
+        song.g[G_F2WAVE] = (int16_t)(w / 6u % 6u);
+        song.g[G_F3WAVE] = (int16_t)(w / 36u % 6u);
+    }
     gbk_lk_unpack(kt->lk);
     ui.force = 1;
     return 1;
@@ -565,7 +581,9 @@ static int jam_apply(uint8_t *in, uint32_t len)
     jam_io_t r = {in, 0, len, 0};
     uint32_t magic = 0, sel, rel, fade, ng, sz, np, ssz, k, i, n;
     static const uint8_t JAM_G[] = {G_BPM, G_SWING, G_DTIME, G_DFDBK, G_DCOLOR, G_DMIX, G_RSIZE, G_RDAMP, G_RTYPE,
-                                    G_SYNC, G_CRATE, G_CDEPTH, G_INFO};   /* (the tempo + GB_KIT_G: not the DJ) */
+                                    G_SYNC, G_CRATE, G_CDEPTH, G_INFO, G_AMP, G_F1RATE, G_F1WAVE, G_F1DEST, G_F1AMT,
+                                    G_F2RATE, G_F2WAVE, G_F2DEST, G_F2AMT, G_F3RATE, G_F3WAVE, G_F3DEST, G_F3AMT};
+                                    /* (the tempo + GB_KIT_G, AMP and the FX track's LFOs: not the DJ) */
     int16_t g[G_COUNT];
     jam_r(&r, &magic, 4);
     if (magic != JAM_MAGIC)
@@ -595,7 +613,17 @@ static int jam_apply(uint8_t *in, uint32_t len)
     pm_rel = (uint8_t)(rel > 16u ? 16u : rel);
     pm_fade = (uint8_t)(fade > 4u ? 0u : fade);
     sz = jam_r16(&r);
-    jam_r(&r, sz == sizeof fxl ? (void *)&fxl : 0, sz);
+    if (sz == 2u + 32u + 16u * 11u) {                    /* (a jam from before AMP and the FX LFOs' locks: 11 a step) */
+        uint8_t ob[2u + 32u + 16u * 11u];
+        memset(&fxl, 0, sizeof fxl);
+        jam_r(&r, ob, sz);
+        memcpy(&fxl.trig, ob, 2);
+        memcpy(fxl.lk, ob + 2, 32);
+        for (i = 0; i < 16u; i++)
+            memcpy(fxl.v[i], ob + 34u + 11u * i, 11);
+    } else {
+        jam_r(&r, sz == sizeof fxl ? (void *)&fxl : 0, sz);
+    }
     n = jam_r8(&r);
     motion.on = (uint8_t)jam_r8(&r);
     motion.count = 0;

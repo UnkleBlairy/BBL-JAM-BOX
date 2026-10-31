@@ -367,18 +367,27 @@ enum { LAYER_NONE, LAYER_FX, LAYER_GLO, LAYER_SCL, LAYER_EDIT, LAYER_SEQ, LAYER_
 /* FM operator pages belong to DIGITAL; they never appear on other instruments (without FELUCCA_FM4: never). SLICES:
  * a SLICE track's (ui_slice.c); LANES / LANES 2 a DRUM track's (its lane levels); FILTER an ANALOG track's; OPERATOR, OP ENV, OPERATOR 2 an FM6
  * track's (its patch's operators, ui_fm6op.c) */
+static uint8_t fxl_sel;                               /* SIMPLE: the FX track is selected (black key 7, ALGO past 6) */
+/* SIMPLE, the FX track selected: a track's page (its sound, its SEQ ..) is none of its own (a big X, ui_gb.c) */
+static int fxt_x(const page_t *pg) { return fxl_sel && (pg->scope == SC_TRACK || pg->scope == SC_ENGINE); }
 static int page_visible(uint32_t i)
 {
-    return i < NPAGES && (PAGES[i].scope != SC_ENGINE || page_id_an(&PAGES[i], PAGES[i].id[0]) != 0xFFu);
+    if (i >= NPAGES || (PAGES[i].fxt && !fxl_sel) || fxt_x(&PAGES[i]))   /* (the FX track's pages, a track's) */
+        return 0;
+    return PAGES[i].scope != SC_ENGINE || page_id_an(&PAGES[i], PAGES[i].id[0]) != 0xFFu;
 }                                                     /* (SIMPLE: AGE only on an ANALOG track) */
 
-static uint32_t page_first(uint32_t fam)
+static uint32_t page_first(uint32_t fam)              /* (the first one shown; none: the first, the FX track's X) */
 {
-    uint32_t i;
+    uint32_t i, f = NPAGES;
     for (i = 0; i < NPAGES; i++)
-        if (PAGES[i].fam == fam)
-            return i;
-    return 0;
+        if (PAGES[i].fam == fam) {
+            if (page_visible(i))
+                return i;
+            if (f == NPAGES)
+                f = i;
+        }
+    return f < NPAGES ? f : 0;
 }
 
 /* transient message in the top bar, right of the transport and the BPM: a + b */
@@ -505,7 +514,6 @@ static uint8_t gbsv;                                  /* SIMPLE, the SAVE screen
 static char gbsv_msg[2][16];                          /* .. what was saved / loaded, flashing from gbsv_t (fm1_ms | 1, 0 none) */
 static uint32_t gbsv_t;
 static int gbsv_keys_on(void) { return gbsv == 1u || gbsv == 2u; }   /* the keys are the slots' */
-static uint8_t fxl_sel;                               /* SIMPLE: the FX lane is selected (black key 7, SEQ mode) */
 static int sgrid_on(void) { return FELUCCA_SIMPLE && ui.sgrid == 1u && !ui.confirm && !pm_page() && !pm_down() && !gbsv_keys_on(); }   /* (PERF and a macro held: their own keys) */
 
 /* ------------------------------------------------- performance macros --- */
@@ -567,9 +575,30 @@ static uint8_t gb_hint;
 static uint8_t tm_dn, tm_up, tm_k = 0xFFu;   /* picking for a source (1 + its slot; it stays when its button is let
                                               * go, so other pages can be reached); the amount's pop-up up; the knob
                                               * that picked (0xFF none yet) */
-static const char *const TM_NAME[3] = {"LFO", "AMP ENV", "FILT ENV"};
+static const char *const TM_NAME[6] = {"LFO", "AMP ENV", "FILT ENV", "LFO 1", "LFO 2", "LFO 3"};   /* (3..: the FX track's) */
 static const uint8_t TM_SRC[3] = {MS_LFO, MS_ENV, MS_FENV};
 static int16_t *tm_slot(track_t *t) { return &t->p[P_M1SRC + 3u * ((tm_dn - 1u) % 3u)]; }   /* SRC DST AMT */
+/* SIMPLE, the FX track (fxl_sel): LFO / ENV / FILTER pick for its LFO 1 / 2 / 3, their DEST (N_FXDST) and AMT */
+static int16_t *tm_fxd(void) { return &song.g[FXL_ID[(tm_dn - 1u) % 3u][2]]; }
+static int16_t *tm_fxa(void) { return &song.g[FXL_ID[(tm_dn - 1u) % 3u][3]]; }
+static uint32_t tm_fxmd(const page_t *pg, uint32_t k)   /* KNOB k of page pg as an FX LFO's DEST, 0: none */
+{
+    uint32_t id = page_id_an(pg, pg->id[k & 3u]), j;
+    if (id == 0xFFu || pg->graph == GR_PERF || pg->fam == FAM_TRK || !(pg->scope == SC_GLOBAL || (id & 0x80u)))
+        return 0;
+    for (j = 1; j < NELEM(FXD_G); j++)
+        if (FXD_G[j] == (id & 0x7Fu))
+            return j;
+    return 0;
+}
+static uint32_t tm_dest(void)                           /* the DEST picked for the source picking (0: none) */
+{
+    const int16_t *sp = tm_slot(TSEL);
+    if (fxl_sel)
+        return (uint32_t)*tm_fxd();
+    return sp[0] == TM_SRC[(tm_dn - 1u) % 3u] ? (uint32_t)sp[1] : 0u;
+}
+static int16_t *tm_amt(void) { return fxl_sel ? tm_fxa() : &tm_slot(TSEL)[2]; }   /* .. its AMT */
 /* KNOB k of page pg as a matrix DEST (mod.c MD_*), 0: none (a knob that switches, or no knob) */
 static uint32_t tm_md(const page_t *pg, uint32_t k)
 {
@@ -1432,8 +1461,26 @@ static const param_desc_t *home_param(uint32_t k, int16_t **vp)
 }
 
 /* select track i (KNOB 1 on TRACKS, the editor): its sound, pages and pattern from now on */
+/* SIMPLE: the FX track selected (on 1) or a track: a page that is not the other's goes to its family's first that is
+ * (the FX button's SENDS <-> DELAY, LFO <-> LFO 1 ..; none: the page stays, the FX track's X) */
+static void fxt_set(uint32_t on)
+{
+    if (fxl_sel == (uint8_t)on)
+        return;
+    fxl_sel = (uint8_t)on;
+    if (!ui.home && !page_visible(ui.page)) {
+        uint32_t i = page_first(PAGES[ui.page].fam);
+        if (i != ui.page && page_visible(i)) {
+            ui.page = (uint8_t)i;
+            page_entered();
+        }
+    }
+    ui.force = 1;
+}
 static void track_select(uint32_t i)
 {
+    if (i < NTRK)
+        fxt_set(0);                              /* (SIMPLE: a track picked, not the FX track) */
     if (i >= NTRK || i == song.sel)
         return;
     song.sel = (uint8_t)i;

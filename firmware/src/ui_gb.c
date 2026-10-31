@@ -22,7 +22,8 @@ typedef struct {
     uint8_t alt[4];
     int16_t dj, cmix, ctune;                 /* PERF: the master DJ filter and comb */
     uint8_t fill[8], rel, bpm_alt;           /* PERF: each held macro's tile filled 0..26 rows; the release fade; the tempo is held by a macro */                           /* a macro holds this value: its dial is drawn inverted */
-    uint8_t kmode, pk, fx;                   /* the keys: 1 SEQ 2 PARAM 3 KEY 4 KIT; PARAM's knob + 1 (0: the keys play); the FX lane */
+    uint8_t kmode, pk, fx, cross;            /* the keys: 1 SEQ 2 PARAM 3 KEY 4 KIT; PARAM's knob + 1 (0: the keys play); the FX
+                                              * track; a track's page on the FX track: a big X */
     uint8_t spg, snp;                        /* SEQ: the page of steps shown (0..3), the pages (LEN up to 64) */
     uint8_t nud;                             /* a step held + SELECT turned: its NUDGE + 9 (1..16), 0 no pop-up */
     uint8_t rec;                             /* the selected track is armed (REC): a red REC by the BPM, 1 + its glow 0..15 */
@@ -36,7 +37,7 @@ typedef struct {
     uint32_t za, zb;                         /* .. the window's first and last sample */
     uint8_t tmod;                            /* LFO held (touch modulation): 1 the pop-up, no DEST yet, 2 with one */
     int8_t tm_amt;                           /* .. its AMT, -64..63 */
-    uint8_t tm_src;                          /* .. whose: 0 LFO, 1 ENV, 2 FENV (ui.c TM_NAME) */
+    uint8_t tm_src;                          /* .. whose: 0 LFO, 1 ENV, 2 FENV, 3..5 the FX track's LFO 1..3 (ui.c TM_NAME) */
     uint8_t temp;                            /* OCT+ held + a knob turned: the temporary change's banner */
     uint8_t fillm;                           /* PLAY held: FILL MODE's banner */
     uint8_t hint;                            /* a held button's hint (ui.c gb_hint) */
@@ -115,6 +116,12 @@ static uint32_t gb_page_icon(const page_t *pg, uint32_t mach)
         return IC_DELAY;
     if (str_eq(pg->title, "VERB"))
         return IC_VERB;
+    if (str_eq(pg->title, "SENDS"))
+        return IC_DELAY;
+    if (pg->fxt && pg->id[0] != G_DTIME && pg->id[0] != G_RSIZE)   /* the FX track's LFOs: the wave (DOWN: SAW's) */
+        return IC_SINE + (uint32_t)(song.g[pg->id[1]] % 6 < 3 ? song.g[pg->id[1]] % 6 : song.g[pg->id[1]] % 6 - 1);
+    if (str_eq(pg->title, "AMP"))
+        return IC_NONE;
     if (pg->fam == FAM_FLT)
         return IC_LP + (uint32_t)t->p[P_FTYPE] % 3u;
     if (pg->fam == FAM_LFO)
@@ -177,7 +184,7 @@ static uint32_t smp_format(uint32_t id, int32_t cur, char *b)
 /* the banners (ui_gb.c gb_banner): pages of two big lines; a page GB_BAN_MS, round again while it shows */
 #define GB_BAN_W 212
 #define GB_BAN_MS 2000u
-static const char *const TM_SHORT[3] = {"LFO", "ENV", "FENV"};
+static const char *const TM_SHORT[6] = {"LFO", "ENV", "FENV", "LFO 1", "LFO 2", "LFO 3"};
 static int ban_fits(const char *s) { return large_face_has(s) && text_w(&AF_L, s) <= GB_BAN_W; }
 static void ban_put(gb_view_t *v, const char *a, const char *b)
 {
@@ -216,9 +223,9 @@ static void gb_ban_fill(gb_view_t *v)
     if (gbsv || gbsv_t) {                         /* (the SAVE? / LOAD? screen: none over it) */
     } else if (v->tmod == 1u) {                   /* picking a DEST */
         static const char *const BTN[3] = {"LFO", "ENV", "FILTER"};
-        const char *src = TM_NAME[v->tm_src % 3u];
+        const char *src = TM_NAME[v->tm_src % 6u];
         if (v->tm_name[0]) {                      /* one set: "LFO > CUT" "+20", SELECT, OCT- */
-            str_cpy(a, TM_SHORT[v->tm_src % 3u], sizeof a);
+            str_cpy(a, TM_SHORT[v->tm_src % 6u], sizeof a);
             str_cpy(a + str_len(a), " > ", sizeof a - str_len(a));
             str_cpy(a + str_len(a), v->tm_name, sizeof a - str_len(a));
             fmt_int(b + (v->tm_amt > 0), v->tm_amt);
@@ -283,13 +290,12 @@ static void gb_fill(gb_view_t *v)
     if (ui.msg_t && ui.msg[0] > 1)                /* (not one led by an icon byte) */
         str_cpy(v->note, ui.msg, sizeof v->note);
     if (tm_dn) {                                  /* picking a DEST: 1 the banner, 2 (a knob picked) the amount's pop-up */
-        const int16_t *sp = tm_slot(TSEL);
-        uint32_t d = sp[0] == TM_SRC[(tm_dn - 1u) % 3u] ? (uint32_t)sp[1] : 0u;
+        uint32_t d = tm_dest();
         v->tmod = (uint8_t)(tm_up && d ? 2u : 1u);
-        v->tm_src = (uint8_t)((tm_dn - 1u) % 3u);
-        v->tm_amt = (int8_t)(d ? sp[2] : 0);
+        v->tm_src = (uint8_t)((tm_dn - 1u) % 3u + (fxl_sel ? 3u : 0u));   /* (3..5: the FX track's LFO 1..3) */
+        v->tm_amt = (int8_t)(d ? *tm_amt() : 0);
         if (d)
-            str_cpy(v->tm_name, tm_name(TSEL, d), sizeof v->tm_name);
+            str_cpy(v->tm_name, fxl_sel ? N_FXDST[d % NELEM(N_FXDST)] : tm_name(TSEL, d), sizeof v->tm_name);
     }
     gb_ban_fill(v);
     v->bpm_alt = (uint8_t)(pm_altered(TSEL, &song.g[G_BPM]) != 0);
@@ -313,7 +319,7 @@ static void gb_fill(gb_view_t *v)
     v->pk = (uint8_t)(par_on() && par_id != 0xFFu && par_pg == ui.page && !ui.home ? par_k + 1u : 0u);
     if (par_on() && par_id != 0xFFu)
         str_cpy(v->pname, (par_id < P_COUNT ? track_desc(TSEL, par_id) : motion_desc(TSEL, par_id))->label, sizeof v->pname);
-    v->fx = (uint8_t)fxl_on();
+    v->fx = fxl_sel;
     for (k = 0; k < NTRK; k++)
         v->tm[k] = (uint8_t)gb_mach(k);
     v->mach = v->tm[song.sel % NTRK];
@@ -353,6 +359,11 @@ static void gb_fill(gb_view_t *v)
             v->flash = (uint8_t)((uint32_t)clamp((int32_t)(fm1_ms - gbsv_t), 0, 99999) / 150u & 1u ? 2u : 1u);
             memcpy(v->msg, gbsv_msg, sizeof v->msg);
         }
+        return;
+    }
+    if (fxt_x(pg)) {                              /* the FX track: a track's page is none of its own */
+        v->cross = 1;
+        v->icon = IC_NONE;
         return;
     }
     if (v->perf) {
@@ -762,6 +773,10 @@ static void gb_scene(const gb_view_t *v, uint16_t bgc)
         return;
     }
     gb_header(v, v->title, bgc);
+    if (v->cross) {                                               /* (the FX track: not its page) */
+        cv_line_t(60, 52, 180, 160, GB_W, 9);
+        cv_line_t(180, 52, 60, 160, GB_W, 9);
+    }
     for (k = 0; k < 4u; k++) {                                    /* the dials */
         int32_t cx = 8 + (int32_t)k * 56 + 28, cy = 94, a, px, py, on;
         uint16_t dc = GB_W, lc = GB_W, bk = bgc;
@@ -881,7 +896,7 @@ static void gb_popup(const gb_view_t *v, uint16_t bgc)
     int32_t a, px, py, amt = v->tm_amt, on = amt * 135 / 64;
     char nb[8], hd[24];
     const aafont_t *f;
-    str_cpy(hd, TM_SHORT[v->tm_src % 3u], sizeof hd);   /* "LFO > TUNE" */
+    str_cpy(hd, TM_SHORT[v->tm_src % 6u], sizeof hd);   /* "LFO > TUNE" */
     str_cpy(hd + str_len(hd), " > ", sizeof hd - str_len(hd));
     str_cpy(hd + str_len(hd), v->tm_name, sizeof hd - str_len(hd));
     f = large_face_has(hd) && text_w(&AF_L, hd) <= 200 ? &AF_L : &AF_M;

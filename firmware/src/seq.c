@@ -998,6 +998,7 @@ static void seq_start(void)
     }
     song.tick = 0;
     beat_pos = 0; beat_n = 0;                      /* the ARP LED's beat from the top too */
+    fxlfo_reset();                                 /* (SIMPLE: the FX track's LFOs in time from here) */
     clk_pos = CLK_START;                           /* the metronome's first beat with step 0 */
     mg_ov_n = 0;                                   /* (SIMPLE: the FX lane's locks off) */
     song.playing = 1;

@@ -689,6 +689,30 @@ static uint32_t mix_split(void)
 }
 #endif
 
+/* SIMPLE: buf's n by a gain going from *cur to to (Q15, 32767 none: a block at it is left alone), no steps (no clicks) */
+#define GAIN_SLEW 256u                                  /* Q15 a sample at most: a whole swing in 128 samples (~3 ms) */
+static void gain_ramp(int32_t *buf, uint32_t n, int32_t *cur, int32_t to)
+{
+    int32_t g = *cur, st, mx = (int32_t)(GAIN_SLEW * n);
+    uint32_t i;
+    if (g == to && to >= 32767)
+        return;
+    to = clamp(to, g - mx, g + mx);                     /* (a jump, SQR's: a ~3 ms fade, no click) */
+    st = (to - g) / (int32_t)(n ? n : 1u);
+    for (i = 0; i < n; i++) {
+        g = i + 1u == n ? to : g + st;
+        buf[i] = (int32_t)(((int64_t)buf[i] * g) >> 15);
+    }
+    *cur = to;
+}
+static int32_t fxs_cur[2] = {32767, 32767}, amp_cur = 32767;   /* (the sends' gains, AMP's, as the last block ended) */
+static void amp_block(uint32_t n)                       /* SIMPLE: AMP (G_AMP, as modulated), the whole mix; squared */
+{
+    int32_t v = song.g[G_AMP], to = v >= 127 ? 32767 : (v * v * 32767) / (127 * 127), c = amp_cur;
+    gain_ramp(mix_l, n, &c, to);
+    gain_ramp(mix_r, n, &amp_cur, to);
+}
+
 static void mix_block(int32_t *out, uint32_t n)
 {
     uint32_t i;
@@ -723,7 +747,9 @@ static void mix_block(int32_t *out, uint32_t n)
     for (i = 0; i < NPART; i++)                         /* (one core: as 1.6) */
         mix_part(&trk[i], n);
 #endif
-    mod_g_begin();                                      /* (SIMPLE: the LFOs on the master's: mod.c) */
+    mod_g_begin(n);                                     /* (SIMPLE: the LFOs on the master's: mod.c) */
+    gain_ramp(send_d, n, &fxs_cur[0], fxs_gain[0]);     /* (SIMPLE: the FX LFOs' D.SND R.SND) */
+    gain_ramp(send_r, n, &fxs_cur[1], fxs_gain[1]);
     fx_buses(send_d, send_r, wet, n);
     if (hl.side)
         rev_side_mix(mix_l, mix_r, n);                  /* HALL: stereo */
@@ -739,6 +765,7 @@ static void mix_block(int32_t *out, uint32_t n)
         mix_r[i] = (((mix_r[i] + wet[i]) >> 2) * mg) >> 10;
     }
     mfx_block(mix_l, mix_r, n);
+    amp_block(n);
     mod_g_end();
     for (i = 0; i < n; i++) {
         int32_t l = mix_l[i], r = mix_r[i];

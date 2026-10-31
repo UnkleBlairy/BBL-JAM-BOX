@@ -57,7 +57,7 @@ static uint32_t tm_btn(uint32_t d)
     for (i = 0; d && i < NPAGES; i++)
         if (page_visible(i))
             for (k = 0; k < 4u; k++)
-                if (tm_md(&PAGES[i], k) == d)
+                if ((fxl_sel ? tm_fxmd(&PAGES[i], k) : tm_md(&PAGES[i], k)) == d)   /* (the FX track: its LFOs') */
                     return FAM_BTN[PAGES[i].fam];
     return 0xFFu;
 }
@@ -179,11 +179,13 @@ static uint32_t tm_poll(uint32_t pressed)
         ui.force = 1;
     tm_up = (uint8_t)i;
     if (tm_dn && ((pressed >> panel.btn[B_OCTDN]) & 1u)) {
-        int16_t *p = tm_slot(TSEL);
         char m[24];
-        p[2] = 0;
-        p[1] = 0;
-        str_cpy(m, TM_NAME[tm_dn - 1u], sizeof m);
+        *tm_amt() = 0;
+        if (fxl_sel)
+            *tm_fxd() = 0;
+        else
+            tm_slot(TSEL)[1] = 0;
+        str_cpy(m, TM_NAME[tm_dn - 1u + (fxl_sel ? 3u : 0u)], sizeof m);
         str_cpy(m + str_len(m), " DEST OFF", sizeof m - str_len(m));
         ui_message(m);
         tm_dn = 0;
@@ -197,10 +199,17 @@ static uint32_t tm_poll(uint32_t pressed)
 static void tm_turn(uint32_t k, int32_t s)
 {
     int16_t *p = tm_slot(TSEL), src = TM_SRC[(tm_dn - 1u) % 3u];
-    uint32_t d = ui.home ? 0u : tm_md(cur_page(), k);
+    uint32_t d = ui.home ? 0u : fxl_sel ? tm_fxmd(cur_page(), k) : tm_md(cur_page(), k);
     if (!d)                                             /* (MACH, the SEQ / ARP / CLOCK knobs: nothing) */
         return;
-    if (p[1] != (int16_t)d || p[0] != src) {
+    if (fxl_sel) {                                      /* the FX track: its LFO's DEST and AMT */
+        if (*tm_fxd() != (int16_t)d) {
+            *tm_fxa() = 0;
+            *tm_fxd() = (int16_t)d;
+        } else if (tm_k == k) {
+            *tm_fxa() = (int16_t)clamp(*tm_fxa() + accel(EN_K1 + k, s, 127), -64, 63);
+        }
+    } else if (p[1] != (int16_t)d || p[0] != src) {
         p[2] = 0;                                       /* (the ISR: no amount until it is all set) */
         p[1] = (int16_t)d;
         p[0] = src;
@@ -254,7 +263,7 @@ static int mom_turn(uint32_t k, int32_t s)
     }
     g = vp && vp >= song.g && vp < song.g + G_COUNT ? (uint32_t)(vp - song.g) : G_COUNT;
     if (!d || !vp || d->max == d->min ||
-        !((vp >= t->p && vp < t->p + P_COUNT) || (g <= G_CDEPTH && g != G_CLOCK) || g == G_RTYPE))
+        !((vp >= t->p && vp < t->p + P_COUNT) || (g <= G_CDEPTH && g != G_CLOCK) || (g >= G_F1RATE && g < G_COUNT)))
         return 0;                                      /* (only the values a sound and the FX are: no CLK, no actions) */
     for (i = 0; i < mom.n && mom.vp[i] != vp; i++)
         ;
@@ -565,9 +574,8 @@ static void ui_leds(void)
     }
     if (tm_dn) {                                        /* SIMPLE, picking a DEST: its button flashes with the beat, the DEST's page lit */
         uint32_t b = TM_BTN[(tm_dn - 1u) % 3u];
-        const int16_t *sp = tm_slot(TSEL);
         led_put(nl, panel.btn[b], (int)beat_flash());
-        if ((k = tm_btn(sp[0] == TM_SRC[(tm_dn - 1u) % 3u] ? (uint32_t)sp[1] : 0u)) != 0xFFu && k != b)
+        if ((k = tm_btn(tm_dest())) != 0xFFu && k != b)
             led_put(nl, panel.btn[k], 1);
     } else
         led_put(nl, panel.btn[FAM_BTN[fam]], 1);
@@ -1176,7 +1184,7 @@ static void sgrid_keys(uint32_t pressed)
             }
             if (p <= NTRK && !kb_octup) {               /* (OCT+ held: the track keys are the mutes, seq.c) */
                 gbs_off = gbs_kept = 0;                 /* (the steps held were the other track's) */
-                fxl_sel = (uint8_t)(p == NTRK);         /* black key 7: the FX lane */
+                fxt_set(p == NTRK);                     /* black key 7: the FX track */
                 if (p < NTRK)
                     track_select(p);
                 ui.force = 1;
@@ -1924,15 +1932,17 @@ static void ui_input(void)
     } else if (song.grid && sgrid_on()) {
         sgrid_keys(notes);
     }
-    if ((s = panel_enc(EN_PRESET)) != 0) {              /* PRESETS: the selected track's machine (FM, then the 808s) */
+    if ((s = panel_enc(EN_PRESET)) != 0 && !fxl_sel) {   /* PRESETS: the selected track's machine (FM, then the 808s; the FX track none) */
         int32_t m = clamp((int32_t)trk_mach(TSEL) + (s > 0 ? 1 : -1), 0, (int32_t)NMACH - 1);
         if ((uint32_t)m != trk_mach(TSEL))
             machine_set(TSEL, (uint32_t)m);
     }
     if ((s = panel_enc(EN_ALGO)) != 0 && FELUCCA_SIMPLE) {   /* SIMPLE: ALGORITHM picks the track (1..6) */
         gbs_off = gbs_kept = 0;                         /* (as a track key: the steps held were the other track's) */
-        fxl_sel = 0;
-        track_select((uint32_t)clamp((int32_t)song.sel + (s > 0 ? 1 : -1), 0, NTRK - 1));
+        int32_t to = clamp((fxl_sel ? (int32_t)NTRK : (int32_t)song.sel) + (s > 0 ? 1 : -1), 0, NTRK);
+        fxt_set(to == NTRK);                            /* (past 6: the FX track) */
+        if (to < NTRK)
+            track_select((uint32_t)to);
         ui.force = 1;
     } else if (s) {                                     /* ALGORITHM: the selected track's volume, on every page */
         int16_t was = TSEL->p[P_LEVEL];
@@ -1942,9 +1952,8 @@ static void ui_input(void)
         ui.force = 1;
     }
     if ((s = panel_enc(EN_SELECT)) != 0 && tm_dn) {     /* SIMPLE, picking a DEST: SELECT is its amount (the big dial) */
-        int16_t *sp = tm_slot(TSEL);
-        if (sp[0] == TM_SRC[(tm_dn - 1u) % 3u] && sp[1]) {
-            sp[2] = (int16_t)clamp(sp[2] + accel(EN_SELECT, s, 127), -64, 63);
+        if (tm_dest()) {
+            *tm_amt() = (int16_t)clamp(*tm_amt() + accel(EN_SELECT, s, 127), -64, 63);
             tm_k = 4;                                   /* (no page knob: the pop-up up, its next turn picks) */
             tm_t = fm1_ms;
             ui.force = 1;
