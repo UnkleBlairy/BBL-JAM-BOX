@@ -202,8 +202,10 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   their flash sectors hold the sounds and kits.
 - 6 tracks (core.h NPART). Power-on sounds: BD SD CH OH PERC SYN (engines.c
   TRK_DEF). Track colours 1-6: orange, yellow, blue, purple, green, pink.
-- HOME taps: VOLUME 1-4 -> VOLUME 5-6 -> CLOCK -> VOLUME 1-4 again (each knob = one
-  track's level).
+- HOME taps: MIX 1-2 -> MIX 3-4 -> MIX 5-6 -> CLOCK -> MIX 1-2 again (each MIX page = two tracks'
+  VOL and PAN; params.c MIX_PAN).
+- PLAY twice (stop, then PLAY again within 400 ms) = ALL SOUND OFF: every voice cut, delay / reverb /
+  comb emptied, stays stopped (seq.c PANIC_ALL).
 - Kits hold 6 sounds: 3 kits per storage object, 4 objects (the 4th in the old
   FM6 bank's flash pair). Kits saved by the 4-track build convert once at
   power-on; loading one leaves tracks 5-6 as they are.
@@ -243,9 +245,10 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   locks lay over those knobs until the lane's next trig (mod.c mg_ov; the knob
   keeps its own value, LFOs wobble on top). Hold step + OCT- clears its locks,
   OCT- clears the lane (LEN stays). No SPEED/CHANCE of its own.
-- FX TRACK (fxl_sel; black key 7 in SEQ mode, or ALGO turned past 6; ui.c fxt_set): its own pages, the
-  others show a big X (ui.c fxt_x; both ways: on a track the FX track's pages are the X; knobs/keys do
-  nothing there). GLO (PERF COMB DJ AMP) is the FX track's only. FX button = DELAY (TIME FDBK TONE) / VERB (TIME DAMP GRIT), only here;
+- FX TRACK (fxl_sel; black key 7 in SEQ mode, or ALGO turned past 6; ui.c fxt_set): its own pages; no X
+  screens: a button with no page on this side switches sides (GLO on a track = the FX track's PERF; OSC/ARP
+  on the FX track = back to the track; ui.c fxt_set, side_page). SEQ tapped on PERF = back to the track's
+  page with the steps on. GLO (PERF COMB DJ AMP) is the FX track's only. FX button = DELAY (TIME FDBK TONE) / VERB (TIME DAMP GRIT), only here;
   FILTER / ENV / LFO buttons (left to right) = its LFO 1 / 2 / 3 (RATE: synced note values, WAVE SIN TRI UP DOWN SQR S&H,
   0..1 from the knob's value, DEST, AMT; mod.c fxlfo_*, restart at PLAY). DESTs: AMP DJ the comb's 4, the
   delay's 3, the reverb's 3, D.SND R.SND (every track's sends: AMT left ducks them), D.OUT R.OUT (the

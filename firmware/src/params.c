@@ -478,7 +478,8 @@ enum { FAM_HOME, FAM_ENV, FAM_LFO, FAM_FX, FAM_SCL, FAM_EDIT, FAM_GLO, FAM_SAVE,
        FAM_FLT,    /* the SCL button's pages: the engine's second sound page (FLT / TONE ..) and FILTER (ANALOG).
                     * FAM_SCL has no pages of its own now (SCL and CHORD went to ARP); the SCL quick layer keeps it */
        FAM_COUNT };
-enum { SC_TRACK, SC_GLOBAL, SC_ENGINE, SC_STEP, SC_TRK };   /* SC_TRK: the TRACKS page (ui_input.c tracks_edit) */
+enum { SC_TRACK, SC_GLOBAL, SC_ENGINE, SC_STEP, SC_TRK };
+#define MIX_PAN 0x10u                          /* (a MIX page's id: the track's PAN, not its level) */   /* SC_TRK: the TRACKS page (ui_input.c tracks_edit) */
 enum { GR_NONE, GR_ADSR, GR_LFO, GR_STEPS, GR_ARP, GR_SCALE, GR_FX, GR_ROLL, GR_BROWSE, GR_SLOTS, GR_USER, GR_TRK,
        GR_SLCR, GR_MOD, GR_PATS, GR_SONG, GR_TOOLS, GR_CHORD, GR_SLICES, GR_EVENTS,
        GR_FMOP, GR_FMOP2, GR_FMENV, GR_INS, GR_PERF, GR_GBSEQ };   /* (GR_STEPS: SEQ TOOLS' knobs; GR_FMOP..: FM6's operator pages, ui_fm6op.c) */
@@ -518,8 +519,9 @@ static const page_t PAGES[] = {
     {"AMP", FAM_GLO, SC_GLOBAL, GR_NONE, {G_AMP, 0xFF, 0xFF, 0xFF}, 1},             /* the whole mix's level (ducking, pulsing) */
     {"SEQ", FAM_SEQ, SC_TRACK, GR_GBSEQ, {P_SLEN, P_SDIV, P_APROB, 0xFF}},
     {"ARP", FAM_ARP, SC_TRACK, GR_NONE, {P_AHOLD, P_AMODE, P_ARATE, P_ASWING}},   /* ARP MODE RATE FADE (seq.c ARP_*) */   /* LEN SPEED CHANCE TRIG (ui_input.c gbseq_knob) */
-    {"VOLUME 1-4", FAM_TRK, SC_TRK, GR_TRK, {0, 1, 2, 3}},   /* the tracks' levels, KNOB k track id[k] (0xFF: none) */
-    {"VOLUME 5-6", FAM_TRK, SC_TRK, GR_TRK, {4, 5, 0xFF, 0xFF}},
+    {"MIX 1-2", FAM_TRK, SC_TRK, GR_TRK, {0, MIX_PAN | 0, 1, MIX_PAN | 1}},   /* KNOB k: track id[k]'s level, + MIX_PAN its pan */
+    {"MIX 3-4", FAM_TRK, SC_TRK, GR_TRK, {2, MIX_PAN | 2, 3, MIX_PAN | 3}},
+    {"MIX 5-6", FAM_TRK, SC_TRK, GR_TRK, {4, MIX_PAN | 4, 5, MIX_PAN | 5}},
     {"CLOCK", FAM_TRK, SC_GLOBAL, GR_NONE, {G_BPM, G_SWING, G_CLOCK, 0xFF}},
 };
 #define NPAGES (sizeof(PAGES) / sizeof(PAGES[0]))

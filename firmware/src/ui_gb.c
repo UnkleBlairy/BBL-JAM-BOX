@@ -394,24 +394,24 @@ static void gb_fill(gb_view_t *v)
     if (v->mixer) {                           /* the page's tracks' levels (VOLUME 1-4, 5-6) */
         v->ring = 4;
         for (k = 0; k < 4u; k++) {
-            uint32_t tk = pg->id[k];
+            uint32_t tk = pg->id[k] & ~MIX_PAN, id = pg->id[k] & MIX_PAN ? P_PAN : P_LEVEL;
             const char *nm;
             const track_t *t;
             if (tk >= NTRK)
                 continue;
-            nm = MACHINES[v->tm[tk] % NMACH].pill;
+            nm = id == P_PAN ? "PAN" : MACHINES[v->tm[tk] % NMACH].pill;
             t = &trk[tk];
-            if (tk == song.sel)
+            if (tk == song.sel && id == P_LEVEL)
                 v->ring = (uint8_t)k;
-            const param_desc_t *d = &TP[P_LEVEL];
+            const param_desc_t *d = &TP[id];
             const char *u;
             for (i = 0; i < 4u && nm[i]; i++)
                 v->lab[k][i] = nm[i];
-            if (t->p[P_MUTE])
+            if (t->p[P_MUTE] && id == P_LEVEL)
                 str_cpy(v->val[k], "MUTE", sizeof v->val[k]);
             else
-                param_format(d, t->p[P_LEVEL], v->val[k], &u);
-            v->ratio[k] = (int16_t)(RATIO(d, t->p[P_LEVEL]) < 0 ? 0 : RATIO(d, t->p[P_LEVEL]));
+                param_format(d, t->p[id], v->val[k], &u);
+            v->ratio[k] = (int16_t)(RATIO(d, t->p[id]) < 0 ? 0 : RATIO(d, t->p[id]));
             v->mask |= (uint8_t)(1u << k);
         }
         return;

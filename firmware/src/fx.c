@@ -437,6 +437,14 @@ static void gain_ramp(int32_t *buf, uint32_t n, int32_t *cur, int32_t to)
     }
     *cur = to;
 }
+/* PLAY twice (seq.c PANIC_ALL): the delay, the reverb and the comb emptied (audio side, between blocks) */
+static void fx_panic(void)
+{
+    memset(dly_buf, 0, sizeof dly_buf);
+    memset(rev_comb, 0, sizeof rev_comb);
+    memset(&rev_u, 0, sizeof rev_u);
+    memset(mfx_cb, 0, sizeof mfx_cb);
+}
 static int32_t fxs_cur[4] = {32767, 32767, 32767, 32767}, amp_cur = 32767;   /* (mod.c fxs_gain's, AMP's, as the last block ended) */
 static void fx_buses(const int32_t *dly_in, const int32_t *rev_in, int32_t *wet,
                      uint32_t n)

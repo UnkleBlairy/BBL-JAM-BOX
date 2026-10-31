@@ -104,6 +104,8 @@ static void hint_poll(void)
 #define FILL_MS 500u
 static uint8_t fill_arm;
 static uint32_t fill_t0;
+#define PANIC_MS 400u                                   /* stopped, PLAY again this soon: every sound off (seq.c panic) */
+static uint32_t stop_ms;                                /* (fm1_ms | 1 of the last stop by PLAY, 0 none) */
 static void fill_poll(void)
 {
     uint32_t dn = (fm1_in.buttons >> panel.btn[B_PLAY]) & 1u;
@@ -116,8 +118,10 @@ static void fill_poll(void)
         }
         return;
     }
-    if (!seq_fill && song.playing)
+    if (!seq_fill && song.playing) {
         transport_req = 2;                              /* (a tap: stop) */
+        stop_ms = fm1_ms | 1u;
+    }
     if (seq_fill)
         ui.force = 1;
     seq_fill = 0;
@@ -250,10 +254,13 @@ static int mom_turn(uint32_t k, int32_t s)
     const track_t *t = ui.home ? home_trk(k) : TSEL;     /* (HOME LEVELS: KNOB k is track k's) */
     if (ui.home) {
         d = home_param(k, &vp);
-    } else if (pg->scope == SC_TRK && !lock_held()) {  /* MIXER (#195): the selected track's LEVEL PAN REV MUTE */
-        static const uint8_t MIX_ID[4] = {P_LEVEL, P_PAN, P_REV, P_MUTE};   /* (tracks_edit's knobs) */
-        vp = &TSEL->p[MIX_ID[k & 3u]];
-        d = &TP[MIX_ID[k & 3u]];
+    } else if (pg->scope == SC_TRK && !lock_held()) {  /* MIX: KNOB k's track's level or pan (tracks_edit) */
+        uint32_t tk = pg->id[k & 3u], id = tk & MIX_PAN ? P_PAN : P_LEVEL;
+        if ((tk & ~MIX_PAN) >= NTRK)
+            return 0;
+        t = &trk[tk & ~MIX_PAN];
+        vp = &trk[tk & ~MIX_PAN].p[id];
+        d = &TP[id];
     } else {
         if (lock_held() || !(pg->scope == SC_TRACK || pg->scope == SC_ENGINE || pg->scope == SC_GLOBAL) ||
             pg->graph == GR_EVENTS || pg->graph == GR_SONG || pg->graph == GR_BROWSE || pg->graph == GR_USER ||
@@ -678,15 +685,16 @@ static int32_t accel(uint32_t role, int32_t s, int32_t range)
  * track itself is ALGORITHM's, on every page). Pattern length stays on SEQ. */
 static void tracks_edit(uint32_t slot, int32_t steps)
 {
-    uint32_t tk = cur_page()->id[slot & 3u];          /* (the VOLUME pages: KNOB k is track id[k]) */
+    uint32_t tk = cur_page()->id[slot & 3u], id = tk & MIX_PAN ? P_PAN : P_LEVEL;   /* (the MIX pages: track id[k]) */
     track_t *t;
     int16_t *vp;
     const param_desc_t *d;
+    tk &= ~MIX_PAN;
     if (tk >= NTRK)
         return;
     t = &trk[tk];
-    vp = &t->p[P_LEVEL];
-    d = &TP[P_LEVEL];
+    vp = &t->p[id];
+    d = &TP[id];
     *vp = (int16_t)clamp(*vp + accel(EN_K1 + slot, steps, d->max - d->min), d->min, d->max);
     motion_capture(t, (uint32_t)(vp - t->p), *vp);
     return;
@@ -1669,6 +1677,13 @@ static int page_tap(uint32_t b)
             seq_eat = 0;
             return 1;
         }
+        if (pm_page()) {                                /* PERF: back to the track's page, the steps on */
+            t_last = 0;
+            ui.sgrid = 1;
+            fxt_set(0);                                 /* (PERF is the FX track's) */
+            ui.force = 1;
+            return 1;
+        }
         if (t_last && (int32_t)(fm1_ms - t_last) < (int32_t)SEQ_DBL_MS) {   /* (signed: t_last is | 1) */
             t_last = 0;
             ui.sgrid = was;
@@ -1685,6 +1700,11 @@ static int page_tap(uint32_t b)
     }
     for (f = FAM_HOME + 1u; f < FAM_COUNT; f++)        /* (GLO SEQ SAVE ..: HOME is ui_input's, home_tap) */
         if (FAM_BTN[f] == b && b != B_HOME) {
+            if (FELUCCA_SIMPLE && f != FAM_SAVE && !page_visible(page_first(f))) {   /* the other side's button: */
+                fxt_set(!fxl_sel);                      /* .. GLO on a track = the FX track's PERF, OSC / ARP there = a track's */
+                ui.fam_last[f] = 0;
+                ui.home = 1;                            /* (its first page, not "same button again") */
+            }
             open_family(f);
             return 0;
         }
@@ -1868,6 +1888,14 @@ static void ui_input(void)
                 fill_t0 = fm1_ms;
                 break;
             }
+            if (FELUCCA_SIMPLE && stop_ms && (int32_t)(fm1_ms - stop_ms) < (int32_t)PANIC_MS &&
+                !song.playing && !seq_counting()) {    /* a double tap: STOP, then every sound off (hung notes) */
+                stop_ms = 0;
+                panic_req = PANIC_ALL;
+                ui_message("ALL SOUND OFF");
+                break;
+            }
+            stop_ms = 0;
             if (song.playing || seq_counting())   /* (a count-in: PLAY stops it) */
                 transport_req = 2;
             else

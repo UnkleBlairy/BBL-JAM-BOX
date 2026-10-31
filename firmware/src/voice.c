@@ -500,7 +500,7 @@ static void trk_all_off(track_t *t)
     uint32_t i;
     for (i = 0; i < NVOICE; i++) {
         t->v[i].gate = 0;
-        t->v[i].stage = t->v[i].active ? 3 : 0;
+        t->v[i].stage = t->v[i].active ? (t->v[i].stage == 4 ? 4 : 3) : 0;   /* (a voice being cut stays cut) */
     }
     t->nmono = 0;
     t->mono_note = 0;

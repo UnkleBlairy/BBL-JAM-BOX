@@ -1512,17 +1512,21 @@ static const param_desc_t *home_param(uint32_t k, int16_t **vp)
 /* select track i (KNOB 1 on TRACKS, the editor): its sound, pages and pattern from now on */
 /* SIMPLE: the FX track selected (on 1) or a track: a page that is not the other's goes to its family's first that is
  * (the FX button's SENDS <-> DELAY, LFO <-> LFO 1 ..; none: the page stays, the FX track's X) */
+static uint8_t side_page[2];                  /* SIMPLE: the page each side (a track, the FX track) was last on */
 static void fxt_set(uint32_t on)
 {
     if (fxl_sel == (uint8_t)on)
         return;
+    side_page[fxl_sel] = ui.page;
     fxl_sel = (uint8_t)on;
-    if (!ui.home && !page_visible(ui.page)) {
+    if (!ui.home && !page_visible(ui.page)) {   /* (no X: the family's first that is, the side's last, DELAY / OSC 1) */
         uint32_t i = page_first(PAGES[ui.page].fam);
-        if (i != ui.page && page_visible(i)) {
-            ui.page = (uint8_t)i;
-            page_entered();
-        }
+        if (!page_visible(i))
+            i = side_page[on];
+        if (!page_visible(i) || (PAGES[i].graph == GR_PERF && ui.sgrid == 1u))   /* (PERF would end SEQ mode) */
+            i = page_first(on ? FAM_FX : FAM_EDIT);
+        ui.page = (uint8_t)i;
+        page_entered();
     }
     ui.force = 1;
 }

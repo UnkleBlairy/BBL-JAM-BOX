@@ -53,7 +53,8 @@ static volatile uint8_t kb_asleep;       /* MENU > SCREEN OFF (ui.c): the screen
                                           * wakes it (silent, no layer, its release nothing) */
 static uint8_t last_note = 60;
 static volatile uint8_t transport_req;   /* 1 start, 2 stop, 3 restart (from the UI) */
-static volatile uint8_t panic_req;       /* bit per track: release every sounding note (preset / engine change) */
+static volatile uint8_t panic_req;       /* bit per track: release every sounding note (preset / engine change); */
+#define PANIC_ALL 0xFFu                   /* .. all: every voice cut and the delay / reverb / comb emptied (PLAY twice) */
 static volatile uint8_t midi_hint;       /* MIDI IN played track n - 1, which is not the selected one (the UI says so) */
 static volatile uint8_t midi_seen;       /* 1.5.5 (#208): bit per track, a MIDI IN note-on played it since the UI last
                                           * looked (ui_input.c midi_follow: the track's light, AUTO SELECT;
@@ -1551,6 +1552,14 @@ static void events_block(uint32_t n)
         pr |= (1u << NTRK) - 1u;
         RING_PUBLISH();
         midi_in_overflow = 0;
+    }
+    if (pr == PANIC_ALL) {                             /* PLAY twice: every voice cut now, the effects' tails gone */
+        uint32_t k;
+        for (i = 0; i < NTRK; i++)
+            for (k = 0; k < NVOICE; k++)
+                if (trk[i].v[k].active)
+                    voice_kill(&trk[i].v[k]);
+        fx_panic();
     }
     for (i = 0; i < NTRK; i++) {
         track_t *t = &trk[i];
