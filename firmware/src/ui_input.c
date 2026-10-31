@@ -333,6 +333,12 @@ static int mom_turn(uint32_t k, int32_t s)
         t = &trk[tk & ~MIX_PAN];
         vp = &trk[tk & ~MIX_PAN].p[id];
         d = &TP[id];
+    } else if (FELUCCA_SIMPLE && pg->graph == GR_PERF) {   /* PERF: KNOB 2..4 the DJ filter, the comb's MIX, TUNE */
+        static const uint8_t GK[3] = {G_MIDI, G_SYNC, G_CRATE};   /* (edit_param's; KNOB 1, the FADE, no) */
+        if (k == 0u)
+            return 0;
+        vp = &song.g[GK[(k - 1u) % 3u]];
+        d = &GP[GK[(k - 1u) % 3u]];
     } else {
         if (lock_held() || !(pg->scope == SC_TRACK || pg->scope == SC_ENGINE || pg->scope == SC_GLOBAL) ||
             pg->graph == GR_EVENTS || pg->graph == GR_SONG || pg->graph == GR_BROWSE || pg->graph == GR_USER ||
@@ -388,8 +394,10 @@ static uint32_t fxl_leds(uint32_t *br)                   /* the FX lane: its tri
         uint32_t p = key_place(k), on;
         if (!key_black(k))
             on = b + p < len && (((fxl.trig >> (b + p)) & 1u) ^ (uint32_t)(b + p == ph));
-        else if (p >= GBS_PG && p < GBS_PG + npg && npg > 1u) {
+        else if (p >= GBS_PG && p < GBS_PG + npg) {
             on = p - GBS_PG == ui.bank;
+            if (br && npg == 1u && ph != 0xFFu)        /* (one page: its key breathes while playing) */
+                on = 0;
             if (br && !on && ph != 0xFFu && p - GBS_PG == ph / 16u)
                 *br |= 1u << k;
         } else
@@ -426,8 +434,10 @@ static uint32_t sgrid_leds(uint32_t *br)                 /* (*br: the trigless s
                 *br |= 1u << k;                         /* (trigless, FILL: breathing, not lit) */
                 on = i == ph;
             }
-        } else if (p >= GBS_PG && p < GBS_PG + npg && npg > 1u) {   /* the page keys: the one shown lit, the one */
-            on = p - GBS_PG == ui.bank;                              /* playing (another) breathing */
+        } else if (p >= GBS_PG && p < GBS_PG + npg) {   /* the page keys: the one shown lit, the one playing */
+            on = p - GBS_PG == ui.bank;                  /* (another) breathing; one page: its key breathes playing */
+            if (br && npg == 1u && ppg != 0xFFu)
+                on = 0;
             if (br && !on && p - GBS_PG == ppg)
                 *br |= 1u << k;
         } else {

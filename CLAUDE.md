@@ -68,7 +68,7 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
 - PERF: the last three black keys do nothing for now (were fade jumps);
   saved for a future use.
 - Sequencer: LEN 1..64, up to 4 pages of 16 (SEQ mode: black keys 8-11 pick the page
-  shown, ui.bank / ui_input.c gbs_base; lit = shown, breathing = playing; the bottom says
+  shown, ui.bank / ui_input.c gbs_base; lit = shown, breathing = playing; with one page its key breathes while playing; the bottom says
   "SEQ 2/4"). For fast parts use more steps at x1, not x1/4. One SEQ page replaces Felucca's STEP /
   DETAIL / AUTOMATION (hidden, not deleted). Knobs: LEN, SPD (speed: x1/4 x1/2 x1
   x2 x4), CHNC (chance), TRIG (Elektron's list: - 1:2 2:2 1:3 .. 8:8 FILL !FILL PRE
@@ -116,7 +116,7 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   COMB, delay TIME/FDBK/TONE, reverb SIZE/DAMP/TYPE: motion.c MOTION_G, ids
   P_COUNT+j). Not the CLOCK page. Removing a step removes its locks.
 - No OCT+ second sets of knobs. OCT+ held + knob = a temporary change (ui_input.c
-  mom_*): let go of OCT+ and it snaps back (no keep).
+  mom_*): let go of OCT+ and it snaps back (no keep). On PERF too (DJ, COMB MIX, TUNE; not FADE).
 - GLO pages: PERF, COMB, DJ (the DJ filter's own page, so it can be locked), AMP (AMP = the whole mix's level,
   G_AMP; PAN = the whole mix's balance, G_PAN, lockable and an FX LFO DEST "PAN"; lockable, LFO-able: ducking / pulsing; ~3 ms slew so a square never clicks, fx.c gain_ramp).
 - LFO pages: LFO (RATE WAVE DEST AMT: matrix slot 1, SRC always LFO, ui_input.c msrc_fix), SYNC (SYNC TRIG POL
