@@ -1,8 +1,9 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Blair (blairysbeatlab), BBL JAM BOX; based on Felucca by Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* gb_store.c - the groovebox's sounds and kits (FELUCCA_SIMPLE). Patterns are never saved: it is for jamming.
- *   SOUND  16 slots a track (96): a track's sound (any machine, FM or 808), its sequencer and mixer settings left out.
- *          (Up to the 808s the slots were a machine's: SYN BD SD HH CYM PERC's are now tracks 1..6's)
+ *   SOUND  16 slots a pool (96; engines.c gb_pool: KICK SNARE CYMBAL PERC SYNTH SAMPLE): the selected track's machine
+ *          picks the pool; a sound keeps its machine (loading it switches the track's). Its sequencer and mixer
+ *          settings left out. (Before: 16 a track, GB_MAGIC; moved into the pools once, gb_pool_move)
  *   KIT    11 slots: the six tracks' sounds, the macros, the PERF fade, the FX and COMB globals (not the tempo,
  *          the DJ filter, MIDI or the clock)
  * Seven storage objects (storage.c OBJ_GB0..): three of 32 sounds (two machines each), four of 3 kits. They live in
@@ -11,8 +12,8 @@
  * (.pool) is what loads read; a save changes the mirror at once and goes to flash when nothing plays (an erase
  * stops the audio: project.c autosave_quiet), one object a pass. A slot keeps P_COUNT with it, so a later build
  * with other parameters maps the values by count (core.h params_by_count). */
-#define GB_MACH 6u                                       /* tracks with sound slots (two to a storage object) */
-_Static_assert(NTRK <= GB_MACH, "more tracks: more sound objects (GB_SOBJ, storage.c)");
+#define GB_MACH 6u                                       /* sound pools (two to a storage object) */
+_Static_assert(GB_NPOOL <= GB_MACH, "more pools: more sound objects (GB_SOBJ, storage.c)");
 #define GB_SLOTS 16u
 #define GB_KITS 11u
 #define GB_SOBJ 3u                                       /* sound objects (two machines each) */
@@ -20,6 +21,7 @@ _Static_assert(NTRK <= GB_MACH, "more tracks: more sound objects (GB_SOBJ, stora
 #define GB_KPER 3u
 #define GB_MAGIC 0x31534247u                             /* "GBS1": the sounds; the four-track build's kits */
 #define GB_KMAGIC 0x324B4247u                            /* "GBK2": the six-track kits */
+#define GB_PMAGIC 0x33534247u                            /* "GBS3": the sounds by pool */
 typedef struct { uint8_t used, np; int8_t p[P_COUNT]; } gb_snd_t;   /* values - 64 (all of them fit in -64..127: project.c);
                                                                     * used: 1 a DIGITAL sound (all before the 808s), 2 ANALOG,
                                                                     * 3 SAMPLER */
@@ -93,19 +95,59 @@ static void gb_kit_old_load(uint32_t o)
     }
 }
 
+static gb_snd_t *gb_slot(uint32_t mach, uint32_t slot);
+/* the sounds of the per-track build (GB_MAGIC objects, now in gb_so) into their machines' pools, in order (a full pool
+ * keeps its first 16); written back as pool objects at the next quiet moment */
+static void gb_pool_move(void)
+{
+    static gb_snd_t old[GB_SOBJ * 2u * GB_SLOTS] __attribute__((section(".pool")));
+    uint8_t fill[GB_MACH] = {0};
+    uint32_t o, i, n = 0;
+    for (o = 0; o < GB_SOBJ; o++) {
+        if (gb_so[o].magic == GB_MAGIC)
+            for (i = 0; i < 2u * GB_SLOTS; i++)
+                if (gb_so[o].s[i].used)
+                    old[n++] = gb_so[o].s[i];
+        memset(&gb_so[o], 0, sizeof gb_so[o]);
+        gb_so[o].magic = GB_PMAGIC;
+        gb_so[o].np = (uint16_t)P_COUNT;
+        gb_dirty |= (uint8_t)(1u << o);
+    }
+    for (i = 0; i < n; i++) {
+        int16_t in[P_COUNT], def[P_COUNT], out[P_COUNT];
+        uint32_t j, np = old[i].np > P_COUNT ? P_COUNT : old[i].np, eng, m, pl;
+        for (j = 0; j < P_COUNT; j++)
+            def[j] = TP[j].def;
+        for (j = 0; j < np; j++)
+            in[j] = (int16_t)(old[i].p[j] + 64);
+        params_by_count(out, in, np, def);
+        eng = old[i].used == 2u ? ENGI_ANALOG : old[i].used == 3u ? ENGI_SAMPLER : ENGI_DIGITAL;
+        for (m = 0; m < NMACH && !(MACHINES[m].engine == eng && MACHINES[m].sub == (uint32_t)out[P_E7]); m++)
+            ;
+        pl = gb_pool(m < NMACH ? m : 0u);
+        if (fill[pl] < GB_SLOTS)
+            *gb_slot(pl, fill[pl]++) = old[i];
+    }
+}
+
 static void gb_store_init(void)
 {
-    uint32_t o;
+    uint32_t o, old = 0;
     if (gb_ready)
         return;
     gb_ready = 1;
     for (o = 0; o < GB_SOBJ; o++) {
 #if FELUCCA_FLASH
-        if (st_load(OBJ_GB0 + o, &gb_so[o], sizeof gb_so[o]) == (int)sizeof gb_so[o] && gb_so[o].magic == GB_MAGIC)
+        if (st_load(OBJ_GB0 + o, &gb_so[o], sizeof gb_so[o]) == (int)sizeof gb_so[o] &&
+            (gb_so[o].magic == GB_PMAGIC || gb_so[o].magic == GB_MAGIC)) {
+            old |= gb_so[o].magic == GB_MAGIC;
             continue;
+        }
 #endif
         memset(&gb_so[o], 0, sizeof gb_so[o]);
     }
+    if (old)                                             /* (the per-track build's: into the pools, once) */
+        gb_pool_move();
     for (o = 0; o < GB_KOBJ; o++) {
 #if FELUCCA_FLASH
         if (st_load(OBJ_GB0 + GB_SOBJ + o, &gb_ko[o], sizeof gb_ko[o]) == (int)sizeof gb_ko[o] && gb_ko[o].magic == GB_KMAGIC)
@@ -172,7 +214,7 @@ static void gb_snd_put(const gb_snd_t *s, track_t *t)
     motion_rebase(t);
 }
 
-static uint32_t gb_mach_of(const track_t *t) { return (uint32_t)(t - trk) % GB_MACH; }   /* (its track's slots) */
+static uint32_t gb_mach_of(const track_t *t) { return gb_pool(trk_mach(t)); }   /* (its machine's pool) */
 static gb_snd_t *gb_slot(uint32_t mach, uint32_t slot)
 {
     mach %= GB_MACH;
@@ -188,7 +230,7 @@ static int gbs_save_sound(uint32_t slot)
     uint32_t m = gb_mach_of(TSEL);
     gb_store_init();
     gb_snd_take(gb_slot(m, slot), TSEL);
-    gb_so[m / 2u].magic = GB_MAGIC;
+    gb_so[m / 2u].magic = GB_PMAGIC;
     gb_so[m / 2u].np = (uint16_t)P_COUNT;
     gb_dirty |= (uint8_t)(1u << (m / 2u));
     return 1;

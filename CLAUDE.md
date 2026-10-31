@@ -294,9 +294,11 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
    `cd /tmp/felucca-site && python3 -m http.server 8000`
 3. Open http://localhost:8000/webapp/installer/
 - PRESETS knob = machine selector (switching engine fades over). ALGORITHM knob = track select (1-6).
-- Sound save slots are per TRACK (16 each), not per machine; a saved sound
-  remembers its engine (gb_snd_t used: 1 = DIGITAL, 2 = ANALOG). Old machine
-  slots became track slots.
+- Sound save slots are per POOL (16 each; engines.c gb_pool): KICK (8BD FMBD), SNARE
+  (8SD FMSD 8CLP), CYMBAL (8HH FMHH 8CYM FMCYM), PERC (8TOM 8RIM 8COW FMPRC), SYNTH, SAMPLE.
+  The selected track's machine picks the pool (SAVE screen top right, "KICK 3 SAVED"); a
+  sound keeps its machine, so loading switches the track's. The per-track saves moved into
+  the pools once (gb_store.c gb_pool_move, magic GBS3).
 - 808 pages: OSC 1 (4 knobs), OSC 2 (3 knobs + LEVEL), AGE (one knob). LEVEL
   lives in P_LN0, AGE in P_LN1 (old drum-lane ids, so saved, lockable,
   macroable, LFO-able). FM tracks skip the AGE page and hide LEVEL. 18 pages.

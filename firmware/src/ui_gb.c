@@ -669,7 +669,7 @@ static void gb_scene(const gb_view_t *v, uint16_t bgc)
             return;
         }
         cv_text_on(8, 4, &AF_L, v->sv == 1u ? "SAVE?" : "LOAD?", c, bgc);
-        cv_text_r(232, 14, &AF_M, MACHINES[v->mach % NMACH].pill, c, bgc);
+        cv_text_r(232, 14, &AF_M, GB_POOL_NAME[gb_pool(v->mach)], c, bgc);   /* (the sound pool the keys are) */
         cv_text_on(8, 60, &AF_L, "SOUND", c, bgc);       /* (all at the title's size) */
         cv_text_on(8, 94, &AF_L, "WHITE KEY", c, bgc);
         cv_text_on(8, 142, &AF_L, "KIT", c, bgc);

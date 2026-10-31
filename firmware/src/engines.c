@@ -70,6 +70,21 @@ static inline uint32_t trk_mach(const track_t *t)
     return 0;
 }
 static inline const machine_t *trk_machine(const track_t *t) { return &MACHINES[trk_mach(t)]; }
+/* SIMPLE, SAVE: the sound pool a machine saves to and loads from (16 slots each, gb_store.c): by its icon, so both kicks
+ * share KICK, the clap goes with the snares, the hats with the cymbals, toms rim cowbell with PERC */
+enum { GB_KICK, GB_SNARE, GB_CYMBAL, GB_PERC, GB_SYNTH, GB_SAMPLE, GB_NPOOL };
+static const char *const GB_POOL_NAME[GB_NPOOL] = {"KICK", "SNARE", "CYMBAL", "PERC", "SYNTH", "SAMPLE"};
+static uint32_t gb_pool(uint32_t mach)
+{
+    switch (MACHINES[mach % NMACH].icon) {
+    case IC_KICK: return GB_KICK;
+    case IC_SNARE: case IC_CLAP: return GB_SNARE;
+    case IC_HATS: case IC_CYMBAL: return GB_CYMBAL;
+    case IC_SYN: return GB_SYNTH;
+    case IC_SAMPLE: return GB_SAMPLE;
+    default: return GB_PERC;
+    }
+}
 
 /* the tracks at power-on: DIGITAL's presets (eng_digital.c DIGITAL_PRESETS) BD SD CH OH, TOM (PERC), INIT (SYN) */
 static const uint8_t TRK_DEF[NPART] = {8, 9, 10, 11, 13, 0};

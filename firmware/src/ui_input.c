@@ -764,8 +764,12 @@ static void gbsv_keys(uint32_t pressed)
         if (!((pressed >> k) & 1u))
             continue;
         if (!key_black(k) && p < 16u) {
-            if (gbsv == 1u ? gbs_save_sound(p) : gbs_load_sound(p))
-                gbsv_done("SOUND ", p, gbsv == 1u ? (transport_busy() ? "SAVED AT STOP" : "SAVED") : "LOADED");
+            if (gbsv == 1u ? gbs_save_sound(p) : gbs_load_sound(p)) {
+                char nm[10];                            /* "KICK 3": the pool's name */
+                str_cpy(nm, GB_POOL_NAME[gb_pool(trk_mach(TSEL))], sizeof nm - 1u);
+                str_cpy(nm + str_len(nm), " ", sizeof nm - str_len(nm));
+                gbsv_done(nm, p, gbsv == 1u ? (transport_busy() ? "SAVED AT STOP" : "SAVED") : "LOADED");
+            }
         } else if (key_black(k) && p < 11u) {
             if (gbsv == 1u ? gbk_save(p) : gbk_load(p))
                 gbsv_done("KIT ", p, gbsv == 1u ? (transport_busy() ? "SAVED AT STOP" : "SAVED") : "LOADED");
@@ -780,7 +784,7 @@ static void gbsv_keys(uint32_t pressed)
 }
 static uint32_t gbsv_leds(void)                          /* the slots in use: the machine's sounds, the kits */
 {
-    uint32_t k, m = 0, mach = song.sel;                  /* (the slots are the track's) */
+    uint32_t k, m = 0, mach = gb_pool(trk_mach(TSEL));   /* (the slots are the machine's pool's) */
     for (k = 0; k < 27u; k++) {
         uint32_t p = key_place(k);
         if (key_black(k) ? gbk_used(p) : p < 16u && gbs_used(mach, p))
