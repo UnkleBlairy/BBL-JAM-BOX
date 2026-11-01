@@ -1352,6 +1352,7 @@ static void machine_defaults_p(const track_t *t, int16_t *p)   /* (into p: t's v
     } else if (m->engine == ENGI_DIGITAL && m->sub == 0u) {   /* FM SYN: its modulators' envelopes, FB, DTUN */
         for (i = P_FM3_ATK; i <= P_FM4_LEVEL; i++)
             p[i] = TP[i].def;
+        p[P_LN1] = 0;                                 /* (its filter's TYPE: LP) */
     } else if (m->engine == ENGI_MONO) {              /* MONO: SAT off, every press retriggers (voice.c trk_vmode) */
         p[P_LN0] = 0;
         p[P_LN1] = 0;                                 /* (its filter's TYPE: LP) */

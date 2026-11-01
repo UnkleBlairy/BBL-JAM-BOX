@@ -375,13 +375,14 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   MOD C = C.ATK C.DEC C.AMT MIX; MOD D = D.ATK D.DEC D.AMT FB (D on itself); TUNE = DTUN (A up / B down, ~25
   cents) PITCH. DEC at the top = HOLD. No velocity (the keys have none). Stored: E0..E6 + the old operator
   envelope ids P_FM3_* / P_FM4_* (TP labels C.ATK.. DTUN, LFO DESTs too). FM SYN sounds saved before load
-  but sound different. The FM drum machines are unchanged (their legacy path).
+  but sound different. The FM drum machines are unchanged (their legacy path). Filter: MONO's MS-20-like one
+  (TYPE a blend in P_LN1, CUT glides in s[5]).
 - MONO (eng_mono.c, ENGI_MONO 4, sound byte 4, SYNTH pool): a mono analog-style voice (Minimoog-ish, not a copy).
   Every press retriggers the amp AND filter envelopes from where they are (voice.c trk_vmode: always V_MONO). OSC 1: WAVE (pairs SW+SQ SW+TR SW+SN SQ+TR SQ+SN TR+SN, then SW+SW SQ+SQ TR+TR SN+SN), MIX (osc 1..2),
   FINE (osc 2 +-1 semitone, centre = in tune), SEMI (osc 2 0..+24). OSC 2: SUB (-1 -2 -3 octaves, a square),
   SUBVL, PW (osc 1 only, the most variety: SQR pulse width, TRI wavefold, SIN bits down to a square, SAW hard sync to a hidden
   oscillator 1x..8x: PW is its pitch, no extra knob), SAT (P_LN0, drive before the filter). One preset: a plain saw.
-  MONO's filter is its own (eng_mono.c mono_filter, MS-20-like): an SVF with a soft clip in the resonance loop, so
+  MONO's filter (eng_digital.c mono_filter, MS-20-like; FM SYN has it too, params.c flt_blend): an SVF with a soft clip in the resonance loop, so
   high RES rings, squeals and self-oscillates. CUT (knob + LFOs) glides ~20 ms, coefficients every 8 samples
   (mono_cs); the filter env and key tracking don't glide. FILTER page TYPE on MONO = P_LN1, a smooth blend LP (0) .. BP (64)
   .. HP (127), lockable/LFO-able (params.c page_id_an). Filter env / ENV pages as usual. To become a swappable

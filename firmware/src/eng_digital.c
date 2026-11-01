@@ -497,8 +497,58 @@ static __attribute__((noinline)) void digital_render_custom(track_t *t, voice_t 
     v->s[6] = fb2;
 }
 
+/* MONO's and FM SYN's filter (MS-20-like): a state-variable filter (TPT, as dsp.c tsvf_*) whose band-pass state goes through a soft clip each
+ * sample (the MS-20's diodes in its resonance loop): the damping k goes a little below 0 at the top of RES, so it rings
+ * up by itself until the clip holds it, and loud notes push the resonance into a growl rather than just louder */
+typedef struct { int32_t a1, a2, a3, k; } mono_flt_t;
+static void mono_fcoef(mono_flt_t *c, int32_t cut, int32_t res)
+{
+    int32_t i, g, den;
+    cut = clamp(cut, 0, 127 << 8);
+    i = cut >> 8;
+    g = SVF_G[i];
+    if (i < 127)
+        g += ((SVF_G[i + 1] - g) * (cut & 255)) >> 8;
+    res = clamp(res, 0, 127);
+    c->k = res < 64 ? 8192 - res * 2400 / 64 : 5792 - (res - 64) * 6200 / 63;   /* (2.0 .. 1.41 .. -0.1) */
+    den = 4096 + ((g * (g + c->k)) >> 12);
+    den = den < 1024 ? 1024 : den;
+    c->a1 = (int32_t)((4096u << 13) / (uint32_t)den);
+    c->a2 = (int32_t)(((int64_t)c->a1 * g) >> 12);
+    c->a3 = (int32_t)(((int64_t)c->a2 * g) >> 12);
+}
+static inline int32_t mono_filter(const mono_flt_t *c, int32_t mo, int32_t s, int32_t *ic1, int32_t *ic2)
+{
+    int32_t in = s >> 1, c1, v1, v2, v3, hp, y, a;
+    c1 = softclip(*ic1 >> 1) << 1;                      /* (the diodes: ~+-63000 at most) */
+    v3 = in - *ic2;
+    v1 = (int32_t)(((int64_t)c->a1 * c1 + (int64_t)c->a2 * v3) >> 13);
+    v2 = *ic2 + (int32_t)(((int64_t)c->a2 * c1 + (int64_t)c->a3 * v3) >> 13);
+    *ic1 = clamp(2 * v1 - c1, -150000, 150000);
+    *ic2 = clamp(2 * v2 - *ic2, -150000, 150000);
+    hp = in - (int32_t)(((int64_t)c->k * v1) >> 12) - v2;
+    y = mo < 64 ? v2 + (int32_t)(((int64_t)(v1 - v2) * mo) >> 6) : v1 + (int32_t)(((int64_t)(hp - v1) * (mo - 64)) / 63);
+    a = y < 0 ? -y : y;                                 /* (DIGITAL's soft knee) */
+    if (a > 16000) {
+        a = 16000 + (softclip((a - 16000) * 2) >> 1);
+        y = y < 0 ? -a : a;
+    }
+    return y << 1;
+}
+
+/* CUT's glide (~20 ms; every 8 samples, mono_fcoef after it): *cs = the glided cut + 1 (0: not yet, it snaps) */
+static inline void mono_glide(int32_t *cs, int32_t ct)
+{
+    int32_t d = ct - (*cs - 1);
+    if (!*cs)
+        *cs = ct + 1;
+    else
+        *cs += (d + (d > 0 ? 127 : d < 0 ? -127 : 0)) >> 7;
+}
+
 /* FM SYN (see SYN_D): op A ph[0], B ph[1], C ph[2], D s[7]; s[0..1] the filter, s[2..3] its envelope (s[3] & 7: stage,
- * s[3] >> 4: D's envelope), s[4] C's envelope, s[6] D's feedback history (two int16) */
+ * s[3] >> 4: D's envelope), s[4] C's envelope, s[5] CUT's glide (mono_glide), s[6] D's feedback history (two int16).
+ * The filter: MONO's (mono_filter, TYPE a blend: P_LN1) */
 #define SYN_M(x, k) ((uint32_t)((x) * (k)) * 129u)     /* (the phase push of an op's output x, depth k 0..2032) */
 static __attribute__((noinline)) void syn_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const vmod_t *m)
 {
@@ -520,7 +570,7 @@ static __attribute__((noinline)) void syn_render(track_t *t, voice_t *v, int32_t
     kc = (int32_t)(((int64_t)clamp(p[P_E4], 0, 127) * ((ec & (SYN_ATTACK - 1)) >> 9)) >> 11);
     kd = (int32_t)(((int64_t)clamp(p[P_E5], 0, 127) * ((ed & (SYN_ATTACK - 1)) >> 9)) >> 11);
     /* the filter and its envelope (as the legacy path) */
-    int32_t cut = (p[P_FLT_CUT] << 8) + m->cutoff + (p[P_FLT_KTR] * (v->pitch16 - 60 * 16) >> 4);
+    int32_t ct = (p[P_FLT_CUT] << 8) + m->cutoff, cut = p[P_FLT_KTR] * (v->pitch16 - 60 * 16) >> 4;
     {
         int32_t fe = v->s[2], fs = v->s[3] & 7, sus = (int32_t)p[P_FE_SUS] * (1 << 17);
         if (!v->gate)
@@ -541,14 +591,16 @@ static __attribute__((noinline)) void syn_render(track_t *t, voice_t *v, int32_t
             t->m_fenv = fe >= (1 << 24) ? 32767 : fe >> 9;
     }
     int32_t drive = 32768 + p[P_FLT_DRV] * 512, drv = p[P_FLT_DRV], ic1 = v->s[0], ic2 = v->s[1];
-    int32_t fk = ANALOG_K(p[P_FLT_RES]);
-    uint32_t ft = (uint32_t)p[P_FTYPE];
-    tsvf_t flt;
-    tsvf_coef(&flt, cut, p[P_FLT_RES]);
+    int32_t mo = clamp(p[P_LN1], 0, 127), cs = v->s[5];
+    mono_flt_t flt;
     uint32_t pa = v->ph[0], pb = v->ph[1], pc = v->ph[2], pd = (uint32_t)v->s[7];
     int32_t fb1 = (int16_t)(v->s[6] & 0xFFFF), fb2 = v->s[6] >> 16;
     for (i = 0; i < n; i++) {
         int32_t a, b, c, d, s;
+        if (!(i & 7u)) {                                /* (CUT's glide) */
+            mono_glide(&cs, ct);
+            mono_fcoef(&flt, cs - 1 + cut, p[P_FLT_RES]);
+        }
         d = sine_i(pd + digital_mod((fb1 + fb2) >> 1, fb));
         fb2 = fb1;
         fb1 = d;
@@ -569,9 +621,10 @@ static __attribute__((noinline)) void syn_render(track_t *t, voice_t *v, int32_t
         pd += id;
         if (drv)
             s = softclip(((s >> 2) * (drive >> 2)) >> 11);
-        s = digital_filter(&flt, fk, ft, s, &ic1, &ic2);
+        s = mono_filter(&flt, mo, s, &ic1, &ic2);
         out[i] += voice_amp(s, m, i);   /* full-scale sines: 6 dB below the others */
     }
+    v->s[5] = cs;
     v->ph[0] = pa;
     v->ph[1] = pb;
     v->ph[2] = pc;

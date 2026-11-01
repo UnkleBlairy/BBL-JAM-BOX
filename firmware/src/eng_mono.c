@@ -24,44 +24,7 @@ static const char *const N_MMACH[1] = {"MONO"};
 static const param_desc_t MONO_SAT = {"SAT", F_INT, 0, 127, 0, 0, 0};   /* P_LN0 on a MONO track (params.c track_desc) */
 static const param_desc_t MONO_TYPE = {"TYPE", F_INT, 0, 127, 0, 0, 0};  /* P_LN1: 0 LP, 64 BP, 127 HP, blended between */
 
-/* the filter: a state-variable filter (TPT, as dsp.c tsvf_*) whose band-pass state goes through a soft clip each
- * sample (the MS-20's diodes in its resonance loop): the damping k goes a little below 0 at the top of RES, so it rings
- * up by itself until the clip holds it, and loud notes push the resonance into a growl rather than just louder */
-typedef struct { int32_t a1, a2, a3, k; } mono_flt_t;
-static void mono_fcoef(mono_flt_t *c, int32_t cut, int32_t res)
-{
-    int32_t i, g, den;
-    cut = clamp(cut, 0, 127 << 8);
-    i = cut >> 8;
-    g = SVF_G[i];
-    if (i < 127)
-        g += ((SVF_G[i + 1] - g) * (cut & 255)) >> 8;
-    res = clamp(res, 0, 127);
-    c->k = res < 64 ? 8192 - res * 2400 / 64 : 5792 - (res - 64) * 6200 / 63;   /* (2.0 .. 1.41 .. -0.1) */
-    den = 4096 + ((g * (g + c->k)) >> 12);
-    den = den < 1024 ? 1024 : den;
-    c->a1 = (int32_t)((4096u << 13) / (uint32_t)den);
-    c->a2 = (int32_t)(((int64_t)c->a1 * g) >> 12);
-    c->a3 = (int32_t)(((int64_t)c->a2 * g) >> 12);
-}
-static inline int32_t mono_filter(const mono_flt_t *c, int32_t mo, int32_t s, int32_t *ic1, int32_t *ic2)
-{
-    int32_t in = s >> 1, c1, v1, v2, v3, hp, y, a;
-    c1 = softclip(*ic1 >> 1) << 1;                      /* (the diodes: ~+-63000 at most) */
-    v3 = in - *ic2;
-    v1 = (int32_t)(((int64_t)c->a1 * c1 + (int64_t)c->a2 * v3) >> 13);
-    v2 = *ic2 + (int32_t)(((int64_t)c->a2 * c1 + (int64_t)c->a3 * v3) >> 13);
-    *ic1 = clamp(2 * v1 - c1, -150000, 150000);
-    *ic2 = clamp(2 * v2 - *ic2, -150000, 150000);
-    hp = in - (int32_t)(((int64_t)c->k * v1) >> 12) - v2;
-    y = mo < 64 ? v2 + (int32_t)(((int64_t)(v1 - v2) * mo) >> 6) : v1 + (int32_t)(((int64_t)(hp - v1) * (mo - 64)) / 63);
-    a = y < 0 ? -y : y;                                 /* (DIGITAL's soft knee) */
-    if (a > 16000) {
-        a = 16000 + (softclip((a - 16000) * 2) >> 1);
-        y = y < 0 ? -a : a;
-    }
-    return y << 1;
-}
+/* the filter: eng_digital.c mono_filter (FM SYN's too) */
 
 /* osc 2's tuning: Q16 ratio to osc 1 for d 1/64 semitones (0 .. +24 semitones + -1 .. +1) */
 static uint32_t mono_ratio(int32_t d)
@@ -149,8 +112,6 @@ static void mono_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const 
      * key tracking and the envelope don't (a pluck keeps its snap) */
     int32_t *cs = &mono_cs[(uint32_t)(t - trk) % NTRK], ct = (p[P_FLT_CUT] << 8) + m->cutoff;
     int32_t cut = p[P_FLT_KTR] * (v->pitch16 - 60 * 16) >> 4;
-    if (!*cs)
-        *cs = ct + 1;
     {
         int32_t fe = v->s[2], fs = v->s[3], sus = (int32_t)p[P_FE_SUS] * (1 << 17);
         if (!v->gate)
@@ -175,8 +136,7 @@ static void mono_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const 
     mono_flt_t flt;
     for (i = 0; i < n; i++) {
         if (!(i & 7u)) {                                /* every 8 samples: a step of the glide */
-            int32_t d = ct - (*cs - 1);
-            *cs += (d + (d > 0 ? 127 : d < 0 ? -127 : 0)) >> 7;
+            mono_glide(cs, ct);
             mono_fcoef(&flt, *cs - 1 + cut, p[P_FLT_RES]);
         }
         int32_t a = mono_osc(w1, &v->ph[0], inc1, pw, &v->s[4], &v->s[6]);
