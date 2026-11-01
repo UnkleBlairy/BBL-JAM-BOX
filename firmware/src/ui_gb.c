@@ -481,15 +481,14 @@ static void gb_fill(gb_view_t *v)
             (void)motion_lock_get(t, s0, P_E2, &st);
             (void)motion_lock_get(t, s0, P_E3, &ln);
         }
-        a = (uint32_t)(st & 127) * (GB_WAVE - 1u) / 127u;
-        b = a + (uint32_t)(ln & 127) * (GB_WAVE - 1u) / 127u;
+        smp_window(GB_WAVE, st, ln, &a, &b, 1u);           /* (as eng_sampler.c's window, in columns) */
+        b = a + b - 1u;
         if (sl < smp_n && ui.hot_t && pg->id[ui.hot_col & 3u] == P_E2 + (ui.hot_col == 3u)
             && (ui.hot_col == 2u || ui.hot_col == 3u)) {
             uint32_t n = smp_tab[sl].len;             /* the window in samples (eng_sampler.c sampler_note_on) */
             v->zoom = (uint8_t)(ui.hot_col - 1u);
-            v->za = (uint32_t)(st & 127) * (n - 1u) / 127u;
-            v->zb = v->za + (uint32_t)(ln & 127) * (n - 1u - v->za) / 127u;   /* (LEN: of what START leaves) */
-            v->zb = v->zb > n - 1u ? n - 1u : v->zb;
+            smp_window(n, st, ln, &v->za, &v->zb, 65u);
+            v->zb = v->za + v->zb - 1u;
         }
         v->wv = smp_peaks(sl) ? 2u : 1u;
         v->wa = (uint8_t)a;

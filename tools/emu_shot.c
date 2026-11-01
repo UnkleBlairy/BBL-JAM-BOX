@@ -19,6 +19,7 @@ int main(int argc,char**argv){
     else if(!strncmp(s,"key:",4)) { web_keys(1u<<atoi(s+4)); run(80); web_keys(0); run(100);} 
     else if(!strncmp(s,"keyd:",5)) { web_keys(1u<<atoi(s+5)); run(100);} 
     else if(!strcmp(s,"keyu")) { web_keys(0); run(100);} 
+    else if(!strncmp(s,"wavx:",5)) { char fn[256]; int r,k; sscanf(s+5,"%255[^,],%d,%d",fn,&r,&k); FILE *f=fopen(fn,"wb"); for(int b=0;b<689;b++){ if(b%10==0 && k){ web_enc(r,k<0?-1:1); k+=k<0?1:-1; } run(0); web_render(128); fwrite(out_l,4,128,f);} fclose(f);}   /* 2 s, the encoder turned a step every 10 blocks */
     else if(!strncmp(s,"wav:",4)) { FILE *f=fopen(s+4,"wb"); for(int b=0;b<689;b++){ web_render(128); fwrite(out_l,4,128,f);} fclose(f);} 
     else if(!strcmp(s,"state?")) printf("sgrid=%u page=%u ly=%u lyt0=%u tm=%u hint=%u msg=%u grid=%u\n", ui.sgrid, ui.page, ui.ly, ui.ly_t0 & 15u, tm_dn, gb_hint, ui.msg_t, song.grid);
     else if(!strncmp(s,"tapms:",6)) { int b,d; sscanf(s+6,"%d,%d",&b,&d); web_buttons(1u<<b); run(d); web_buttons(0); run(120);} 
