@@ -162,11 +162,18 @@ static uint32_t ota_take(void)
 #if FELUCCA_SMP_USB                              /* (the firmware: felucca.c; not the update loader) */
 static void smp_session(uint32_t d);
 #endif
+#if FELUCCA_MIRROR
+static void mir_cmd(const uint8_t *body, uint32_t n);
+#endif
 static void ota_service(void)
 {
     uint32_t d = ota_take();
     if (d == 7u && ota_dec[2] == 0x11)
         ota_reply_identity();
+#if FELUCCA_MIRROR
+    else if (d >= 7u && ota_dec[2] == 0x70)
+        mir_cmd(ota_dec + 6, d - 7u);                   /* the screen over USB (mirror.c) */
+#endif
 #if FELUCCA_SMP_USB
     else if (d == 7u && ota_dec[2] == 0x60)
         smp_session(d);

@@ -306,6 +306,10 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   sizes from the Screen Lab app: S 12 px, M 15 px (+0.5 px tracking), L 28 px (gen_aa_font.py
   preset bbl-pixel). Not the Square Pixel-7 font (personal-use licence).
 
+- Screen mirror (test): firmware/src/mirror.c streams every lcd_fill / lcd_blit as RGB 3-3-2 run-length over USB
+  SysEx (cmd 0x70, only while a page keeps asking; ~6-9 KB a full page); web/mirror.html (site: webapp/mirror/) draws
+  it pixelated (the 8-bit look is wanted) and can play the FM-1's USB audio. H hides the controls (OBS).
+
 ## Workflow (after every change)
 
 1. Build firmware: `./build.sh`

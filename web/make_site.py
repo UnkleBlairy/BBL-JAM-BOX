@@ -67,6 +67,8 @@ def main(pkg, version, out):
                                            for f in ("smpimg.js", "fm1ota.js", "fm1smp.js", "smpui.js")))
     (out / "webapp" / "samples").mkdir(parents=True, exist_ok=True)
     (out / "webapp" / "samples" / "index.html").write_text(smp, encoding="utf-8")
+    (out / "webapp" / "mirror").mkdir(parents=True, exist_ok=True)   # the screen mirror (test; no LIB)
+    shutil.copy(HERE / "mirror.html", out / "webapp" / "mirror" / "index.html")
     shutil.copy(pkg, fw / name)
     lic = HERE.parent / "LICENSES"                  # the package holds JieLi SDK files (Apache-2.0): their
     (fw / "LICENSES").mkdir(exist_ok=True)          # licence travels next to it, with Felucca's own

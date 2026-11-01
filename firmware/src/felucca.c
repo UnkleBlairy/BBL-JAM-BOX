@@ -20,6 +20,7 @@
 #define FELUCCA_CDC 1            /* USB CDC-ACM serial console */
 #endif
 #ifndef FELUCCA_UAC
+#define FELUCCA_MIRROR 1         /* the screen over USB SysEx while a page asks (mirror.c; needs FELUCCA_OTA) */
 #define FELUCCA_UAC 1            /* USB audio input: the master output, 16-bit stereo 44.1 kHz (usb.c) */
 #endif
 #ifndef FELUCCA_UAC_TONE
@@ -109,6 +110,9 @@
 #include "ota.c"
 #include "ota_hw.c"
 #include "smp_usb.c"             /* the sample uploader's transfer (ota.c's SysEx frames) */
+#if FELUCCA_MIRROR
+#include "mirror.c"              /* the screen over USB (lcd.c's draws, ota.c's frames) */
+#endif
 #endif
 #if FELUCCA_CDC
 /* the serial port is still presented (the USB layout stays as the installer knows it); what comes in is dropped */

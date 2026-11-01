@@ -269,6 +269,9 @@ static void fm1_main(void)
         }
 #if FELUCCA_OTA
         ota_service();                                  /* M-UPGRADE handshake */
+#if FELUCCA_MIRROR
+        mir_pump();                                     /* the screen over USB */
+#endif
         if (usb.ota_req) {                              /* M-UPGRADE upgrade command */
             usb.ota_req = 0;
             panic_req = (1u << NTRK) - 1u;               /* every track (bit per track) */
