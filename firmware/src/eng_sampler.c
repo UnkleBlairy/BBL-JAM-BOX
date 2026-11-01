@@ -92,6 +92,8 @@ static smp_chunk_t smp_tab[SMP_MAX];
 static uint8_t smp_n;                               /* the chunks there are */
 static volatile uint32_t smp_gen;                   /* + 1 a scan: a voice playing the old table ends */
 
+typedef struct { uint32_t L, Lp, cf, cfw, per; } smp_g_t;   /* a window's loop: its length, the loop (L less the
+                                                             * crossfade cf, its gain step cfw), the period */
 typedef struct {                 /* a track's voice (one: a hit takes over) */
     uint8_t owner;               /* the voice's index + 1 (0: none) */
     uint8_t mode, done, keyg, hc, gb, tail;   /* gb: log2 of the grain; tail: ONCE / REV past the end, the last grain fades */
@@ -99,7 +101,8 @@ typedef struct {                 /* a track's voice (one: a hit takes over) */
     const uint8_t *d, *dp, *dq;  /* the window's first sample (REV: its last) for the grain playing, the one before, and
                                   * the next (START / LEN moved: grains take it as they start, so their overlap fades it) */
     const uint8_t *base;         /* the chunk's first sample */
-    uint32_t gen, L, Lp, cf, cfw, per, srq;
+    smp_g_t g[3];                /* the loops of d, dp, dq: a grain keeps its window's, START / LEN moving it or not */
+    uint32_t gen, srq;
     uint32_t off, n;             /* the chunk: its first sample (flash), its length */
     int16_t sk, lk;              /* the START and LEN the window was made from (smp_win: they move it live) */
     int32_t cin, pin;            /* the source position the grain playing started at, and the one before it, Q8 */
@@ -123,75 +126,77 @@ static inline int32_t smp_raw(const smp_v_t *h, const uint8_t *d, uint32_t i)
     return k >= 0 && k < (int32_t)h->n ? SMP_ULAW[h->base[k]] : 0;
 }
 /* sample i of the loop (i < Lp): its start crossfaded with the end past it */
-static inline int32_t smp_lv(const smp_v_t *h, const uint8_t *d, uint32_t i)
+static inline int32_t smp_lv(const smp_v_t *h, const smp_g_t *g, const uint8_t *d, uint32_t i)
 {
     int32_t w;
-    if (i >= h->cf)
+    if (i >= g->cf)
         return smp_raw(h, d, i);
-    w = (int32_t)(i * h->cfw);
-    return (smp_raw(h, d, i) * w + smp_raw(h, d, h->Lp + i) * (32768 - w)) >> 15;
+    w = (int32_t)(i * g->cfw);
+    return (smp_raw(h, d, i) * w + smp_raw(h, d, g->Lp + i) * (32768 - w)) >> 15;
 }
 /* sample i (>= 0) of what the mode plays: ONCE / REV the window then silence, LOOP over and over, PING there and back */
-static inline int32_t smp_src(const smp_v_t *h, const uint8_t *d, uint32_t i)
+static inline int32_t smp_src(const smp_v_t *h, const smp_g_t *g, const uint8_t *d, uint32_t i)
 {
     switch (h->mode) {
     case SM_LOOP:
-        while (i >= h->Lp)
-            i -= h->Lp;
-        return smp_lv(h, d, i);
+        while (i >= g->Lp)
+            i -= g->Lp;
+        return smp_lv(h, g, d, i);
     case SM_PING:
-        while (i >= h->per)
-            i -= h->per;
-        return smp_lv(h, d, i < h->Lp ? i : h->per - 1u - i);
+        while (i >= g->per)
+            i -= g->per;
+        return smp_lv(h, g, d, i < g->Lp ? i : g->per - 1u - i);
     default:
-        return i < h->L ? smp_raw(h, d, i) : 0;
+        return i < g->L ? smp_raw(h, d, i) : 0;
     }
 }
 /* the stretch (the prototype's stretchBuf, streaming): two Hann grains half a grain apart, added; k into the grain
  * started at c, the one before (pv) at its second half. STRETCH 1.00x: they line up, the sound as it is. The next grain
  * starts half a grain / STRETCH further on (sampler_render): STRETCH moves while it plays */
-static inline int32_t smp_gr(const smp_v_t *h, int32_t c, const uint8_t *dc, int32_t pv, const uint8_t *dv, uint32_t k,
-                             int on)   /* (dc, dv: the windows the two grains read) */
+static inline int32_t smp_gr(const smp_v_t *h, int32_t c, const uint8_t *dc, const smp_g_t *gc, int32_t pv,
+                             const uint8_t *dv, const smp_g_t *gv, uint32_t k, int on)   /* (dc gc, dv gv: the windows
+                                                                                          * the two grains read) */
 {
     uint32_t hb = h->gb - 1u, wi = h->gb >= 8u ? k >> (h->gb - 8u) : k << (8u - h->gb);
-    int32_t v = smp_src(h, dv, (uint32_t)((pv >> 8) + (int32_t)k + (1 << hb))) * SMP_HANN[wi + 128u];
+    int32_t v = smp_src(h, gv, dv, (uint32_t)((pv >> 8) + (int32_t)k + (1 << hb))) * SMP_HANN[wi + 128u];
     if (on)
-        v += smp_src(h, dc, (uint32_t)((c >> 8) + (int32_t)k)) * SMP_HANN[wi];
+        v += smp_src(h, gc, dc, (uint32_t)((c >> 8) + (int32_t)k)) * SMP_HANN[wi];
     return v >> 15;
 }
 
-/* the window of a chunk of n samples: LEN its size (fixed: START doesn't change it; 64 samples at the least), START
- * where it starts, but never past the end: pushed into it, the window ends at the chunk's end, the same size.
- * -> its first sample (a), its length (L). The screen's waveform too (ui_gb.c) */
+/* the window of a chunk of n samples: LEN its size (START doesn't change it), START where it starts; pushed into the
+ * chunk's end, the window's end stays there and START goes on, the window shrinking (to `least` samples, at the very
+ * end). -> its first sample (a), its length (L). The screen's waveform too (ui_gb.c) */
 static void smp_window(uint32_t n, int32_t st, int32_t ln, uint32_t *a, uint32_t *L, uint32_t least)
 {
     uint32_t l = 1u + (uint32_t)(ln & 127) * (n - 1u) / 127u, s = (uint32_t)(st & 127) * (n - 1u) / 127u;
-    l = l < least ? least : l;
-    l = l > n ? n : l;
-    *L = l;
-    *a = s + l > n ? n - l : s;
+    least = least > n ? n : least;
+    s = s > n - least ? n - least : s;
+    l = l > n - s ? n - s : l;                          /* (against the end: shorter) */
+    *L = l < least ? least : l;
+    *a = s;
 }
 /* LOOP / PING: the end's crossfade into the start (~256 samples) and the period, for the window's length */
-static void smp_len_set(smp_v_t *h)
+static void smp_len_set(smp_v_t *h, smp_g_t *g)
 {
     if (h->mode == SM_LOOP || h->mode == SM_PING) {
-        h->cf = h->L / 4u < 256u ? h->L / 4u : 256u;
-        h->Lp = h->L - h->cf;
-        h->cfw = 32768u / h->cf;
-        h->per = h->mode == SM_LOOP ? h->Lp : 2u * h->Lp;
+        g->cf = g->L / 4u < 256u ? g->L / 4u : 256u;
+        g->Lp = g->L - g->cf;
+        g->cfw = 32768u / g->cf;
+        g->per = h->mode == SM_LOOP ? g->Lp : 2u * g->Lp;
     }
 }
 /* START and LEN (live, sampler_render each block: knob, lock, LFO, macro): the window moves / resizes under the
- * playhead, which keeps its place in it (a scrub) */
+ * playhead, which keeps its place in it (a scrub); the next grain takes it (dq, g[2]) */
 static void smp_win(smp_v_t *h, int32_t st, int32_t ln)
 {
     uint32_t a, L;
     smp_window(h->n, st, ln, &a, &L, 65u);
     h->sk = (int16_t)st;
     h->lk = (int16_t)ln;
-    h->L = L;
+    h->g[2].L = L;
     h->dq = SMP_XIP(h->off + (h->mode == SM_REV ? a + L - 1u : a));
-    smp_len_set(h);
+    smp_len_set(h, &h->g[2]);
 }
 
 static void sampler_note_on(track_t *t, voice_t *v)
@@ -230,10 +235,11 @@ static void sampler_note_on(track_t *t, voice_t *v)
     h->base = SMP_XIP(c->off);
     smp_win(h, p[P_E2], p[P_E3]);                     /* START, LEN */
     h->d = h->dp = h->dq;
+    h->g[0] = h->g[1] = h->g[2];
     h->srq = ((uint32_t)c->rate << 16) / (uint32_t)FS;
     {                                                 /* grains of ~40 ms (a power of two), at most half the window */
         uint32_t gb = c->rate > 16000u ? 10u : 9u;
-        while ((1u << gb) > h->L / 2u)
+        while ((1u << gb) > h->g[0].L / 2u)
             gb--;                                     /* (L >= 65: 32 and up) */
         h->gb = (uint8_t)gb;
         h->pin = -(1 << (gb - 1u + 8u));              /* the grain "before" lines up: no fade in */
@@ -311,11 +317,11 @@ static void sampler_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, con
         if (!h->done) {
             if (!h->hc) {                             /* LOFI's sample-hold: a new value every hold samples */
                 uint32_t k = h->gpos >> 16;
-                y = smp_gr(h, h->cin, h->d, h->pin, h->dp, k, !h->tail);
+                y = smp_gr(h, h->cin, h->d, &h->g[0], h->pin, h->dp, &h->g[1], k, !h->tail);
                 if (!near) {
-                    int32_t y2 = k + 1u < hq >> 16 ? smp_gr(h, h->cin, h->d, h->pin, h->dp, k + 1u, !h->tail)
+                    int32_t y2 = k + 1u < hq >> 16 ? smp_gr(h, h->cin, h->d, &h->g[0], h->pin, h->dp, &h->g[1], k + 1u, !h->tail)
                                : h->tail ? 0                  /* (the last grain's end: nothing follows it) */
-                                         : smp_gr(h, h->cin + (int32_t)adv, h->dq, h->cin, h->d, 0, 1);
+                                         : smp_gr(h, h->cin + (int32_t)adv, h->dq, &h->g[2], h->cin, h->d, &h->g[0], 0, 1);
                     y += ((y2 - y) * (int32_t)(h->gpos >> 1 & 0x7FFFu)) >> 15;
                 }
                 if (sh)
@@ -336,14 +342,16 @@ static void sampler_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, con
                 h->cin += (int32_t)adv;
                 h->dp = h->d;                         /* (the window as it is now, for the new grain) */
                 h->d = h->dq;
+                h->g[1] = h->g[0];
+                h->g[0] = h->g[2];
                 if (h->mode == SM_ONCE || h->mode == SM_REV) {
-                    if (h->cin >> 8 > (int32_t)(h->L - (2u << (h->gb - 1u))))   /* past the end: the last grain fades out */
+                    if (h->cin >> 8 > (int32_t)(h->g[0].L - (2u << (h->gb - 1u))))   /* past the end: the last grain fades out */
                         h->tail = 1;
                 } else {
-                    while (h->pin >> 8 >= (int32_t)h->per) {   /* (LEN made shorter: maybe more than one period) */
-                        h->pin -= (int32_t)(h->per << 8);
-                        h->cin -= (int32_t)(h->per << 8);
-                    }
+                    while (h->pin >> 8 >= (int32_t)h->g[1].per)   /* (each grain in its own loop; LEN made */
+                        h->pin -= (int32_t)(h->g[1].per << 8);           /* shorter: maybe more than one period) */
+                    while (h->cin >> 8 >= (int32_t)h->g[0].per)
+                        h->cin -= (int32_t)(h->g[0].per << 8);
                 }
             }
             if (h->mode == SM_ONCE || h->mode == SM_REV) {
