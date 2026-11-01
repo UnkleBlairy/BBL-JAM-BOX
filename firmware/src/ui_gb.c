@@ -8,6 +8,8 @@
  * PERF, MIXER, CLOCK; the rest keep the old look. */
 #define GB_STRIP 60                           /* canvas rows a strip */
 #define GB_W 0xFFFFu                                  /* the ink: white */
+#define GB_K 0x0000u                                  /* the background: black (the track's colour only up top) */
+#define GB_HDR 44                                     /* the header strip's rows (the track's colour, under the title) */
 #define GB_RGB(r, g, b) ((uint16_t)((((r) >> 3) << 11) | (((g) >> 2) << 5) | ((b) >> 3)))
 static uint16_t gb_col[NTRK] = {GB_RGB(255, 90, 54), GB_RGB(255, 214, 10), GB_RGB(46, 196, 255), GB_RGB(179, 136, 255),
                                 GB_RGB(64, 214, 120), GB_RGB(255, 112, 196)};   /* a colour a TRACK */
@@ -562,7 +564,8 @@ static void gb_fill(gb_view_t *v)
 }
 
 /* an oval (a pill) made of rows: on = filled, else a 2 px outline. (cv_rrect rounds at most 8 px; these are up to 17) */
-static uint16_t gb_bg;                                      /* the screen's background (the track's colour) */
+static uint16_t gb_bg;                                      /* the screen's background (black) */
+static uint16_t gb_hc;                                      /* the header strip's colour (the track's) */
 static uint32_t gb_isqrt(uint32_t n)
 {
     uint32_t r = 0;
@@ -624,6 +627,8 @@ static void gb_icon(int32_t x, int32_t y, int32_t s, uint32_t icon, uint16_t col
 static void gb_header(const gb_view_t *v, const char *title, uint16_t bgc)
 {
     char bb[8], tg[8];
+    bgc = gb_hc;                                                  /* (on the track's colour strip, not the black) */
+    cv_rect(0, 0, 240, GB_HDR, bgc);
     int32_t tx = v->icon ? 48 : 8, bw, room, tw, gw = 0;
     const aafont_t *tf = &AF_L;
     if (v->icon) {
@@ -691,8 +696,9 @@ static void gb_scene(const gb_view_t *v, uint16_t bgc)
             }
             return;
         }
-        cv_text_on(8, 4, &AF_L, v->sv == 1u ? "SAVE?" : "LOAD?", c, bgc);
-        cv_text_r(232, 14, &AF_M, GB_POOL_NAME[gb_pool(v->mach)], c, bgc);   /* (the sound pool the keys are) */
+        cv_rect(0, 0, 240, GB_HDR, gb_hc);
+        cv_text_on(8, 4, &AF_L, v->sv == 1u ? "SAVE?" : "LOAD?", c, gb_hc);
+        cv_text_r(232, 14, &AF_M, GB_POOL_NAME[gb_pool(v->mach)], c, gb_hc);   /* (the sound pool the keys are) */
         cv_text_on(8, 60, &AF_L, "SOUND", c, bgc);       /* (all at the title's size) */
         cv_text_on(8, 94, &AF_L, "WHITE KEY", c, bgc);
         cv_text_on(8, 142, &AF_L, "KIT", c, bgc);
@@ -989,10 +995,14 @@ static void gb_overlay(const gb_view_t *v, uint16_t bgc, int direct)
     uint32_t f[4], i, k, q = v->brd;
     for (i = 0; i < 4u; i++)
         f[i] = q > i * 240u ? (q - i * 240u < 240u ? q - i * 240u : 240u) : 0u;
-    gb_ovr(f[0], 0, 240 - f[0], GB_BRD, bgc, direct);   /* the rest of the way first, then the white (the corners) */
-    gb_ovr(240 - GB_BRD, f[1], GB_BRD, 240 - f[1], bgc, direct);
+    gb_ovr(f[0], 0, 240 - f[0], GB_BRD, gb_hc, direct);   /* the rest of the way first, then the white (the corners); */
+    if (f[1] < GB_HDR)                                   /* .. the strip's colour across the header */
+        gb_ovr(240 - GB_BRD, f[1], GB_BRD, GB_HDR - f[1], gb_hc, direct);
+    gb_ovr(240 - GB_BRD, f[1] > GB_HDR ? f[1] : GB_HDR, GB_BRD, 240 - (f[1] > GB_HDR ? f[1] : GB_HDR), bgc, direct);
     gb_ovr(0, 240 - GB_BRD, 240 - f[2], GB_BRD, bgc, direct);
-    gb_ovr(0, 0, GB_BRD, 240 - f[3], bgc, direct);
+    gb_ovr(0, 0, GB_BRD, 240 - f[3] < GB_HDR ? 240 - f[3] : GB_HDR, gb_hc, direct);
+    if (240 - f[3] > GB_HDR)
+        gb_ovr(0, GB_HDR, GB_BRD, 240 - f[3] - GB_HDR, bgc, direct);
     gb_ovr(0, 0, f[0], GB_BRD, GB_W, direct);
     gb_ovr(240 - GB_BRD, 0, GB_BRD, f[1], GB_W, direct);
     gb_ovr(240 - f[2], 240 - GB_BRD, f[2], GB_BRD, GB_W, direct);
@@ -1029,7 +1039,8 @@ static void gb_draw(void)
         t.brd = gb_last.brd;
         if (!ui.force && gb_have && !memcmp(&t, &gb_last, sizeof t)) {
             gb_last = gb_v;
-            gb_overlay(&gb_v, c, 1);
+            gb_hc = c;
+            gb_overlay(&gb_v, GB_K, 1);
             return;
         }
     }
@@ -1051,22 +1062,23 @@ static void gb_draw(void)
         ux.light = 0;
         ux.gen++;
     }
+    gb_hc = c;
     for (s = 0; s < nstrip; s++) {
-        cv_begin(240, GB_STRIP, c);
+        cv_begin(240, GB_STRIP, GB_K);
         cv_oy = -(int32_t)(s * GB_STRIP);
-        gb_scene(&gb_v, c);
+        gb_scene(&gb_v, GB_K);
         if (gb_v.tmod == 2u)
             gb_popup(&gb_v, c);
         else if (gb_v.nud)
             gb_nudge(&gb_v, c);
         else if (gb_v.bn)                         /* a banner: its page */
             gb_banner(c, gb_v.bt[2u * gb_v.bpg], gb_v.bt[2u * gb_v.bpg + 1u]);
-        gb_overlay(&gb_v, c, 0);
+        gb_overlay(&gb_v, GB_K, 0);
         cv_oy = 0;
         cv_blit(0, s * GB_STRIP);
     }
     if (nstrip == 1u)                             /* (the header's strip only: the rest of the overlay may have moved) */
-        gb_overlay(&gb_v, c, 1);
+        gb_overlay(&gb_v, GB_K, 1);
     if (mono || light) {
         ux.mono = (typeof(ux.mono))mono;
         ux.light = (typeof(ux.light))light;
