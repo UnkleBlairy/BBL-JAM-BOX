@@ -488,7 +488,7 @@ static void gb_fill(gb_view_t *v)
             uint32_t n = smp_tab[sl].len;             /* the window in samples (eng_sampler.c sampler_note_on) */
             v->zoom = (uint8_t)(ui.hot_col - 1u);
             v->za = (uint32_t)(st & 127) * (n - 1u) / 127u;
-            v->zb = v->za + (uint32_t)(ln & 127) * (n - 1u) / 127u;
+            v->zb = v->za + (uint32_t)(ln & 127) * (n - 1u - v->za) / 127u;   /* (LEN: of what START leaves) */
             v->zb = v->zb > n - 1u ? n - 1u : v->zb;
         }
         v->wv = smp_peaks(sl) ? 2u : 1u;

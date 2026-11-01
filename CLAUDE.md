@@ -350,6 +350,8 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   REV) SLOT (S01..S32) LOFI LEVEL, page 3 = GATE (P_LN2: KEY = the note's
   length, 1/16..BAR = loops play that long; one-shots always play to the end).
   Track n starts on slot n. ENV and FILTER work (DIGITAL's filter).
+- LEN is a share of what START leaves (127 = the sample's end, whatever START is; never past it) and follows the
+  knob live while a sound plays (knob, locks, LFOs, macros; eng_sampler.c smp_len).
 - STRCH and LOFI follow the knob live while a sound plays (knob, macros, LFOs
   sweep them): grains always run (Hann pairs half a grain apart; at 1.00x they
   add back to the sample exactly), each new grain starts STRCH further on.
