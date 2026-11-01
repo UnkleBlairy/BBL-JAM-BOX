@@ -305,9 +305,15 @@ static void fm1_main(void)
         felucca_dbg.stage = 2;
         ui_leds();
         ui_draw();
+#if FELUCCA_MIRROR
+        mir_mark();                                   /* (a whole picture drawn: the mirror shows it) */
+#endif
         felucca_dbg.stage = 9;
         while (fm1_ms - m < 15u) {                               /* ~60 UI frames/s at most */
             ui_input();
+#if FELUCCA_MIRROR
+            mir_pump();                               /* (the USB kept busy between frames) */
+#endif
 #if FELUCCA_OTA
 #endif
         }

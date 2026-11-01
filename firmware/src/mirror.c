@@ -7,16 +7,19 @@
  *   01 x y w h c          a rectangle of colour c
  *   02 x y w h (n c)..    a rectangle's pixels, row by row, runs of n (1..255) of colour c
  *   03                    start: the host clears its picture (a full redraw follows)
- * w, h: 1..240 (240 sent as 0). Main loop only (lcd_* and the pump); the USB side is usb_poll's (TIMER5). A full ring
+ *   04                    a whole picture drawn (the host shows what it has: no half-drawn screens)
+ * w, h: 1..240 (240 sent as 0). Falling behind (more than MIR_LAG bytes waiting when a picture ends) the draws after
+ * it are left out until everything has gone, then the screen is drawn whole again (ui.force): the lag stays short. Main loop only (lcd_* and the pump); the USB side is usb_poll's (TIMER5). A full ring
  * waits for the USB (MIR_WAIT_MS at most; then the mirror stops: nothing reads it) */
 #define MIR_CMD 0x70u
 #define MIR_N 32768u                                    /* the ring (a full page is ~10 KB) */
 #define MIR_BODY 200u                                   /* a frame's bytes after the sequence byte */
 #define MIR_ALIVE_MS 3000u
 #define MIR_WAIT_MS 500u
+#define MIR_LAG 3072u                                   /* (~0.1 s of the USB's) */
 static uint8_t mir_buf[MIR_N] __attribute__((section(".pool")));
 static uint32_t mir_w, mir_r, mir_t;
-static uint8_t mir_on, mir_seq;
+static uint8_t mir_on, mir_seq, mir_skip, mir_drew;
 static uint8_t mir_msg[8 + MIR_BODY + 1], mir_wire[2 + (8 + MIR_BODY + 1) * 8 / 7 + 2];
 
 static int mir_send(void)                               /* one frame from the ring if the USB has room: 1 sent */
@@ -67,6 +70,7 @@ static inline uint32_t mir_c8(uint32_t v)              /* RGB565 -> RGB332 */
 }
 static void mir_head(uint32_t t, uint32_t x, uint32_t y, uint32_t w, uint32_t h)
 {
+    mir_drew = 1;
     mir_put(t);
     mir_put(x);
     mir_put(y);
@@ -75,7 +79,7 @@ static void mir_head(uint32_t t, uint32_t x, uint32_t y, uint32_t w, uint32_t h)
 }
 static void mir_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t c)   /* (lcd_fill: clipped, c native) */
 {
-    if (!mir_on)
+    if (!mir_on || mir_skip)
         return;
     mir_head(1, x, y, w, h);
     mir_put(mir_c8(c));
@@ -83,7 +87,7 @@ static void mir_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t c)
 static void mir_blit(uint32_t x, uint32_t y, uint32_t w, uint32_t h, const uint16_t *px)   /* (the panel's byte order) */
 {
     uint32_t i, n = w * h, c, run = 0, last = 0x100u;
-    if (!mir_on || !n || x >= 240u || y >= 240u)
+    if (!mir_on || mir_skip || !n || x >= 240u || y >= 240u)
         return;
     mir_head(2, x, y, w, h);
     for (i = 0; i < n; i++) {
@@ -113,6 +117,7 @@ static void mir_cmd(const uint8_t *body, uint32_t n)
     mir_t = fm1_ms | 1u;
     if (!mir_on) {                                      /* start: a clean picture, then everything drawn again */
         mir_on = 1;
+        mir_skip = 0;
         mir_w = mir_r = 0;
         mir_put(3);
         ui.force = 1;
@@ -124,4 +129,17 @@ static void mir_pump(void)
         mir_on = 0;                                     /* (the page closed) */
     while (mir_on && mir_send())
         ;
+    if (mir_on && mir_skip && mir_w == mir_r) {         /* caught up: the screen as it is now */
+        mir_skip = 0;
+        ui.force = 1;
+    }
+}
+static void mir_mark(void)                              /* main loop, after ui_draw: a whole picture */
+{
+    if (!mir_on || !mir_drew || mir_skip)
+        return;
+    mir_drew = 0;
+    mir_put(4);
+    if (mir_w - mir_r > MIR_LAG)
+        mir_skip = 1;                                   /* (behind: what is drawn next is left out) */
 }

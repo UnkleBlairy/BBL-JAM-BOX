@@ -66,12 +66,13 @@ for (let c = 0; c < 256; c++) {
   const r = Math.round((c >> 5) * 255 / 7), g = Math.round(((c >> 2) & 7) * 255 / 7), b = Math.round((c & 3) * 255 / 3);
   PAL[c] = 0xFF000000 | b << 16 | g << 8 | r;
 }
-let dirty = false;
+let dirty = false, pend = false, pendT = 0;     // dirty: show now; pend: drawn into, waiting for its 04
 // the stream's decoder: records may span frames (mirror.c)
 const st = { t: 0, h: [], x: 0, y: 0, w: 0, hh: 0, pos: 0, n: -1 };
 function feed(b) {
   if (!st.t) {
     if (b === 3) { px.fill(PAL[0]); dirty = true; return; }
+    if (b === 4) { dirty = true; pend = false; return; }   // a whole picture: show it
     if (b === 1 || b === 2) { st.t = b; st.h = []; st.n = -1; st.pos = 0; return; }
     lost++; return;                                    // (out of step: wait for the next start)
   }
@@ -86,7 +87,7 @@ function feed(b) {
       const o = (st.y + j) * 240 + st.x;
       px.fill(c, o, o + Math.min(st.w, 240 - st.x));
     }
-    st.t = 0; dirty = true; return;
+    st.t = 0; if (!pend) pendT = performance.now(); pend = true; return;
   }
   if (st.n < 0) { st.n = b; return; }                  // a run: its length, then its colour
   const c = PAL[b], end = st.w * st.hh;
@@ -94,7 +95,7 @@ function feed(b) {
     const x = st.x + st.pos % st.w, y = st.y + (st.pos / st.w | 0);
     if (x < 240 && y < 240) px[y * 240 + x] = c;
   }
-  st.n = -1; dirty = true;
+  st.n = -1; if (!pend) pendT = performance.now(); pend = true;
   if (st.pos >= end) st.t = 0;
 }
 
@@ -163,6 +164,7 @@ addEventListener("keydown", (e) => { if (e.key === "h" || e.key === "H") documen
 
 let t0 = performance.now(), draws = 0;
 (function loop(t) {
+  if (pend && t - pendT > 300) { dirty = true; pend = false; }   // (no 04 coming: a screen outside the UI's)
   if (dirty) { ctx.putImageData(img, 0, 0); dirty = false; draws++; }
   if (t - t0 >= 1000) {
     $("stats").textContent = `${(bytes / 1024).toFixed(1)} KB/s  ${msgs} msgs/s  ${draws} updates/s  gaps ${gaps}  bad ${lost}`;
