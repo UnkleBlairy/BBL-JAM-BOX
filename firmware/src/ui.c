@@ -633,9 +633,10 @@ static uint32_t tm_md(const page_t *pg, uint32_t k)
         id = 0x80u | (id & 0x7Fu);
     else if (id >= P_E0 && id < P_E7)
         return MD_E1 + id - P_E0;
-    else if (id == P_TRANS || id == P_LRATE || id == P_LD_PIT || id == P_DLY || id == P_REV || id == P_PAN)
+    else if (id == P_TRANS || id == P_LRATE || id == P_LD_PIT || id == P_DLY || id == P_REV || id == P_PAN ||
+             id == P_FLT_CUT)
         return id == P_TRANS ? MD_PITCH : id == P_LRATE ? MD_RATE : id == P_LD_PIT ? MD_VIB : id == P_DLY ? MD_DLY :
-               id == P_REV ? MD_REV : MD_PAN;
+               id == P_REV ? MD_REV : id == P_FLT_CUT ? MD_CUT : MD_PAN;
     for (j = 0; j < MD_N - MD_X0; j++)
         if (MDX[j] == id)
             return MD_X0 + j;
