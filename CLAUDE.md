@@ -106,6 +106,8 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   step: only a step that plays a note puts the earlier locks back. Trigless
   lock steps add theirs on top. Stopping puts everything back.
 - OCT- clear (SEQ mode, on release) wipes the track's locks and automation too.
+- SEQ mode: hold a track key (black 1-6) + OCT- = that track's sound back to its machine's starting sound
+  ("SOUND RESET"; steps, mix, SEQ and ARP settings stay; ui_input.c, apply_preset_to + machine_defaults).
 - CLEAR ALL: hold OCT- 1 s alone (any mode) = "CLEAR ALL? / PRESS OCT+"; OCT+ = a fresh start: every track's
   steps, locks, LOCKS keys and the FX lane gone, the power-on sounds, mix and FX back (tempo, swing, clock, macros
   stay); let go = cancel (ui_input.c cla_*). No instant OCT- + OCT+ any more.

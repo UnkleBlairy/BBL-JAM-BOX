@@ -2063,6 +2063,20 @@ static void ui_input(void)
                 break;                                   /* SIMPLE: OCT+ is a tap (the octave, on release) or a hold (the setup values) */
             if (FELUCCA_SIMPLE && sgrid_on()) {          /* the step keys: OCT- clears the track's steps, OCT- + OCT+ every track's */
                 uint32_t other = b == B_OCTDN ? B_OCTUP : B_OCTDN, a, i2, all = (fm1_in.buttons >> panel.btn[other]) & 1u;
+                if (b == B_OCTDN && !fxl_on()) {        /* a track key held (black 1..6): its sound back to its */
+                    uint32_t k2, hk = NTRK;             /* machine's starting sound (the steps, mix, SEQ, ARP stay) */
+                    for (k2 = 0; k2 < 27u; k2++)
+                        if (((fm1_in.notes >> k2) & 1u) && key_black(k2) && key_place(k2) < NTRK)
+                            hk = key_place(k2);
+                    if (hk < NTRK) {
+                        track_t *t2 = &trk[hk];
+                        apply_preset_to(t2, trk_machine(t2)->preset);
+                        machine_defaults(t2);
+                        ui_message("SOUND RESET");
+                        ui.force = 1;
+                        break;
+                    }
+                }
                 if (b == B_OCTDN && gbs_page_held() >= 0) {   /* a page key held: OCT- deletes the page (and after) */
                     gbs_page_del((uint32_t)gbs_page_held());
                     break;
