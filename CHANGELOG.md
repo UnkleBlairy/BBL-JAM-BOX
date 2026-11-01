@@ -1,5 +1,55 @@
 # Changelog
 
+## 0.3 beta (2026-11-01): members' preview
+
+Two new synths, a much deeper sequencer, an FX track and a jam that survives switching off.
+
+### New sounds
+- **MONO**: a new mono analog-style synth (in the vein of a Minimoog). Two oscillators (WAVE picks the pair, MIX
+  blends them, FINE and SEMI tune osc 2), a SUB oscillator (-1/-2/-3 octaves), **PW** that reshapes osc 1 (pulse
+  width on square, wavefold on triangle, bit-crush on sine, **hard sync** on saw) and **SAT** drive before the
+  filter. Every key press restarts the envelopes.
+- **New MS-20-style filter** on MONO and FM SYN: high RES rings, squeals and whistles on its own. **TYPE** now
+  blends smoothly from low-pass through band-pass to high-pass. CUT glides instead of stepping.
+- **FM SYN rebuilt, Digitone-style.** A and B are the operators you hear (MIX between them), C and D modulate,
+  each with its own **ATK / DEC / AMT** (DEC fully right = HOLD). 8 algorithms, **A:B** ratio pairs on one knob,
+  C and D ratios shown as real ratios, **FB** and **DTUN**. Pages: OSC 1, MOD C, MOD D, TUNE.
+  *FM SYN sounds saved in 0.2 load but sound different.*
+
+### Sequencer
+- **64 steps** on up to 4 pages (black keys 8-11 in SEQ mode). Tap a page key past the end to add a page, hold it
+  to set the length, hold + OCT- to delete pages.
+- **Live recording keeps your timing** (no forced quantize). Hold REC to turn quantize on for recording. Hold
+  step(s) + SELECT to nudge them.
+- **REC records every track you play**: finger drum on the track keys in SEQ mode.
+
+### FX track
+- **An FX track** (black key 7 in SEQ mode, or turn ALGO past 6): its own DELAY, VERB, three LFOs and its own
+  sequencer lane to lock master FX per step. Tracks get a **SENDS** page.
+- **Double-tap FX** on a track to jump to the master DELAY page.
+- **PERF, COMB, DJ and AMP** (the whole mix's level and **PAN**) live on the FX track.
+
+### Mixing and pages
+- **MIX pages**: two tracks' VOL and PAN on each (HOME button).
+- **VOL / PAN page** on the ENV button: modulate a track's level and pan with the LFO.
+- **LFO page** tidied: RATE WAVE DEST AMT.
+- **Reset a page**: hold its button + OCT-.
+- **Reset a track's sound**: in SEQ mode hold its track key + OCT-.
+- **CLEAR ALL**: hold OCT- for a second, then press OCT+ to confirm (a fresh start).
+- **PLAY twice** (stop, then PLAY again quickly) = all sound off, for stuck notes.
+
+### Saving
+- **The last jam is kept**: switch off and on and everything is back (stop before switching off).
+- Sounds save by type (KICK, SNARE, CYMBAL, PERC, SYNTH, SAMPLE: 16 each). Kits keep the LOCKS keys.
+
+### Sampler
+- **START and LEN** move live while a sound plays, with no clicks. LEN is the window's size: START slides it, and
+  at the end of the sample START keeps going and the window shrinks. The LEN knob always shows the real size.
+
+### Screen
+- **Black background**, with the track's colour as a strip behind the page name.
+- (Experimental) a **screen mirror** page for streaming the screen to a computer.
+
 ## 0.2 beta (2026-10-30)
 
 A big update to how BBL JAM BOX plays: quicker gestures, touch modulation, Elektron-style trig conditions and a
