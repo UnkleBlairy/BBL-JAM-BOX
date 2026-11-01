@@ -1780,6 +1780,17 @@ static int page_tap(uint32_t b)
         ui.force = 1;
         return 1;
     }
+    if (FELUCCA_SIMPLE && b == FAM_BTN[FAM_FX] && !fxl_sel) {   /* a track's FX tapped twice: the FX track's DELAY (back */
+        static uint32_t t_fx;                           /* on a track: its SENDS again, fxt_set's side_page) */
+        if (t_fx && (int32_t)(fm1_ms - t_fx) < (int32_t)SEQ_DBL_MS && !ui.home && cur_page()->fam == FAM_FX) {
+            t_fx = 0;
+            fxt_set(1);                                 /* (SENDS isn't the FX track's: its first FX page, DELAY) */
+            ui.fam_last[FAM_FX] = ui.page;
+            ui.force = 1;
+            return 0;
+        }
+        t_fx = fm1_ms | 1u;
+    }
     for (f = FAM_HOME + 1u; f < FAM_COUNT; f++)        /* (GLO SEQ SAVE ..: HOME is ui_input's, home_tap) */
         if (FAM_BTN[f] == b && b != B_HOME) {
             if (FELUCCA_SIMPLE && f != FAM_SAVE && !page_visible(page_first(f))) {   /* the other side's button: */

@@ -258,7 +258,7 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   delay's 3, the reverb's 3, D.SND R.SND (every track's sends: AMT left ducks them), D.OUT R.OUT (the
   echoes / the reverb's sound: the sidechain duck). Hold FILTER/ENV/LFO on the FX track = the picker for
   LFO 1/2/3. Macros can hold AMP and every FX LFO knob. Clearing an FX lane trig/lock puts the knobs back
-  at once (ui.c fxl_refresh). Tracks' FX button = SENDS (DLY, REV). Storage: the old unused
+  at once (ui.c fxl_refresh). Tracks' FX button = SENDS (DLY, REV); FX double-tapped (350 ms) on a track = the FX track's DELAY (ui_input.c page_tap), back on a track = SENDS again. Storage: the old unused
   globals (G_SLOT.. G_DRREV -> G_F1RATE.. G_AMP) + G_F1WAVE..G_F3WAVE; kits keep the LFOs (WAVEs in rsv),
   not AMP; the last jam keeps all. FX lane locks: AMP and the 3 AMTs too (MOTION_G).
 - Next: the ALL track (ALGO past FX): relative moves on every track first (maybe snap later), with a way to
