@@ -645,6 +645,8 @@ static uint32_t tm_md(const page_t *pg, uint32_t k)
 /* the DEST's name (the knob's own for the machine's E1..E7) */
 static const char *tm_name(const track_t *t, uint32_t d)
 {
+    if (d >= MD_X0 && d < MD_N && MDX[d - MD_X0] >= P_LN0 && MDX[d - MD_X0] <= P_LN2)
+        return track_desc(t, MDX[d - MD_X0])->label;   /* (the lanes: the engine's names, MONO's SAT and TYPE) */
     return MD_ENGINE(d) ? track_desc(t, P_E0 + d - MD_E1)->label : N_MDST[d % MD_N];
 }
 /* the macro's parameter: track tr < NTRK, or tr == PM_G: a global (BPM, SWING, the master's) */
@@ -1349,6 +1351,7 @@ static void machine_defaults_p(const track_t *t, int16_t *p)   /* (into p: t's v
         p[P_E5] = (int16_t)(trk_index(t) % SMP_MAX);
     } else if (m->engine == ENGI_MONO) {              /* MONO: SAT off, legato */
         p[P_LN0] = 0;
+        p[P_LN1] = 0;                                 /* (its filter's TYPE: LP) */
         p[P_VOICE] = V_LEGATO;
     }
 }

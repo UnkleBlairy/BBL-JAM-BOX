@@ -373,8 +373,11 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   legato. OSC 1: WAVE (pairs SW+SQ SW+TR SW+SN SQ+TR SQ+SN TR+SN, then SW+SW SQ+SQ TR+TR SN+SN), MIX (osc 1..2),
   FINE (osc 2 +-1 semitone, centre = in tune), SEMI (osc 2 0..+24). OSC 2: SUB (-1 -2 -3 octaves, a square),
   SUBVL, PW (osc 1 only, the most variety: SQR pulse width, TRI wavefold, SIN bits down to a square, SAW hard sync to a hidden
-  oscillator 1x..8x: PW is its pitch, no extra knob), SAT (P_LN0, drive before the filter). The filter / filter
-  env / ENV are DIGITAL's pages (filter to become its own swappable machine later). One preset: a plain saw.
+  oscillator 1x..8x: PW is its pitch, no extra knob), SAT (P_LN0, drive before the filter). One preset: a plain saw.
+  MONO's filter is its own (eng_mono.c mono_filter, MS-20-like): an SVF with a soft clip in the resonance loop, so
+  high RES rings, squeals and self-oscillates. FILTER page TYPE on MONO = P_LN1, a smooth blend LP (0) .. BP (64)
+  .. HP (127), lockable/LFO-able (params.c page_id_an). Filter env / ENV pages as usual. To become a swappable
+  filter machine for every engine later.
 - REC armed: a red "REC" pill left of the BPM; playing, it breathes twice a bar.
   It records EVERY track you play (seq.c rec_armed), so finger drumming on the
   black track keys in SEQ mode records each hit on its own track.

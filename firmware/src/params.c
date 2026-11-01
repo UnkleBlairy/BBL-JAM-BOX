@@ -271,7 +271,7 @@ static const param_desc_t AD_NONE = {"-", F_INT, 0, 127, 0, 0, 0};
 static int ln_on(const track_t *t, uint32_t id)
 {
     uint32_t e = eng_idx(t->eng_req);
-    return id == P_LN0 ? e == ENGI_ANALOG || e == ENGI_SAMPLER || e == ENGI_MONO : id == P_LN1 ? e == ENGI_ANALOG : id == P_LN2 ? e == ENGI_SAMPLER : 1;
+    return id == P_LN0 ? e == ENGI_ANALOG || e == ENGI_SAMPLER || e == ENGI_MONO : id == P_LN1 ? e == ENGI_ANALOG || e == ENGI_MONO : id == P_LN2 ? e == ENGI_SAMPLER : 1;
 }
 static const param_desc_t *track_desc(const track_t *t, uint32_t id)
 {
@@ -284,8 +284,8 @@ static const param_desc_t *track_desc(const track_t *t, uint32_t id)
     }
     if (FELUCCA_SIMPLE && id >= P_LN0 && id <= P_LN2 && !ln_on(t, id))
         return &AD_NONE;                              /* (LEVEL: ANALOG's and SAMPLER's, AGE ANALOG's, GATE SAMPLER's) */
-    if (FELUCCA_SIMPLE && id == P_LN0 && eng_idx(t->eng_req) == ENGI_MONO)
-        return &MONO_SAT;                             /* (MONO's SAT) */
+    if (FELUCCA_SIMPLE && (id == P_LN0 || id == P_LN1) && eng_idx(t->eng_req) == ENGI_MONO)
+        return id == P_LN0 ? &MONO_SAT : &MONO_TYPE;  /* (MONO's SAT, its filter's TYPE) */
     if (id >= P_IA && id <= P_IC)                     /* the INSERT's values as its TYPE names them */
         return ins_desc(t->p[P_ITYPE], id - P_IA);
     if (t->p[P_ESYNC] && (id == P_ATK || id == P_DEC || id == P_REL))   /* ENV SYNC: note values (1.5, #175) */
@@ -539,11 +539,15 @@ static const uint8_t *alt_ids(const page_t *pg)
     return 0;
 }
 /* SIMPLE: LEVEL and AGE (P_LN0, P_LN1) are no knob on a track of an engine without them; SAMPLER's AGE page is GATE.
- * PITCH (P_TRANS, semitones): the sampler's OSC 1 KNOB 1, FM SYN's OSC 2 KNOB 4 (where the 808s have LEVEL) */
+ * MONO's filter TYPE is P_LN1 (a blend, 0..127). PITCH (P_TRANS, semitones): the sampler's OSC 1 KNOB 1, FM SYN's OSC 2 KNOB 4 (where the 808s have LEVEL) */
 static uint32_t page_id_an(const page_t *pg, uint32_t id)
 {
+    if (FELUCCA_SIMPLE && id == P_FTYPE && eng_idx(TSEL->eng_req) == ENGI_MONO)
+        return P_LN1;                                 /* (MONO's filter: TYPE a blend, P_LN1) */
     if (!FELUCCA_SIMPLE || pg->scope != SC_ENGINE || (id != P_LN0 && id != P_LN1 && id != P_E0))
         return id;
+    if (id == P_LN1 && eng_idx(TSEL->eng_req) == ENGI_MONO)
+        return 0xFFu;                                 /* (no AGE page: P_LN1 is its filter's TYPE) */
     if (id == P_E0)
         return eng_idx(TSEL->eng_req) == ENGI_SAMPLER ? P_TRANS : id;
     if (id == P_LN0 && eng_idx(TSEL->eng_req) == ENGI_DIGITAL && TSEL->p[P_E7] % 6 == 0)

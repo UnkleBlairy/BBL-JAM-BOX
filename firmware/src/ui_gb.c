@@ -125,7 +125,8 @@ static uint32_t gb_page_icon(const page_t *pg, uint32_t mach)
     if (str_eq(pg->title, "AMP"))
         return IC_NONE;
     if (pg->fam == FAM_FLT)
-        return IC_LP + (uint32_t)t->p[P_FTYPE] % 3u;
+        return IC_LP + (eng_idx(t->eng_req) == ENGI_MONO ? (uint32_t)(clamp(t->p[P_LN1], 0, 127) + 32) / 64u
+                                                         : (uint32_t)t->p[P_FTYPE] % 3u);   /* (MONO: the nearest) */
     if (pg->fam == FAM_LFO)
         return IC_SINE + (uint32_t)t->p[P_LWAVE] % 5u;
     if (pg->fam == FAM_TRK)                             /* VOLUME, CLOCK: all the tracks', none */
