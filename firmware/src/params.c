@@ -505,7 +505,7 @@ enum { SC_TRACK, SC_GLOBAL, SC_ENGINE, SC_STEP, SC_TRK };
 #define MIX_PAN 0x10u                          /* (a MIX page's id: the track's PAN, not its level) */   /* SC_TRK: the TRACKS page (ui_input.c tracks_edit) */
 enum { GR_NONE, GR_ADSR, GR_LFO, GR_STEPS, GR_ARP, GR_SCALE, GR_FX, GR_ROLL, GR_BROWSE, GR_SLOTS, GR_USER, GR_TRK,
        GR_SLCR, GR_MOD, GR_PATS, GR_SONG, GR_TOOLS, GR_CHORD, GR_SLICES, GR_EVENTS,
-       GR_FMOP, GR_FMOP2, GR_FMENV, GR_INS, GR_PERF, GR_GBSEQ };   /* (GR_STEPS: SEQ TOOLS' knobs; GR_FMOP..: FM6's operator pages, ui_fm6op.c) */
+       GR_FMOP, GR_FMOP2, GR_FMENV, GR_INS, GR_PERF, GR_GBSEQ, GR_ACID };   /* (GR_STEPS: SEQ TOOLS' knobs; GR_FMOP..: FM6's operator pages, ui_fm6op.c) */
 
 typedef struct {
     const char *title;
@@ -550,6 +550,13 @@ static const page_t PAGES[] = {
     {"MIX 3-4", FAM_TRK, SC_TRK, GR_TRK, {2, MIX_PAN | 2, 3, MIX_PAN | 3}},
     {"MIX 5-6", FAM_TRK, SC_TRK, GR_TRK, {4, MIX_PAN | 4, 5, MIX_PAN | 5}},
     {"CLOCK", FAM_TRK, SC_GLOBAL, GR_NONE, {G_BPM, G_SWING, G_CLOCK, 0xFF}},
+    /* ACID mode's (SEQ held + OCT+; ui.sgrid 4, seq.c acid; the SEQ page hidden then; black keys 8..11 pick them):
+     * the stage picked (a white key): PITCH PULSE GATE OCT, SLIDE SKIP ACCNT; the track's ACID: LEN DIR SPD GATE,
+     * PLAY SLIDE SCALE ROOT (ui_input.c acid_knob, ui_gb.c's dials) */
+    {"STAGE", FAM_SEQ, SC_TRACK, GR_ACID, {0xFF, 0xFF, 0xFF, 0xFF}},
+    {"STAGE 2", FAM_SEQ, SC_TRACK, GR_ACID, {0xFF, 0xFF, 0xFF, 0xFF}},
+    {"ACID", FAM_SEQ, SC_TRACK, GR_ACID, {0xFF, 0xFF, 0xFF, 0xFF}},
+    {"ACID 2", FAM_SEQ, SC_TRACK, GR_ACID, {0xFF, 0xFF, 0xFF, 0xFF}},
 };
 #define NPAGES (sizeof(PAGES) / sizeof(PAGES[0]))
 static uint8_t mod_ui_slot;      /* the MOD page: the matrix slot (0..3) KNOB 2..4 edit */

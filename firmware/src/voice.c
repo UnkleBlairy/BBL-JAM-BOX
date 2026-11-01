@@ -398,6 +398,7 @@ static void mono_remove(track_t *t, uint32_t note)
     t->nmono = (uint8_t)k;
 }
 
+static uint8_t trk_slide[NTRK];                         /* SIMPLE: ACID's slide time (seq.c acid_pulse; 0: not ACID's)  */
 static uint32_t trk_hit_ms[NTRK];                       /* each track's last note's fm1_ms (the screen's drum flash; 0 none) */
 static void trk_note_on(track_t *t, uint32_t note, uint32_t vel)
 {
@@ -439,6 +440,18 @@ static void trk_note_on(track_t *t, uint32_t note, uint32_t vel)
         voice_start(t, v, note, vel, 0);
         return;
     }
+    if (mode == V_POLY && FELUCCA_SIMPLE && t->slide_glide == 2u) {   /* SIMPLE, an ACID slide: the note sounding */
+        voice_t *v = 0;                                 /* glides to it, its envelope going on (legato, as a 303) */
+        for (i = 0; i < NVOICE; i++)
+            if (t->v[i].active && t->v[i].gate && (!v || t->v[i].age > v->age))
+                v = &t->v[i];
+        if (v) {
+            v->note = (uint8_t)note;
+            v->pitch16 = voice_pitch16(t, note);
+            glide_set(t, v, 1);
+            return;
+        }
+    }
     if (mode == V_POLY) {
         voice_t *v = voice_alloc(t, note);
         t->nmono = 0;                                   /* no stale mono stack after a mode change */
@@ -456,8 +469,8 @@ static void trk_note_on(track_t *t, uint32_t note, uint32_t vel)
         want = mono_pick(t);
         if (sounding && want == t->mono_note)
             return;                                     /* LOW / HIGH priority: this key does not win */
-        if (mode == V_MONO)                             /* MONO: always retrigger, glide when GLIDE is set */
-            mono_play(t, want, vel, 1, t->p[P_GLIDE] != 0 || t->slide_glide);
+        if (mode == V_MONO)                             /* MONO: always retrigger, glide when GLIDE is set (an ACID */
+            mono_play(t, want, vel, t->slide_glide != 2u, t->p[P_GLIDE] != 0 || t->slide_glide);   /* slide: legato) */
         else                                            /* LEGATO / UNISON: glide only between held notes */
             mono_play(t, want, vel, !sounding, sounding && (t->p[P_GLIDE] != 0 || t->slide_glide));
     }
@@ -763,7 +776,7 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
         }
         if (v->pitch_cur != v->pitch16) {               /* glide */
             int32_t d = v->pitch16 - v->pitch_cur;
-            int32_t st = v->gstep ? v->gstep : (int32_t)(ENV_LIN[(p[P_GLIDE] ? p[P_GLIDE] : 40) & 127] >> 14);   /* slide: ~45 ms */
+            int32_t st = v->gstep ? v->gstep : (int32_t)(ENV_LIN[(p[P_GLIDE] ? p[P_GLIDE] : trk_slide[(uint32_t)(t - trk) % NTRK] ? trk_slide[(uint32_t)(t - trk) % NTRK] : 40) & 127] >> 14);   /* slide: ~45 ms (ACID: its SLIDE) */
             if (st < 1)
                 st = 1;
             v->pitch_cur += d > 0 ? (d < st ? d : st) : (-d < st ? d : -st);

@@ -795,6 +795,106 @@ static __attribute__((noinline)) int par_key(uint32_t k, track_t *t)   /* 1: the
     return !kb_octup;
 }
 
+/* SIMPLE, ACID (ui.sgrid 4, song.grid 8; ui_input.c acid_*): a Metropolis-style stage sequencer a track plays instead
+ * of its steps (its steps stay, silent, and keep their place). Up to 16 stages (the white keys), each PULSES long (1..8
+ * pulses of the track's 1/16 at its SPD, swung as its steps are), its note PITCH (C .. C an octave up, middle C + OCT
+ * octaves, onto the SCALE, + ROOT) played by its GATE: MUTE none, FIRST on the first pulse, EVERY on each pulse, HOLD
+ * one note over all of them. SLIDE: the note before it holds and glides into it (the ACID page's SLIDE time), SKIP:
+ * left out, ACCNT: louder, the filter kicked. DIR FWD REV PING RAND BRWN. Kept in the last jam, not in kits */
+#define ACID_N 16u
+enum { AG_MUTE, AG_FIRST, AG_EVERY, AG_HOLD, AG_N };
+enum { AD_FWD, AD_REV, AD_PING, AD_RAND, AD_BRWN, AD_N };
+#define AF_SLIDE 1u
+#define AF_SKIP 2u
+#define AF_ACC 4u
+typedef struct { uint8_t pitch, oct, pulses, gate, flags, rsv[3]; } acid_st_t;   /* 0..12, 0..6 (-3..+3), 1..8, AG_*, AF_* */
+typedef struct {
+    uint8_t play, stages, dir, slide, gate, scale, root, rsv;   /* slide 0..127 its time, gate 1..127 of a pulse */
+    acid_st_t st[ACID_N];
+} acid_t;
+static acid_t acid[NTRK];
+static struct { uint32_t pos; uint16_t cnt; uint8_t go, st, pul, nx, back; } acid_rt[NTRK];   /* go: 1 start, 2 running */
+static uint8_t acid_sel[NTRK];                         /* the stage the pages show (ui_input.c) */
+#define ACID_NSC 8u
+static const char *const N_ASCALE[ACID_NSC] = {"CHROM", "MAJOR", "MINOR", "DORIA", "PHRYG", "MIXO", "PENTA", "BLUES"};
+static const uint16_t ACID_SC[ACID_NSC] = {0xFFFu, 0xAB5u, 0x5ADu, 0x6ADu, 0x5ABu, 0x6B5u, 0x4A9u, 0x4E9u};   /* bit s: in */
+static void acid_reset(acid_t *a)
+{
+    uint32_t i;
+    memset(a, 0, sizeof *a);
+    a->stages = 8;
+    a->slide = 40;
+    a->gate = 64;
+    for (i = 0; i < ACID_N; i++) {
+        a->st[i].oct = 3;
+        a->st[i].pulses = 1;
+        a->st[i].gate = AG_FIRST;
+    }
+}
+static acid_t *acid_of(uint32_t k)                      /* (never set yet: the defaults) */
+{
+    acid_t *a = &acid[k % NTRK];
+    if (!a->stages || a->stages > ACID_N)
+        acid_reset(a);
+    return a;
+}
+static int acid_on(const track_t *t) { return FELUCCA_SIMPLE && acid[(uint32_t)(t - trk) % NTRK].play != 0u; }
+/* a stage's note: PITCH snapped down onto the scale, + ROOT, middle C + OCT */
+static uint32_t acid_note(const acid_t *a, const acid_st_t *s)
+{
+    int32_t p = s->pitch > 12u ? 12 : s->pitch, sc = ACID_SC[a->scale % ACID_NSC];
+    while (p > 0 && p < 12 && !((sc >> p) & 1))
+        p--;
+    return (uint32_t)clamp(60 + p + (int32_t)(a->root % 12u) + ((int32_t)s->oct - 3) * 12, 0, 127);
+}
+/* the stage after stage x (DIR; SKIP stages left out: all of them, x again) */
+static uint32_t acid_next(const acid_t *a, uint32_t k, uint32_t x)
+{
+    uint32_t n = a->stages ? a->stages : 1u, i;
+    if (x >= n)
+        x = n - 1u;
+    for (i = 0; i < 2u * ACID_N + 2u; i++) {
+        uint32_t r;
+        switch (a->dir) {
+        case AD_REV:
+            x = (x + n - 1u) % n;
+            break;
+        case AD_PING:                                   /* (the ends once each) */
+            if (n == 1u)
+                x = 0;
+            else if (!acid_rt[k].back)
+                x = x + 1u >= n ? (acid_rt[k].back = 1, x - 1u) : x + 1u;
+            else
+                x = x == 0u ? (acid_rt[k].back = 0, 1u) : x - 1u;
+            break;
+        case AD_RAND:
+            x = rng() % n;
+            break;
+        case AD_BRWN:                                   /* a random walk, more often on: +1 1/2, stay 1/4, -1 1/4 */
+            r = rng() & 3u;
+            x = r < 2u ? (x + 1u) % n : r == 2u ? x : (x + n - 1u) % n;
+            break;
+        default:
+            x = (x + 1u) % n;
+            break;
+        }
+        if (!(a->st[x].flags & AF_SKIP))
+            return x;
+    }
+    return x;
+}
+
+/* ACID keys (song.grid 8): white key k is stage k (ui_input.c acid_keys picks it); it sounds the stage's note unless
+ * the track is playing its ACID */
+static uint32_t acid_key(uint32_t k, const track_t *t)
+{
+    uint32_t p = key_place(k);
+    acid_t *a = acid_of((uint32_t)(t - trk));
+    if (p >= ACID_N || (song.playing && a->play))
+        return KB_SILENT;
+    return acid_note(a, &a->st[p]);
+}
+
 /* SIMPLE, the LOCKS keys (song.grid 7, ui.sgrid 3; ui_input.c kit_*): each white key of each track is a playable
  * trig-locked step: it holds its own locks, up to KIT_N knobs, built up live (hold the key and turn knobs; not saved,
  * like the macros). A key plays the track's step notes (grid_chord) with its locks on; the next key puts them back
@@ -904,7 +1004,8 @@ static void keyboard_block(void)
             continue;
         if ((cur >> k) & 1u) {                    /* the selected track; the key-up goes to the same one */
             kb_trk[k] = song.sel;
-            kb_g[k] = (uint8_t)(song.grid == 1u || song.grid == 7u || (song.grid == 6u && (key_black(k) || par_id != 0xFFu)));
+            kb_g[k] = (uint8_t)(song.grid == 1u || song.grid == 7u || (song.grid == 6u && (key_black(k) || par_id != 0xFFu)) ||
+                                (song.grid == 8u && key_black(k)));
             if ((song.grid == 1u || song.grid >= 6u) && key_black(k) && key_place(k) < NTRK)
                 kb_trk[k] = (uint8_t)key_place(k);          /* the step keys: black key n plays track n */
             if (kb_asleep) {                      /* (SCREEN OFF: the wake press is swallowed) */
@@ -938,6 +1039,12 @@ static void keyboard_block(void)
             if (song.grid == 6u && !key_black(k) && par_id != 0xFFu) {   /* PARAM: the key is a value */
                 uint8_t c[4];
                 kb_note[k] = par_key(k, &trk[kb_trk[k]]) ? (grid_chord(&trk[kb_trk[k]], c), c[0]) : KB_SILENT;
+                if (kb_note[k] == KB_SILENT) {
+                    kb_layer |= 1u << k;
+                    continue;
+                }
+            } else if (song.grid == 8u && !key_black(k)) {   /* ACID: a stage (ui_input.c acid_keys); its note when it */
+                kb_note[k] = (uint8_t)acid_key(k, &trk[kb_trk[k]]);   /* .. isn't playing */
                 if (kb_note[k] == KB_SILENT) {
                     kb_layer |= 1u << k;
                     continue;
@@ -994,6 +1101,7 @@ static void seq_start(void)
         t->rat_left = 0;
         t->nd_late = t->nd_early = ND_NONE;
         t->nd_fired = 0;
+        acid_rt[i].go = 0;                         /* (ACID: from its first stage with step 0) */
         if (t->p[P_LTRIG] && t->p[P_LSYNC])        /* LFO 2 FREE + SYNC: in time with the bars from PLAY */
             t->lfo_ph = (uint32_t)t->p[P_LPHASE] << 25;
     }
@@ -1345,14 +1453,88 @@ static __attribute__((noinline)) void seq_enter(track_t *t, uint32_t top, uint32
     rec_hold(t, t->seq_idx, len);
 }
 
+/* ACID: pulse rt->pul of stage rt->st starts, pl samples long. A note of a stage that slides next (not MUTE, not
+ * SKIP) holds into it: that stage's note glides from it (seq_hold, slide_glide; the time: voice.c trk_slide) */
+static void acid_pulse(track_t *t, acid_t *a, uint32_t k, uint32_t pl)
+{
+    const acid_st_t *s = &a->st[acid_rt[k].st % ACID_N], *nx = &a->st[acid_rt[k].nx % ACID_N];
+    uint32_t first = acid_rt[k].pul == 0u, last = acid_rt[k].pul + 1u >= s->pulses;
+    uint32_t hold_out = (nx->flags & AF_SLIDE) && nx->gate != AG_MUTE && !(nx->flags & AF_SKIP);
+    uint32_t g = (s->flags & AF_SKIP) ? AG_MUTE : s->gate, gate = pl * (a->gate ? a->gate : 1u) / 128u;
+    uint32_t note, vel, slide_in, i;
+    if (g == AG_MUTE || (g != AG_EVERY && !first)) {
+        if (g == AG_HOLD && t->seq_n && last) {         /* HOLD: let go in the last pulse (or slide on) */
+            t->seq_hold = (uint8_t)hold_out;
+            t->seq_off = gate;
+        }
+        if (g == AG_MUTE)
+            seq_release(t);
+        return;
+    }
+    note = acid_note(a, s);
+    vel = (s->flags & AF_ACC) ? 127u : 96u;
+    slide_in = (s->flags & AF_SLIDE) && first && t->seq_n && t->seq_hold;
+    if (!slide_in)
+        seq_release(t);
+    trk_slide[k] = a->slide;
+    t->slide_glide = (uint8_t)(slide_in ? 2u : 0u);    /* (2: an ACID slide, legato: voice.c trk_note_on) */
+    seq_note_on(t, note, vel);
+    for (i = 0; i < t->seq_n; i++)                      /* (sliding: the note before goes) */
+        if (t->seq_notes[i] != note)
+            seq_note_off(t, t->seq_notes[i]);
+    t->seq_n = 1;
+    t->seq_notes[0] = (uint8_t)note;
+    t->seq_hold = (uint8_t)(g == AG_HOLD ? !last || hold_out : last && hold_out);
+    t->seq_off = gate ? gate : 1u;
+}
+/* ACID's clock (seq_tick: go 1 = it starts with the track's step now starting, rt->pos already in it) */
+static void acid_tick(track_t *t, uint32_t n, uint32_t period)
+{
+    uint32_t k = (uint32_t)(t - trk) % NTRK;
+    acid_t *a = acid_of(k);
+    if (acid_rt[k].go == 1u) {
+        uint32_t x = a->dir == AD_REV ? a->stages - 1u : 0u;
+        acid_rt[k].go = 2;
+        acid_rt[k].back = 0;
+        if (a->st[x].flags & AF_SKIP)
+            x = acid_next(a, k, x);
+        acid_rt[k].st = (uint8_t)x;
+        acid_rt[k].pul = 0;
+        acid_rt[k].nx = (uint8_t)acid_next(a, k, x);
+        acid_pulse(t, a, k, step_samples(t, period, acid_rt[k].cnt));
+    } else {
+        acid_rt[k].pos += n;
+    }
+    for (;;) {
+        uint32_t pl = step_samples(t, period, acid_rt[k].cnt);
+        const acid_st_t *s;
+        if (acid_rt[k].pos < pl)
+            break;
+        acid_rt[k].pos -= pl;
+        acid_rt[k].cnt++;
+        s = &a->st[acid_rt[k].st % ACID_N];
+        if (++acid_rt[k].pul >= s->pulses || acid_rt[k].st >= a->stages) {
+            acid_rt[k].pul = 0;
+            acid_rt[k].st = acid_rt[k].nx < a->stages ? acid_rt[k].nx : (uint8_t)acid_next(a, k, acid_rt[k].st);
+            acid_rt[k].nx = (uint8_t)acid_next(a, k, acid_rt[k].st);
+        }
+        acid_pulse(t, a, k, step_samples(t, period, acid_rt[k].cnt));
+    }
+}
+
 static void seq_tick(track_t *t, uint32_t n)
 {
-    uint32_t period, len, top;
+    uint32_t period, len, top, k = (uint32_t)(t - trk) % NTRK, ac = acid_on(t);
     if (t->seq_n && !t->seq_hold) {
         if (t->seq_off <= n)
             seq_release(t);
         else
             t->seq_off -= n;
+    }
+    if (FELUCCA_SIMPLE && !ac && acid_rt[k].go) {      /* ACID switched off: its note goes, the steps play on */
+        acid_rt[k].go = 0;
+        trk_slide[k] = 0;
+        seq_release(t);
     }
     if (!song.playing)
         return;
@@ -1362,20 +1544,31 @@ static void seq_tick(track_t *t, uint32_t n)
     t->seq_pos += n;
     for (;;) {
         uint32_t cur_len = step_samples(t, period, t->seq_idx);
-        if (t->nd_late | t->nd_early)
+        if (!ac && (t->nd_late | t->nd_early))
             seq_nd_due(t, period, len, cur_len, n);
         if (t->seq_pos < cur_len && t->seq_pos != 0x7FFFFFFFu + n)
             break;
         top = t->seq_pos >= 0x7FFFFFFFu;            /* (PLAY, a SONG section: its first step) */
         t->seq_pos = top ? 0u : t->seq_pos - cur_len;
         t->seq_idx = (uint16_t)((t->seq_idx + 1u) % len);
+        if (ac) {                                   /* ACID: the steps keep their place, silent; it starts on a step */
+            if (!acid_rt[k].go) {
+                seq_release(t);
+                acid_rt[k].go = 1;
+                acid_rt[k].pos = t->seq_pos;
+                acid_rt[k].cnt = t->seq_idx;
+            }
+            continue;
+        }
         seq_enter(t, top, len);
         if (SEQ_QPLAY(t) && !t->nd_fired)
             seq_play_on(t, period);                 /* QUANTIZE ON: every step on its start, as before 1.2 */
         else
             seq_nd_start(t, period, len);
     }
-    if (t->rat_left)
+    if (ac && acid_rt[k].go)
+        acid_tick(t, n, period);
+    else if (t->rat_left)
         seq_ratchet(t, period);
 }
 

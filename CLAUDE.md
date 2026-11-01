@@ -202,7 +202,7 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   lights show which slots are used.
 - No Felucca screens: no layers (holding a button = tapping it, holds are free
   for groovebox features), no MENU (HOME hold does nothing). The groovebox has
-  its own PAGES table in params.c (17 pages).
+  its own PAGES table in params.c (+4 ACID pages, only shown in ACID mode).
 - Saves while playing apply at once but write to flash at stop (a flash erase
   stops the audio). Old Felucca projects / user presets are gone in this build:
   their flash sectors hold the sounds and kits.
@@ -308,6 +308,17 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   sizes from the Screen Lab app: S 12 px, M 15 px (+0.5 px tracking), L 28 px (gen_aa_font.py
   preset bbl-pixel). Not the Square Pixel-7 font (personal-use licence).
 
+- ACID mode (Metropolis-style; seq.c acid_*, ui_input.c acid_*, ui.sgrid 4, song.grid 8): hold SEQ (or the
+  picker) + OCT+ = ACID; the picker's pop-up has "OCT+ / = ACID". Entering turns the track's ACID PLAY on: the track
+  plays its stages instead of its steps (the steps stay, silent, keeping their place; it starts on a step). Tap SEQ =
+  leave to SEQ mode (it keeps playing; ACID 2 PLAY OFF stops it). White keys = stages 1-16 (lit = plays a note, the
+  playing one flips, the picked one breathes; stopped they sound their note), black 1-6 tracks, black 8-11 pages:
+  STAGE (PITCH 0..12 from middle C shown as the note, PULSE 1-8, GATE MUTE FIRST EVERY HOLD, OCT -3..+3), STAGE 2
+  (SLIDE SKIP ACCNT), ACID (LEN 1-16, DIR FWD REV PING RAND BRWN, SPD = the track's, GATE % of a pulse), ACID 2 (PLAY,
+  SLIDE time, SCALE CHROM MAJOR MINOR DORIA PHRYG MIXO PENTA BLUES (snaps down), ROOT). One pulse = a 1/16 at SPD,
+  swung like the steps. SLIDE = the note before holds and glides in, legato (voice.c slide_glide 2, trk_slide).
+  OCT- = the track's ACID cleared; stage held + OCT- = that stage reset; CLEAR ALL resets every ACID. Saved in the
+  last jam (after the LOCKS keys), not in kits. Not lockable / LFO-able.
 - Screen mirror (test): firmware/src/mirror.c streams every lcd_fill / lcd_blit as RGB 3-3-2 run-length over USB
   SysEx (cmd 0x70, only while a page keeps asking; ~6-9 KB a full page; 04 = a whole picture, the page shows only those; behind by > 3 KB at a picture's end = the
   next draws left out, then one fresh full redraw, so the lag stays short); over the USB serial port (CDC, Web Serial; S start, M keep alive; Windows' MIDI

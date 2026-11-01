@@ -24,7 +24,7 @@ typedef struct {
     uint8_t alt[4];
     int16_t dj, cmix, ctune;                 /* PERF: the master DJ filter and comb */
     uint8_t fill[8], rel, bpm_alt;           /* PERF: each held macro's tile filled 0..26 rows; the release fade; the tempo is held by a macro */                           /* a macro holds this value: its dial is drawn inverted */
-    uint8_t kmode, pk, fx, cross;            /* the keys: 1 SEQ 2 PARAM 3 KEY 4 KIT; PARAM's knob + 1 (0: the keys play); the FX
+    uint8_t kmode, pk, fx, cross;            /* the keys: 1 SEQ 2 PARAM 3 KEY 4 KIT 5 ACID; PARAM's knob + 1 (0: the keys play); the FX
                                               * track; a track's page on the FX track: a big X */
     uint8_t spg, snp;                        /* SEQ: the page of steps shown (0..3), the pages (LEN up to 64) */
     uint8_t nud;                             /* a step held + SELECT turned: its NUDGE + 9 (1..16), 0 no pop-up */
@@ -45,8 +45,8 @@ typedef struct {
     uint8_t hint;                            /* a held button's hint (ui.c gb_hint) */
     char note[24];                           /* a message (ui_message) for the banner, while it shows */
     uint8_t ban;                             /* a banner is up: no track squares under it */
-    uint8_t bn, bpg;                         /* .. its pages (1..3, two big lines each), the one shown */
-    char bt[6][20];                          /* .. their lines */
+    uint8_t bn, bpg;                         /* .. its pages (1..4, two big lines each), the one shown */
+    char bt[8][20];                          /* .. their lines */
     char tm_name[8];                         /* .. its DEST */
     char pname[8];                           /* PARAM: its knob's name */
     char title[12], lab[4][8], val[4][12];
@@ -191,7 +191,7 @@ static const char *const TM_SHORT[6] = {"LFO", "ENV", "FENV", "LFO 1", "LFO 2", 
 static int ban_fits(const char *s) { return large_face_has(s) && text_w(&AF_L, s) <= GB_BAN_W; }
 static void ban_put(gb_view_t *v, const char *a, const char *b)
 {
-    if (v->bn >= 3u)
+    if (v->bn >= 4u)
         return;
     str_cpy(v->bt[2u * v->bn], a, sizeof v->bt[0]);
     str_cpy(v->bt[2u * v->bn + 1u], b, sizeof v->bt[0]);
@@ -263,6 +263,7 @@ static void gb_ban_fill(gb_view_t *v)
     } else if (v->hint == 1u) {                   /* SEQ held */
         ban_put(v, "WHITE KEY", "= LOCKS");
         ban_put(v, "WIGGLE KNOB", "= PARAM");
+        ban_put(v, "OCT+", "= ACID");
         ban_put(v, "TAP SEQ", "= CANCEL");
     } else if (v->note[0]) {
         ban_msg(v, v->note);
@@ -309,7 +310,7 @@ static void gb_fill(gb_view_t *v)
         v->rec = (uint8_t)(1u + (song.playing ? (ph < 16u ? 15u - ph : ph - 16u) : 15u));
     }
     str_cpy(v->title, pg->title, sizeof v->title);
-    v->kmode = (uint8_t)(ui.sgrid == 1u ? 1u : ui.sgrid == 2u ? 2u : ui.sgrid == 3u ? 4u : 3u);
+    v->kmode = (uint8_t)(ui.sgrid == 1u ? 1u : ui.sgrid == 2u ? 2u : ui.sgrid == 3u ? 4u : ui.sgrid == 4u && !fxl_sel ? 5u : 3u);
     if (v->kmode == 1u) {
         v->snp = (uint8_t)((sq_len() + 15u) / 16u);   /* (the FX lane's too) */
         v->spg = ui.bank;
@@ -345,6 +346,16 @@ static void gb_fill(gb_view_t *v)
         if (t->seq_pos < cl)
             fs = t->seq_pos / (cl / 256u + 1u);
         v->brd = (uint16_t)(1u + (idx * 256u + fs) * 960u / (len * 256u));
+        if (acid_on(t) && acid_rt[song.sel % NTRK].go == 2u) {   /* ACID: how far through its stages (their pulses) */
+            const acid_t *a = acid_of(song.sel);
+            uint32_t i2, at = 0, all = 0, cur = acid_rt[song.sel % NTRK].st;
+            for (i2 = 0; i2 < a->stages; i2++) {
+                uint32_t pu = a->st[i2].flags & AF_SKIP ? 0u : a->st[i2].pulses;
+                at += i2 < cur ? pu : i2 == cur ? acid_rt[song.sel % NTRK].pul : 0u;
+                all += pu;
+            }
+            v->brd = (uint16_t)(1u + at * 960u / (all ? all : 1u));
+        }
     }
     {                                             /* a drum's hit: the header icon flashes ~90 ms */
         uint32_t h = trk_hit_ms[song.sel % NTRK];
@@ -466,6 +477,70 @@ static void gb_fill(gb_view_t *v)
         }
         gb_trig_name(v->val[3], (uint32_t)(tr < 0 ? 0 : tr));
         v->ratio[3] = (int16_t)((tr < 0 ? 0 : tr) * 1000 / (int32_t)GB_NTC);
+        return;
+    }
+    if (pg->graph == GR_ACID) {                   /* ACID (seq.c acid): the stage picked's, the track's (ui.c acid_pg) */
+        static const char *const LB[16] = {"PITCH", "PULSE", "GATE", "OCT", "SLIDE", "SKIP", "ACCNT", "",
+                                           "LEN", "DIR", "SPD", "GATE", "PLAY", "SLIDE", "SCALE", "ROOT"};
+        static const char *const GN[AG_N] = {"MUTE", "FIRST", "EVERY", "HOLD"};
+        static const char *const DN[AD_N] = {"FWD", "REV", "PING", "RAND", "BRWN"};
+        static const char *const SPN[5] = {"x1/4", "x1/2", "x1", "x2", "x4"};
+        const acid_t *a = acid_of(song.sel);
+        uint32_t sp = acid_sel[song.sel % NTRK] % ACID_N, pn = acid_pg(pg), x;
+        const acid_st_t *st = &a->st[sp];
+        char nb[4];
+        if (pn < 2u) {                            /* "STAGE 3" */
+            fmt_int(nb, (int32_t)sp + 1);
+            str_cpy(v->title, "STAGE ", sizeof v->title);
+            str_cpy(v->title + 6, nb, sizeof v->title - 6u);
+        }
+        for (k = 0; k < 4u; k++) {
+            int32_t r = 0;
+            char *o = v->val[k];
+            if (!LB[pn * 4u + k][0])
+                continue;
+            str_cpy(v->lab[k], LB[pn * 4u + k], sizeof v->lab[k]);
+            v->mask |= (uint8_t)(1u << k);
+            switch (pn * 4u + k) {
+            case 0:                               /* the note it plays (the scale, ROOT, OCT): "D#4" */
+                x = acid_note(a, st);
+                str_cpy(o, N_NOTE[x % 12u], sizeof v->val[k]);
+                fmt_int(nb, (int32_t)x / 12 - 1);
+                str_cpy(o + str_len(o), nb, sizeof v->val[k] - str_len(o));
+                r = st->pitch * 1000 / 12;
+                break;
+            case 1: fmt_int(o, st->pulses); r = (st->pulses - 1) * 1000 / 7; break;
+            case 2: str_cpy(o, GN[st->gate % AG_N], sizeof v->val[k]); r = st->gate % AG_N * 333; break;
+            case 3:
+                if (st->oct > 3u)
+                    o[0] = '+';
+                fmt_int(o + (st->oct > 3u), (int32_t)st->oct - 3);
+                r = st->oct * 1000 / 6;
+                break;
+            case 4: case 5: case 6:
+                x = (st->flags & (1u << k)) != 0u;   /* (AF_SLIDE 1, AF_SKIP 2, AF_ACC 4: bit k) */
+                str_cpy(o, x ? "ON" : "OFF", sizeof v->val[k]);
+                r = (int32_t)x * 1000;
+                break;
+            case 8: fmt_int(o, a->stages); r = (a->stages - 1) * 1000 / 15; break;
+            case 9: str_cpy(o, DN[a->dir % AD_N], sizeof v->val[k]); r = a->dir % AD_N * 250; break;
+            case 10:
+                x = gb_speed(TSEL->p[P_SDIV]);
+                str_cpy(o, SPN[x], sizeof v->val[k]);
+                r = (int32_t)x * 250;
+                break;
+            case 11:
+                fmt_int(o, a->gate * 100 / 127);
+                str_cpy(o + str_len(o), "%", sizeof v->val[k] - str_len(o));
+                r = a->gate * 1000 / 127;
+                break;
+            case 12: str_cpy(o, a->play ? "ON" : "OFF", sizeof v->val[k]); r = a->play ? 1000 : 0; break;
+            case 13: fmt_int(o, a->slide); r = a->slide * 1000 / 127; break;
+            case 14: str_cpy(o, N_ASCALE[a->scale % ACID_NSC], sizeof v->val[k]); r = a->scale % ACID_NSC * 1000 / 7; break;
+            default: str_cpy(o, N_NOTE[a->root % 12u], sizeof v->val[k]); r = a->root % 12u * 1000 / 11; break;
+            }
+            v->ratio[k] = (int16_t)r;
+        }
         return;
     }
     lk = lock_held();
@@ -882,11 +957,11 @@ static void gb_scene(const gb_view_t *v, uint16_t bgc)
     const char *nm = v->fx ? "FX" : MACHINES[v->mach % NMACH].pill;
     int32_t pw = (text_w(&AF_M, nm) + 17 + (v->picon ? 20 : 0)) & ~1;
     {                                                             /* what the keys are: left of the pill */
-        static const char *const KM[5] = {"", "SEQ", "PARAM", "KEY", "LOCKS"};
+        static const char *const KM[6] = {"", "SEQ", "PARAM", "KEY", "LOCKS", "ACID"};
         char kb[20];
         int32_t x0 = 8, x1 = 232 - pw - 6;
         const aafont_t *kf = &AF_L;
-        str_cpy(kb, KM[v->kmode % 5u], sizeof kb);
+        str_cpy(kb, KM[v->kmode % 6u], sizeof kb);
         if (v->snp > 1u) {                                        /* SEQ over 16 steps: the page shown, "SEQ 2/4" */
             char pb[6] = {' ', (char)('1' + v->spg), '/', (char)('0' + v->snp), 0, 0};
             str_cpy(kb + str_len(kb), pb, sizeof kb - str_len(kb));

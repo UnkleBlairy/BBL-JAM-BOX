@@ -572,6 +572,10 @@ static uint32_t jam_make(uint8_t *out)                  /* the stream: its lengt
         jam_w(&w, kk->id, kk->n);
         jam_w(&w, kk->v, kk->n * sizeof kk->v[0]);
     }
+    if (!w.bad) {                                        /* ACID (seq.c acid; older jams end before it) */
+        jam_w16(&w, sizeof acid);
+        jam_w(&w, acid, sizeof acid);
+    }
     return w.n;
 }
 
@@ -689,6 +693,12 @@ static int jam_apply(uint8_t *in, uint32_t len)
         kk.n = (uint8_t)c;
         if (at < NTRK * 16u && !r.bad)
             kit[at / 16u][at % 16u] = kk;
+    }
+    for (k = 0; k < NTRK; k++)
+        acid_reset(&acid[k]);
+    if (!r.bad && r.n + 2u <= r.cap) {
+        sz = jam_r16(&r);
+        jam_r(&r, sz == sizeof acid ? (void *)acid : 0, sz);
     }
     for (k = 0; k < NTRK; k++)
         motion_rebase(&trk[k]);
