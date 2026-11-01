@@ -38,6 +38,11 @@
     <a href="https://github.com/kurogedelic/FM-1-transporter" target="_blank" rel="noopener" style="color:inherit">FM-1-transporter</a></p>
   <p><button id="go" disabled data-t="install"></button></p>
   <details style="margin-top:24px">
+    <summary data-t="fileTitle"></summary>
+    <p class="small" data-t="fileHelp"></p>
+    <p><label><span data-t="fileLabel"></span><br><input id="pkg-file" type="file" accept=".fwsc"></label></p>
+  </details>
+  <details style="margin-top:24px">
     <summary data-t="stockTitle"></summary>
     <p class="small" data-t="back"></p>
     <p class="small"><a href="https://www.m-vave.com/download" target="_blank" rel="noopener" style="color:inherit">M-VAVE Downloads</a></p>
@@ -727,10 +732,13 @@ const TEXT = {
     intro: "FM-1 を USB で接続してください。（Chrome か Edge で使えます）",
     warn: "書き込み中は USB を抜かないでください。",
     install: "インストール", other: "English",
+    fileTitle: "ファイルからインストール（メンバー先行版など）",
+    fileHelp: "受け取った BBL JAM BOX の .fwsc ファイルを選び、上の「インストール」を押してください。ファイルはこのブラウザ内で確認され、サーバーには送られません。",
+    fileLabel: "BBL JAM BOX の .fwsc ファイル", fileReady: "インストールの準備完了: ", fileBad: "BBL JAM BOX のファイルではありません: ",
     editor: "エディタ（インストール後、パソコンから音色やシーケンスを編集）",
     direct: "USB ケーブルはパソコンに直接つないでください。Probe や Transporter などの機材は不要です。",
     brick: "万一インストールに失敗して起動しなくなった場合は、復旧に Transporter が必要です:",
-    beta: "BBL JAM BOX 0.1 は Felucca を元にしたベータ版です。不具合は GitHub で知らせてください。このカスタムファームウェアを使ったことで FM-1 が壊れたり不具合が起きたりしても、作者は一切の責任を負いません。自己責任でお使いください。",
+    beta: "BBL JAM BOX は Felucca を元にしたベータ版です。不具合は GitHub で知らせてください。このカスタムファームウェアを使ったことで FM-1 が壊れたり不具合が起きたりしても、作者は一切の責任を負いません。自己責任でお使いください。",
     back: "M-VAVEから公式FM-1 V15を取得し、未変更のFM-1.fwscを選んでください。ファイルはこのブラウザ内で検証し、サーバーへ送りません。",
     stockTitle: "公式V15に戻す", stockFile: "公式FM-1.fwsc", stockGo: "バックアップして公式V15へ戻す",
     stockBackup: "現在の曲・保存曲・音色バンク・サンプル・設定を先に保存します。全体バックアップ非対応版は、Feluccaを更新してから行ってください。このベータ版自体はバックアップできないため、戻すと保存した音色・キット・サンプルは消えます。",
@@ -759,10 +767,13 @@ const TEXT = {
     intro: "Connect the FM-1 by USB. (Works in Chrome or Edge.)",
     warn: "Do not unplug the USB cable while writing.",
     install: "Install", other: "日本語",
+    fileTitle: "Install from a file (members' previews)",
+    fileHelp: "Choose the BBL JAM BOX .fwsc file you were given, then press Install above. The browser checks the file itself; it is not sent anywhere.",
+    fileLabel: "BBL JAM BOX .fwsc file", fileReady: "Ready to install: ", fileBad: "Not a BBL JAM BOX file: ",
     editor: "Editor (after installing: edit sounds and sequences from the computer)",
     direct: "Connect the USB cable directly to the computer. No probe or Transporter is needed.",
     brick: "If an install fails and the FM-1 no longer starts, recovering it needs a Transporter:",
-    beta: "BBL JAM BOX 0.1 is a beta, based on Felucca; please report problems on GitHub. The author accepts no responsibility if your FM-1 is damaged or misbehaves because of this custom firmware. Use it at your own risk.",
+    beta: "BBL JAM BOX is a beta, based on Felucca; please report problems on GitHub. The author accepts no responsibility if your FM-1 is damaged or misbehaves because of this custom firmware. Use it at your own risk.",
     back: "Get official FM-1 V15 from M-VAVE and select the unmodified FM-1.fwsc. The browser validates it locally; it is not sent to a server.",
     stockTitle: "Return to official V15", stockFile: "Official FM-1.fwsc", stockGo: "Back up and return to official V15",
     stockBackup: "Current music, saved music, sound banks, samples and settings are saved first. Older firmware needs a Felucca update for complete backups. This beta has no backup of its own: going back erases its saved sounds, kits and samples.",
@@ -804,9 +815,10 @@ const say = (txt) => { lastKey = null; $("status").textContent = txt; };
 const log = (t) => { $("log").textContent += t + "\n"; };
 let image = null;
 const meta = {"version": "0.2-beta", "product": "FM-1_902", "pkg": "../../firmware/bbl-jam-box-0.2-beta.fwsc"};
+let product = meta.product;                            // what Install writes: the site's package, or a chosen file's
 
 let writing = false, stock = null, stockFileEpoch = 0;
-const lockInstaller = (on) => { writing = on; $("go").disabled = on || !image; $("stock-go").disabled = on || !stock; $("stock-file").disabled = on; $("stock-recovery").disabled = on; };
+const lockInstaller = (on) => { writing = on; $("go").disabled = on || !image; $("stock-go").disabled = on || !stock; $("stock-file").disabled = on; $("stock-recovery").disabled = on; $("pkg-file").disabled = on; };
 window.addEventListener("beforeunload", (e) => { if (writing) { e.preventDefault(); e.returnValue = t("leave"); } });
 
 (async () => {
@@ -816,9 +828,10 @@ window.addEventListener("beforeunload", (e) => { if (writing) { e.preventDefault
     if (!r.ok) throw new Error(`${meta.pkg}: HTTP ${r.status}`);
     const pkg = new Uint8Array(await r.arrayBuffer());
     if (productOf(pkg) !== meta.product) { sayK("badpkg"); return; }
+    if (product !== meta.product) return;              // (a file was chosen meanwhile: that one stays)
     image = logicalImage(pkg);
     say(`BBL JAM BOX ${meta.version}`);
-    $("go").disabled = false;
+    $("go").disabled = writing;
   } catch (e) { sayK("loadfail", e.message); }
 })();
 
@@ -843,9 +856,9 @@ $("go").addEventListener("click", async () => {
     const ota = await up.find((id) => /^ota-/i.test(id.model));
     if (ota) {
       ota.link.close();
-      sayK((await up.resume(image, step, meta.product)) ? "done" : "stopped");
+      sayK((await up.resume(image, step, product)) ? "done" : "stopped");
     } else {
-      await up.install(image, meta.product, step);
+      await up.install(image, product, step);
     }
   } catch (e) {
     if (e && e.code && TEXT[lang][e.code]) sayK(e.code, e.detail || "");
@@ -853,6 +866,21 @@ $("go").addEventListener("click", async () => {
     log(String(e && e.stack || e));
   }
   lockInstaller(false);
+});
+
+// a BBL JAM BOX package chosen by hand (a members' preview): any BBL JAM BOX identity (FM-1_9xx), never the official
+// firmware (that has its own section, with the backup); Install then writes it instead of the site's package
+$("pkg-file").addEventListener("change", async () => {
+  const file = $("pkg-file").files[0];
+  if (!file || writing) return;
+  try {
+    const pkg = new Uint8Array(await file.arrayBuffer()), id = productOf(pkg);
+    if (file.size === STOCK_V15_SIZE || !/^FM-1_9\d\d$/.test(id)) throw new Error(file.name);
+    image = logicalImage(pkg);
+    product = id;
+    sayK("fileReady", file.name);
+    lockInstaller(false);
+  } catch (e) { sayK("fileBad", (e && e.message) || file.name); }
 });
 
 $("stock-file").addEventListener("change", async () => {
