@@ -4,7 +4,7 @@
  * before the filter; the filter, its envelope and the ENV are DIGITAL's pages (FILTER / FILTER ENV / ENV).
  *   OSC 1: WAVE  the two oscillators' waves (SAW SQR TRI SIN in pairs, then each doubled), MIX  osc 1 .. osc 2,
  *          FINE  osc 2 -1 .. +1 semitone (centre: in tune), SEMI  osc 2 0 .. +24 semitones
- *   OSC 2: SUB  -1 / -2 / -3 octaves (a square), SUBVL  its level, PW  every wave's shape (SQR: the pulse width,
+ *   OSC 2: SUB  -1 / -2 / -3 octaves (a square), SUBVL  its level, PW  osc 1's shape (SQR: the pulse width,
  *          TRI: a wavefold, SIN: fewer and fewer levels to a square, SAW: a hidden oscillator it is hard synced to,
  *          1x .. 8x the note), SAT (P_LN0)  drive into a soft clip before the filter
  * Band-limited (polyBLEP) saws, pulses, sync. One voice (.poly 1; the machine is LEGATO).
@@ -129,7 +129,7 @@ static void mono_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const 
     tsvf_coef(&flt, cut, p[P_FLT_RES]);
     for (i = 0; i < n; i++) {
         int32_t a = mono_osc(w1, &v->ph[0], inc1, pw, &v->s[4], &v->s[6]);
-        int32_t b = mono_osc(w2, &v->ph[1], inc2, pw, &v->s[5], &v->s[7]);
+        int32_t b = mono_osc(w2, &v->ph[1], inc2, 0u, &v->s[5], &v->s[7]);   /* (PW: osc 1 only) */
         int32_t y = (a * (127 - (int32_t)mix) + b * (int32_t)mix) / 127;
         int32_t s = osc_pulse(v->ph[2], incs, 0x80000000u);
         v->ph[2] += incs;
