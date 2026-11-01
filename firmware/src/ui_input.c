@@ -1633,6 +1633,18 @@ static int page_btn_reset(void)
     ui_message(m);
     return 1;
 }
+/* SIMPLE: the sampler's LEN as big as fits after START in track t's chunk (smp_window's sizes: 1 + v (n - 1) / 127):
+ * LEN shows the window's real size, so a turn left always closes it in and START pushing it into the end shrinks it
+ * (edit_param). -1: no chunk */
+static int32_t smp_len_fit(const track_t *t)
+{
+    uint32_t sl = (uint32_t)t->p[P_E5], n, s;
+    if (eng_idx(t->eng_req) != ENGI_SAMPLER || sl >= smp_n || smp_tab[sl].len < 2u)
+        return -1;
+    n = smp_tab[sl].len;
+    s = (uint32_t)(t->p[P_E2] & 127) * (n - 1u) / 127u;
+    return (int32_t)((n - s - 1u) * 127u / (n - 1u));
+}
 static void edit_param(uint32_t slot, int32_t steps)
 {
     int16_t *vp;
@@ -1670,11 +1682,19 @@ static void edit_param(uint32_t slot, int32_t steps)
         else if (vp >= song.g && vp < song.g + G_COUNT && motion_gid((uint32_t)(vp - song.g)) != 0xFFu)
             kit_drop(TSEL, motion_gid((uint32_t)(vp - song.g)));
     }
+    if (FELUCCA_SIMPLE && vp == &TSEL->p[P_E3] && smp_len_fit(TSEL) >= 0 && *vp > smp_len_fit(TSEL))
+        *vp = (int16_t)smp_len_fit(TSEL);              /* (the sampler's LEN past the end: from its real size) */
     v = param_turn(d, *vp, accel(EN_K1 + slot, steps, d->fmt == F_ENUM ? 0 : d->max - d->min));
+    if (FELUCCA_SIMPLE && vp == &TSEL->p[P_E3] && smp_len_fit(TSEL) >= 0 && v > smp_len_fit(TSEL))
+        v = smp_len_fit(TSEL);                          /* (.. and never wound up past it) */
     {
         int16_t was = *vp;
         *vp = (int16_t)v;
         pm_record(TSEL, vp, was);
+    }
+    if (FELUCCA_SIMPLE && vp == &TSEL->p[P_E2] && smp_len_fit(TSEL) >= 0 && TSEL->p[P_E3] > smp_len_fit(TSEL)) {
+        TSEL->p[P_E3] = (int16_t)smp_len_fit(TSEL);    /* the sampler's START pushing the window into the end: LEN */
+        motion_capture(TSEL, P_E3, TSEL->p[P_E3]);     /* shrinks with it */
     }
     if (vp == &TSEL->p[P_E7])                            /* MACH: the machine's starting sound */
         machine_defaults(TSEL);

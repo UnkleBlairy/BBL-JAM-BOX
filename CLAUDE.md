@@ -352,7 +352,9 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   Track n starts on slot n. ENV and FILTER work (DIGITAL's filter).
 - START / LEN = a window of LEN's size that START slides, the same size, until its end meets the sample's end: then
   START keeps going and the window shrinks (to 64 samples at the very end; eng_sampler.c smp_window). Each grain
-  keeps the loop it started with (smp_v_t g[3]), so a resize fades in at the next grain. Both live while a sound plays (knob, locks, LFOs,
+  keeps the loop it started with (smp_v_t g[3]), so a resize fades in at the next grain. The LEN knob always shows the real
+  size (ui_input.c smp_len_fit): START turned into the end lowers LEN with it, LEN can't wind up past the end, so a
+  turn left always closes the braces in. Both live while a sound plays (knob, locks, LFOs,
   macros): the playhead keeps its place in the window (a scrub), each new grain takes the moved window so the grains'
   overlap fades it in (no clicks).
 - STRCH and LOFI follow the knob live while a sound plays (knob, macros, LFOs
