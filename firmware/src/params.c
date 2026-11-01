@@ -79,6 +79,7 @@ static const char *const N_IRATE[] = {"689", "919", "1.1k", "1.4k", "1.8k", "2.2
  * Append-only (stored values keep their meaning): S&H SLEW and DEPTH (#132) came after EXPR and E8; VEL and TIME
  * (1.5.6, #213: at the note) after DEPTH */
 static const char *const N_MSRC[] = {"OFF", "LFO", "ENV", "VEL", "KEY", "RAND", "MODW", "AT", "EXPR", "S&H", "SLEW", "FENV"};
+static const char *const N_HOLD[] = {"HOLD"};   /* (an F_TIME with these names: its top is HOLD, FM SYN's C.DEC D.DEC) */
 static const char *const N_MDST[] = {"OFF", "PITCH", "CUT", "SHP", "AMP", "PAN", "-", "-", "DLY", "REV", "RATE",
                                      "L.PIT", "E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "DEPTH", "VEL", "TIME",
                                      /* SIMPLE: every other knob that moves smoothly (mod.c MDX), page by page */
@@ -86,7 +87,8 @@ static const char *const N_MDST[] = {"OFF", "PITCH", "CUT", "SHP", "AMP", "PAN",
                                      "DTIME", "DFDBK", "DTONE", "RTIME", "RDAMP", "GRIT", "RES", "F.AMT", "F.ATK",
                                      "F.DEC", "F.SUS", "F.REL", "C.MIX", "CTUNE", "CFDBK", "CDAMP", "DJ",
                                      "LEVEL", "AGE", "GATE",   /* (5 letters fit) (ANALOG's LEVEL and AGE, SAMPLER's GATE) */
-                                     "TYPE", "WAVE", "PHASE", "L.FAD", "SYNC", "L.TRG", "POL", "VOL"};   /* (they step) */
+                                     "TYPE", "WAVE", "PHASE", "L.FAD", "SYNC", "L.TRG", "POL", "VOL",   /* (they step) */
+                                     "C.ATK", "C.DEC", "D.ATK", "D.DEC", "FB", "DTUN"};   /* (FM SYN's) */
 static const char *const N_ENGNAME[] = {"ANALOG", FELUCCA_FM4 ? "DIGITAL" : "-", "PHASE", "LOFI", "SAMPLE", "VOICE", "TRIO", "WHEEL", "GRAIN", "PHYS",
                                              "DRUM", "NOISE", "FM6",
 };
@@ -180,7 +182,13 @@ static const param_desc_t TP[P_COUNT] = {
     [P_FE_ATK] = PD("ATK", F_TIME, 0, 127, 0), [P_FE_DEC] = PD("DEC", F_TIME, 0, 127, 40),
     [P_FE_SUS] = PD("SUS", F_PCT, 0, 127, 0), [P_FE_AMT] = PD("AMT", F_BIPCT, -64, 63, 0),
     [P_FE_REL] = PD("REL", F_TIME, 0, 127, 40),
-    FMOP(3), FMOP(4),
+    /* FM SYN (eng_digital.c syn_*): its modulators C and D on operator 3 and 4's old ids */
+    [P_FM3_ATK] = PD("C.ATK", F_TIME, 0, 127, 0), [P_FM3_DEC] = {"C.DEC", F_TIME, 0, 127, 90, N_HOLD, 0},
+    [P_FM3_SUS] = PD("SUS", F_PCT, 0, 127, 127), [P_FM3_REL] = PD("REL", F_TIME, 0, 127, 0),
+    [P_FM3_LEVEL] = PD("FB", F_PCT, 0, 127, 0),
+    [P_FM4_ATK] = PD("D.ATK", F_TIME, 0, 127, 0), [P_FM4_DEC] = {"D.DEC", F_TIME, 0, 127, 127, N_HOLD, 0},
+    [P_FM4_SUS] = PD("SUS", F_PCT, 0, 127, 127), [P_FM4_REL] = PD("REL", F_TIME, 0, 127, 0),
+    [P_FM4_LEVEL] = PD("DTUN", F_PCT, 0, 127, 0),
 #undef FMOP
     [P_CHRD] = PE("CHRD", N_CHRD, 0),
     [P_VOIC] = PE("VOIC", N_VOIC, 0),
@@ -324,7 +332,7 @@ static const uint8_t DTIME_ORDER[13] = {9, 8, 7, 6, 12, 0, 10, 1, 11, 4, 2, 5, 3
 /* SIMPLE: the LFO DEST knob's order: the knobs as their pages show them, left to right (OSC 1, OSC 2, AGE / GATE,
  * FILTER, FILTER ENV, ENV, ENV DEST, LFO, LFO DEST, DELAY, VERB, COMB, DJ), then PITCH and AMP. Left out: PAN SHP
  * DEPTH VEL TIME, E8 (MACH) and DIST CHO (a sound saved with one keeps it). The stored values (mod.c MD_*) stay */
-static const uint8_t MDST_ORDER[] = {0, 12, 13, 14, 15, 16, 17, 18, 51, 52, 53, 2, 40, 41, 42, 43, 44, 45, 23, 24, 25,
+static const uint8_t MDST_ORDER[] = {0, 12, 13, 14, 15, 16, 17, 18, 62, 63, 64, 65, 66, 67, 51, 52, 53, 2, 40, 41, 42, 43, 44, 45, 23, 24, 25,
                                      26, 61, 5, 10, 8, 34, 35, 36, 9, 37, 38, 39, 46, 47, 48,
                                      49, 50, 1, 4};   /* (the old ENV DEST / LFO DEST depths 27..33 and VIB: off their pages) */
 static int32_t mdst_rank(int32_t v)               /* v's place in MDST_ORDER (one left out: OFF's) */
@@ -390,6 +398,10 @@ static void param_format(const param_desc_t *d, int32_t v, char *val, const char
         break;
     case F_TIME: {
         uint32_t ms10 = TIME_MS_X10[v & 127];
+        if (d->names && v >= d->max) {              /* (FM SYN's C.DEC D.DEC: the top holds) */
+            str_cpy(val, d->names[0], 6);
+            break;
+        }
         if (ms10 < 100u) {
             fmt_fix(val, (int32_t)ms10, 1);
             *unit = "ms";
@@ -515,6 +527,9 @@ static const page_t PAGES[] = {
     {"OSC 1", FAM_EDIT, SC_ENGINE, GR_NONE, {P_E0, P_E1, P_E2, P_E3}},   /* the machine's first four (the PRESETS knob: MACH) */
     {"OSC 2", FAM_EDIT, SC_ENGINE, GR_NONE, {P_E4, P_E5, P_E6, P_LN0}},  /* the rest (ANALOG: .. DRIVE LEVEL) */
     {"AGE", FAM_EDIT, SC_ENGINE, GR_NONE, {P_LN1, 0xFF, 0xFF, 0xFF}},   /* ANALOG's AGE, SAMPLER's GATE (page_id_an; ui.c page_visible) */
+    {"MOD C", FAM_EDIT, SC_ENGINE, GR_NONE, {P_FM3_ATK, P_FM3_DEC, P_E4, P_E6}},       /* FM SYN's (its OSC 2 is hidden): */
+    {"MOD D", FAM_EDIT, SC_ENGINE, GR_NONE, {P_FM4_ATK, P_FM4_DEC, P_E5, P_FM3_LEVEL}}, /* ATK DEC AMT MIX / .. FB */
+    {"TUNE", FAM_EDIT, SC_ENGINE, GR_NONE, {P_FM4_LEVEL, P_TRANS, 0xFF, 0xFF}},       /* DTUN PITCH */
     {"FILTER", FAM_FLT, SC_TRACK, GR_NONE, {P_FLT_CUT, P_FLT_RES, P_FTYPE, P_FE_AMT}},    /* CUT RES TYPE AMT */
     {"FILTER ENV", FAM_FLT, SC_TRACK, GR_NONE, {P_FE_ATK, P_FE_DEC, P_FE_SUS, P_FE_REL}}, /* ATK DEC SUS REL */
     {"PERF", FAM_GLO, SC_GLOBAL, GR_PERF, {0xFF, 0xFF, 0xFF, 0xFF}, 1},        /* GLO: the performance macros (ui.c perf_*) */
@@ -542,6 +557,13 @@ static const uint8_t *alt_ids(const page_t *pg)
  * MONO's filter TYPE is P_LN1 (a blend, 0..127). PITCH (P_TRANS, semitones): the sampler's OSC 1 KNOB 1, FM SYN's OSC 2 KNOB 4 (where the 808s have LEVEL) */
 static uint32_t page_id_an(const page_t *pg, uint32_t id)
 {
+    if (FELUCCA_SIMPLE && pg->scope == SC_ENGINE) {     /* FM SYN: MOD C, MOD D, TUNE instead of OSC 2 */
+        int syn = eng_idx(TSEL->eng_req) == ENGI_DIGITAL && TSEL->p[P_E7] % 6 == 0;
+        if (pg->id[0] == P_FM3_ATK || pg->id[0] == P_FM4_ATK || pg->id[0] == P_FM4_LEVEL)
+            return syn ? id : 0xFFu;
+        if (syn && pg->id[0] == P_E4)
+            return 0xFFu;
+    }
     if (FELUCCA_SIMPLE && id == P_FTYPE && eng_idx(TSEL->eng_req) == ENGI_MONO)
         return P_LN1;                                 /* (MONO's filter: TYPE a blend, P_LN1) */
     if (!FELUCCA_SIMPLE || pg->scope != SC_ENGINE || (id != P_LN0 && id != P_LN1 && id != P_E0))

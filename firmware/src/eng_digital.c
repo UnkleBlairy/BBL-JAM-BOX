@@ -9,10 +9,34 @@ static const char *const N_FMALG[] = {"1", "2", "3", "4", "5", "6", "7", "8"};
 static const char *const N_MACH[] = {"SYN", "BD", "SD", "HH", "CYM", "PERC"};
 static const char *const N_RATIO[] = {".5", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "14", "16"};
 
+/* SIMPLE: FM SYN (MACH 0), Digitone-style: A and B are heard (MIX between them), C and D only modulate, each with its
+ * own ATK / DEC envelope (DEC at the top: HOLD) and AMT. ALG says who modulates whom; D feeds back on itself (FB).
+ *   OSC 1: ALG (E0, 0..7), A:B (E1: a pair of ratios, SYN_AB), C (E2), D (E3) (ratios, SYN_R)
+ *   MOD C: C.ATK C.DEC (P_FM3_ATK / DEC), C.AMT (E4), MIX (E6)    MOD D: D.ATK D.DEC (P_FM4_*), D.AMT (E5), FB (P_FM3_LEVEL)
+ *   TUNE:  DTUN (P_FM4_LEVEL: A up, B down, up to ~25 cents), PITCH (P_TRANS)
+ * The algorithms ("C>A" C modulates A):  1 C>A D>B   2 C>A D>A   3 C>A D>A+B   4 C>A+B D>B   5 C+D>A+B
+ *                                        6 D>C>A   7 D>C>A+B   8 D>C>A D>B   (B unmodulated: a plain sine) */
+static const char *const N_SYNALG[8] = {"1", "2", "3", "4", "5", "6", "7", "8"};
+#define SYN_NR 20u
+static const char *const N_SYNR[SYN_NR] = {".25", ".5", ".75", "1", "1.5", "2", "3", "4", "5", "6", "7", "8", "9",
+                                           "10", "11", "12", "13", "14", "15", "16"};
+static const uint16_t SYN_R[SYN_NR] = {64, 128, 192, 256, 384, 512, 768, 1024, 1280, 1536, 1792, 2048, 2304, 2560,
+                                       2816, 3072, 3328, 3584, 3840, 4096};   /* Q8 */
+#define SYN_NAB 45u                                     /* A:B: every pair of .5 1 2 .. 8 with A <= B, A then B rising */
+static const char *const N_SYNAB[SYN_NAB] = {
+    ".5:.5", ".5:1", ".5:2", ".5:3", ".5:4", ".5:5", ".5:6", ".5:7", ".5:8", "1:1", "1:2", "1:3", "1:4", "1:5", "1:6",
+    "1:7", "1:8", "2:2", "2:3", "2:4", "2:5", "2:6", "2:7", "2:8", "3:3", "3:4", "3:5", "3:6", "3:7", "3:8", "4:4",
+    "4:5", "4:6", "4:7", "4:8", "5:5", "5:6", "5:7", "5:8", "6:6", "6:7", "6:8", "7:7", "7:8", "8:8"};
+static const uint16_t SYN_ABR[9] = {128, 256, 512, 768, 1024, 1280, 1536, 1792, 2048};   /* (.5 1 2 .. 8, Q8) */
+static const param_desc_t SYN_D[7] = {
+    {"ALG", F_ENUM, 0, 7, 0, N_SYNALG, 0}, {"A:B", F_ENUM, 0, SYN_NAB - 1, 9, N_SYNAB, 0},
+    {"C", F_ENUM, 0, SYN_NR - 1, 3, N_SYNR, 0}, {"D", F_ENUM, 0, SYN_NR - 1, 5, N_SYNR, 0},
+    {"C.AMT", F_PCT, 0, 127, 50, 0, 0}, {"D.AMT", F_PCT, 0, 127, 0, 0, 0}, {"MIX", F_PCT, 0, 127, 0, 0, 0}};
+
 /* the factory presets (the stores' preset numbers of engine 1 index this table) */
 static const preset_t DIGITAL_PRESETS[] = {
     /* ALG R2 R3 R4 INDEX MODDEC FDBK - */
-    {"INIT", {-56, 8, 8, 8, 70, 50, 0, 0}, {0, 70, 60, 40}, 0, 0, FX(0, 0, 0, 0), PAT(0)},
+    {"INIT", {0, 9, 3, 5, 50, 0, 0, 0}, {0, 70, 60, 40}, 0, 0, FX(0, 0, 0, 0), PAT(0)},   /* FM SYN (SYN_D): ALG 1, 1:1, C 1, D 2 */
     {"BELL", {8, 64, 8, 32, 90, 70, 0, 0}, {0, 95, 0, 85}, 0, 0, FX(0, 0, 0, 0), PAT(7)},
     {"BASS", {-56, 8, 8, 8, 48, 40, 8, 0}, {0, 60, 70, 25}, 0, 1, FX(0, 0, 0, 0), PAT(2)},
     {"BRASS", {-56, 8, 8, 8, 70, 40, 20, 0}, {40, 70, 100, 40}, 0, 0, FX(0, 0, 0, 0), PAT(6)},
@@ -82,6 +106,19 @@ static uint32_t tune_q8(int32_t v)
 static int32_t digital_env[NPART][NVOICE][4];
 static uint8_t digital_stage[NPART][NVOICE][4];
 
+/* FM SYN's modulator envelopes: Q24 level (bits 0..24), bit 25 = attacking; D's sits in s[3] << 4 */
+#define SYN_FULL (1 << 24)
+#define SYN_ATTACK (1 << 25)
+static int32_t syn_env(int32_t st, int32_t atk, int32_t dec)   /* one block on */
+{
+    int32_t e = st & (SYN_ATTACK - 1);
+    if (st & SYN_ATTACK) {
+        e += (int32_t)ENV_LIN[atk & 127];
+        return e >= SYN_FULL ? SYN_FULL : e | SYN_ATTACK;
+    }
+    return dec >= 127 ? e : e - mulq16(e, ENV_EXP[dec & 127]);   /* (DEC at the top: HOLD) */
+}
+
 static void digital_note_on(track_t *t, voice_t *v)
 {
     uint32_t tr = (uint32_t)(t - trk), vi = (uint32_t)(v - t->v), op;
@@ -96,6 +133,10 @@ static void digital_note_on(track_t *t, voice_t *v)
     v->s[3] = t->p[P_FE_ATK] ? 1 : 2;         /* .. its stage: 1 attack, 2 decay to END */
     v->s[4] = 1 << 24;           /* modulator envelope, Q24 */
     v->s[5] = v->s[6] = 0;       /* feedback history */
+    if (FELUCCA_SIMPLE && t->p[P_E7] % 6 == 0) {   /* FM SYN: C's envelope in s[4], D's in s[3] above the filter env's stage */
+        v->s[4] = t->p[P_FM3_ATK] ? SYN_ATTACK : SYN_FULL;
+        v->s[3] |= (t->p[P_FM4_ATK] ? SYN_ATTACK : SYN_FULL) << 4;
+    }
     if (t->p[P_E7] > 0) {        /* a drum machine: s[6] its noise, s[7] its fast sweep envelope */
         v->s[6] = (int32_t)(0x2545F491u ^ (vi * 0x9E3779B9u));
         v->s[7] = 1 << 24;
@@ -456,9 +497,94 @@ static __attribute__((noinline)) void digital_render_custom(track_t *t, voice_t 
     v->s[6] = fb2;
 }
 
+/* FM SYN (see SYN_D): op A ph[0], B ph[1], C ph[2], D s[7]; s[0..1] the filter, s[2..3] its envelope (s[3] & 7: stage,
+ * s[3] >> 4: D's envelope), s[4] C's envelope, s[6] D's feedback history (two int16) */
+#define SYN_M(x, k) ((uint32_t)((x) * (k)) * 129u)     /* (the phase push of an op's output x, depth k 0..2032) */
+static __attribute__((noinline)) void syn_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const vmod_t *m)
+{
+    const int16_t *p = t->p;
+    uint32_t i, alg = (uint32_t)clamp(p[P_E0], 0, 7), ab = (uint32_t)clamp(p[P_E1], 0, SYN_NAB - 1), ra, rb;
+    int32_t mix = clamp(p[P_E6], 0, 127), fb = clamp(p[P_FM3_LEVEL], 0, 127), dt = clamp(p[P_FM4_LEVEL], 0, 127);
+    int32_t ec, ed, kc, kd;
+    for (ra = 0; ab >= 9u - ra; ra++)                 /* (the pair's A and B: row ra, A <= B) */
+        ab -= 9u - ra;
+    rb = ra + ab;
+    uint32_t dti = (uint32_t)(((uint64_t)m->inc * (uint32_t)dt * 119u) >> 20);   /* DTUN: up to ~1.45 % (25 cents) */
+    uint32_t ia = fm_ratio_inc(m->inc + dti, SYN_ABR[ra]), ib = fm_ratio_inc(m->inc - dti, SYN_ABR[rb]);
+    uint32_t ic = fm_ratio_inc(m->inc, SYN_R[clamp(p[P_E2], 0, SYN_NR - 1)]);
+    uint32_t id = fm_ratio_inc(m->inc, SYN_R[clamp(p[P_E3], 0, SYN_NR - 1)]);
+    /* the modulator envelopes, one block on: the depths 0..2032 (AMT x envelope) */
+    ec = syn_env(v->s[4], p[P_FM3_ATK], p[P_FM3_DEC]);
+    ed = syn_env((int32_t)((uint32_t)v->s[3] >> 4), p[P_FM4_ATK], p[P_FM4_DEC]);
+    v->s[4] = ec;
+    kc = (int32_t)(((int64_t)clamp(p[P_E4], 0, 127) * ((ec & (SYN_ATTACK - 1)) >> 9)) >> 11);
+    kd = (int32_t)(((int64_t)clamp(p[P_E5], 0, 127) * ((ed & (SYN_ATTACK - 1)) >> 9)) >> 11);
+    /* the filter and its envelope (as the legacy path) */
+    int32_t cut = (p[P_FLT_CUT] << 8) + m->cutoff + (p[P_FLT_KTR] * (v->pitch16 - 60 * 16) >> 4);
+    {
+        int32_t fe = v->s[2], fs = v->s[3] & 7, sus = (int32_t)p[P_FE_SUS] * (1 << 17);
+        if (!v->gate)
+            fs = 4;
+        if (fs == 1) {
+            fe += (int32_t)ENV_LIN[p[P_FE_ATK] & 127];
+            if (fe >= (1 << 24)) { fe = 1 << 24; fs = 2; }
+        } else if (fs == 2) {
+            fe = p[P_FE_DEC] ? fe + mulq16(sus - fe, ENV_EXP[p[P_FE_DEC] & 127]) : sus;
+        } else if (fs == 4) {
+            fe -= mulq16(fe, ENV_EXP[p[P_FE_REL] & 127]);
+        }
+        fe = clamp(fe, 0, 1 << 24);
+        v->s[2] = fe;
+        v->s[3] = fs | (int32_t)((uint32_t)ed << 4);
+        cut += ((fe >> 9) * p[P_FE_AMT]) >> 6;
+        if (v == &t->v[t->m_vi])
+            t->m_fenv = fe >= (1 << 24) ? 32767 : fe >> 9;
+    }
+    int32_t drive = 32768 + p[P_FLT_DRV] * 512, drv = p[P_FLT_DRV], ic1 = v->s[0], ic2 = v->s[1];
+    int32_t fk = ANALOG_K(p[P_FLT_RES]);
+    uint32_t ft = (uint32_t)p[P_FTYPE];
+    tsvf_t flt;
+    tsvf_coef(&flt, cut, p[P_FLT_RES]);
+    uint32_t pa = v->ph[0], pb = v->ph[1], pc = v->ph[2], pd = (uint32_t)v->s[7];
+    int32_t fb1 = (int16_t)(v->s[6] & 0xFFFF), fb2 = v->s[6] >> 16;
+    for (i = 0; i < n; i++) {
+        int32_t a, b, c, d, s;
+        d = sine_i(pd + digital_mod((fb1 + fb2) >> 1, fb));
+        fb2 = fb1;
+        fb1 = d;
+        switch (alg) {
+        case 0: c = sine_i(pc); a = sine_i(pa + SYN_M(c, kc)); b = sine_i(pb + SYN_M(d, kd)); break;
+        case 1: c = sine_i(pc); a = sine_i(pa + SYN_M(c, kc) + SYN_M(d, kd)); b = sine_i(pb); break;
+        case 2: c = sine_i(pc); a = sine_i(pa + SYN_M(c, kc) + SYN_M(d, kd)); b = sine_i(pb + SYN_M(d, kd)); break;
+        case 3: c = sine_i(pc); a = sine_i(pa + SYN_M(c, kc)); b = sine_i(pb + SYN_M(c, kc) + SYN_M(d, kd)); break;
+        case 4: { uint32_t mm; c = sine_i(pc); mm = SYN_M(c, kc) + SYN_M(d, kd); a = sine_i(pa + mm); b = sine_i(pb + mm); break; }
+        case 5: c = sine_i(pc + SYN_M(d, kd)); a = sine_i(pa + SYN_M(c, kc)); b = sine_i(pb); break;
+        case 6: c = sine_i(pc + SYN_M(d, kd)); a = sine_i(pa + SYN_M(c, kc)); b = sine_i(pb + SYN_M(c, kc)); break;
+        default: c = sine_i(pc + SYN_M(d, kd)); a = sine_i(pa + SYN_M(c, kc)); b = sine_i(pb + SYN_M(d, kd)); break;
+        }
+        s = a + (((b - a) * mix) >> 7);
+        pa += ia;
+        pb += ib;
+        pc += ic;
+        pd += id;
+        if (drv)
+            s = softclip(((s >> 2) * (drive >> 2)) >> 11);
+        s = digital_filter(&flt, fk, ft, s, &ic1, &ic2);
+        out[i] += voice_amp(s, m, i);   /* full-scale sines: 6 dB below the others */
+    }
+    v->ph[0] = pa;
+    v->ph[1] = pb;
+    v->ph[2] = pc;
+    v->s[7] = (int32_t)pd;
+    v->s[6] = (fb1 & 0xFFFF) | (int32_t)((uint32_t)fb2 << 16);
+    v->s[0] = ic1;
+    v->s[1] = ic2;
+}
+
 static void digital_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const vmod_t *m)
 {
-    if (digital_custom(t)) digital_render_custom(t, v, out, n, m);
+    if (FELUCCA_SIMPLE && t->p[P_E7] % 6 == 0) syn_render(t, v, out, n, m);
+    else if (digital_custom(t)) digital_render_custom(t, v, out, n, m);
     else digital_render_legacy(t, v, out, n, m);
 }
 
@@ -476,7 +602,7 @@ static const param_desc_t MACH_D[5][7] = {
 static const param_desc_t *digital_desc(const track_t *t, uint32_t k)
 {
     uint32_t mach = (uint32_t)t->p[P_E7] % 6u;
-    return mach && k < 7u ? &MACH_D[mach - 1u][k] : 0;
+    return k >= 7u ? 0 : mach ? &MACH_D[mach - 1u][k] : FELUCCA_SIMPLE ? &SYN_D[k] : 0;   /* (FM SYN: SYN_D) */
 }
 
 static const engine_t ENG_DIGITAL = {

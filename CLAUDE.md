@@ -285,7 +285,7 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   locks into that key only (heard at once; key + OCT- clears it). The knobs and dials always show the sound's own
   values (a held key shows its locks inverted); turning a knob edits the sound's own value. Recording: the step gets
   the key's locks. Black keys 1-6 pick the track; keys with locks are lit. Not saved (like macros).
-- PITCH (semitones, -24..+24; P_TRANS, so no new id and old saves load): FM SYN's OSC 2 KNOB 4, the sampler's OSC 1
+- PITCH (semitones, -24..+24; P_TRANS, so no new id and old saves load): FM SYN's TUNE page KNOB 2, the sampler's OSC 1
   KNOB 1 (replaced its old fine PITCH; E0 is ignored). Taken as each note starts (voice.c voice_pitch16), so it locks
   per step/key. Drums use TUNE. TRN no longer moves the keys (KB_TRN).
 - Name: BBL JAM BOX (Blair = blairysbeatlab). "FM-1" only says what it runs on. Splash: Blair's logo
@@ -369,6 +369,13 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
 - Machine names and order (engines.c MACHINES, by type, 808 then FM): 8BD FMBD
   8SD FMSD 8TOM 8RIM 8CLP 8COW 8HH FMHH 8CYM FMCYM FMPRC FMSYN MONO SMPL.
 - 808s start with AGE 0 (clean).
+- FM SYN (eng_digital.c syn_render / SYN_D, Digitone-style): A and B are heard (MIX between them), C and D only
+  modulate. Pages: OSC 1 = ALG (8: 1 C>A D>B, 2 C>A D>A, 3 C>A D>A+B, 4 C>A+B D>B, 5 C+D>A+B, 6 D>C>A, 7 D>C>A+B,
+  8 D>C>A D>B), A:B (one knob through every pair of .5 1 2..8, A <= B, rising), C, D (ratios .25..16);
+  MOD C = C.ATK C.DEC C.AMT MIX; MOD D = D.ATK D.DEC D.AMT FB (D on itself); TUNE = DTUN (A up / B down, ~25
+  cents) PITCH. DEC at the top = HOLD. No velocity (the keys have none). Stored: E0..E6 + the old operator
+  envelope ids P_FM3_* / P_FM4_* (TP labels C.ATK.. DTUN, LFO DESTs too). FM SYN sounds saved before load
+  but sound different. The FM drum machines are unchanged (their legacy path).
 - MONO (eng_mono.c, ENGI_MONO 4, sound byte 4, SYNTH pool): a mono analog-style voice (Minimoog-ish, not a copy).
   Every press retriggers the amp AND filter envelopes from where they are (voice.c trk_vmode: always V_MONO). OSC 1: WAVE (pairs SW+SQ SW+TR SW+SN SQ+TR SQ+SN TR+SN, then SW+SW SQ+SQ TR+TR SN+SN), MIX (osc 1..2),
   FINE (osc 2 +-1 semitone, centre = in tune), SEMI (osc 2 0..+24). OSC 2: SUB (-1 -2 -3 octaves, a square),
