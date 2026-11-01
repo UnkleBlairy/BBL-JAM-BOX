@@ -375,7 +375,8 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   SUBVL, PW (osc 1 only, the most variety: SQR pulse width, TRI wavefold, SIN bits down to a square, SAW hard sync to a hidden
   oscillator 1x..8x: PW is its pitch, no extra knob), SAT (P_LN0, drive before the filter). One preset: a plain saw.
   MONO's filter is its own (eng_mono.c mono_filter, MS-20-like): an SVF with a soft clip in the resonance loop, so
-  high RES rings, squeals and self-oscillates. FILTER page TYPE on MONO = P_LN1, a smooth blend LP (0) .. BP (64)
+  high RES rings, squeals and self-oscillates. CUT (knob + LFOs) glides ~20 ms, coefficients every 8 samples
+  (mono_cs); the filter env and key tracking don't glide. FILTER page TYPE on MONO = P_LN1, a smooth blend LP (0) .. BP (64)
   .. HP (127), lockable/LFO-able (params.c page_id_an). Filter env / ENV pages as usual. To become a swappable
   filter machine for every engine later.
 - REC armed: a red "REC" pill left of the BPM; playing, it breathes twice a bar.

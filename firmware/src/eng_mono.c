@@ -133,6 +133,8 @@ static void mono_note_on(track_t *t, voice_t *v)
     v->s[3] = p[P_FE_ATK] ? 1 : 2;
 }
 
+static int32_t mono_cs[NTRK];                           /* each track's CUT as it glides to the knob (+1; 0: not yet) */
+
 static void mono_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const vmod_t *m)
 {
     const int16_t *p = t->p;
@@ -143,8 +145,12 @@ static void mono_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const 
     int32_t drv = 32768 + sat * sat * 4;                /* SAT: x1 .. ~x2 squared, so the top screams (Q15) */
     inc2 = (uint32_t)(((uint64_t)inc1 * mono_ratio(p[P_E3] * 64 + p[P_E2])) >> 16);   /* FINE -64..63: +-1 st */
     incs = inc1 >> (sub + 1u);
-    /* the filter (DIGITAL's, with its envelope and DRIVE), as SAMPLER's */
-    int32_t cut = (p[P_FLT_CUT] << 8) + m->cutoff + (p[P_FLT_KTR] * (v->pitch16 - 60 * 16) >> 4);
+    /* the filter, with DIGITAL's envelope and DRIVE. CUT and its LFOs glide (~20 ms: a knob's steps are no jumps), the
+     * key tracking and the envelope don't (a pluck keeps its snap) */
+    int32_t *cs = &mono_cs[(uint32_t)(t - trk) % NTRK], ct = (p[P_FLT_CUT] << 8) + m->cutoff;
+    int32_t cut = p[P_FLT_KTR] * (v->pitch16 - 60 * 16) >> 4;
+    if (!*cs)
+        *cs = ct + 1;
     {
         int32_t fe = v->s[2], fs = v->s[3], sus = (int32_t)p[P_FE_SUS] * (1 << 17);
         if (!v->gate)
@@ -167,8 +173,12 @@ static void mono_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const 
     int32_t drive = 32768 + p[P_FLT_DRV] * 512, fdrv = p[P_FLT_DRV], ic1 = v->s[0], ic2 = v->s[1];
     int32_t mo = clamp(p[P_LN1], 0, 127);
     mono_flt_t flt;
-    mono_fcoef(&flt, cut, p[P_FLT_RES]);
     for (i = 0; i < n; i++) {
+        if (!(i & 7u)) {                                /* every 8 samples: a step of the glide */
+            int32_t d = ct - (*cs - 1);
+            *cs += (d + (d > 0 ? 127 : d < 0 ? -127 : 0)) >> 7;
+            mono_fcoef(&flt, *cs - 1 + cut, p[P_FLT_RES]);
+        }
         int32_t a = mono_osc(w1, &v->ph[0], inc1, pw, &v->s[4], &v->s[6]);
         int32_t b = mono_osc(w2, &v->ph[1], inc2, 0u, &v->s[5], &v->s[7]);   /* (PW: osc 1 only) */
         int32_t y = (a * (127 - (int32_t)mix) + b * (int32_t)mix) / 127;
