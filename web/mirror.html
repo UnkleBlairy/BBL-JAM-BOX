@@ -26,13 +26,15 @@
 <body>
 <main>
   <div class="bar">
-    <button id="go">Connect screen</button>
+    <button id="ser">Connect screen (USB serial)</button>
+    <button id="go">Connect screen (MIDI)</button>
     <button id="listen">Listen to audio</button>
     <label>Size <select id="size"><option>2</option><option selected>3</option><option>4</option></select>x</label>
     <div class="meter"><div id="lvl"></div></div>
   </div>
   <canvas id="scr" width="240" height="240"></canvas>
-  <div class="msg" id="msg">Plug in the FM-1 (BBL JAM BOX firmware), then Connect. H = hide these controls.</div>
+  <div class="msg" id="msg">Plug in the FM-1 (BBL JAM BOX firmware), then Connect (USB serial is faster: pick the FM-1's
+    port in the list). H = hide these controls.</div>
   <div class="stats" id="stats"></div>
 </main>
 <script>
@@ -131,6 +133,44 @@ async function connect() {
   $("go").textContent = "Reconnect";
 }
 $("go").onclick = connect;
+
+// the serial port (mirror.c: S start, M keep alive; raw records after 03 'B' 'J' 'B')
+let port = null, sync = 0, serAlive = null;
+const SYNC = [3, 0x42, 0x4A, 0x42];
+async function serial() {
+  if (!navigator.serial) return say("This browser has no Web Serial: use Chrome or Edge on a computer.", true);
+  try {
+    if (port) { try { await port.close(); } catch {} }
+    port = await navigator.serial.requestPort();
+    await port.open({ baudRate: 115200, bufferSize: 65536 });
+    try { await port.setSignals({ dataTerminalReady: true }); } catch {}
+  } catch (e) { return say("Serial: " + e.message, true); }
+  const w = port.writable.getWriter(), enc = (c) => new TextEncoder().encode(c);
+  sync = 0; st.t = 0;
+  await w.write(enc("S"));
+  clearInterval(serAlive);
+  serAlive = setInterval(() => w.write(enc("M")).catch(() => {}), 1000);
+  say("Connected over USB serial.");
+  $("ser").textContent = "Reconnect (USB serial)";
+  const rd = port.readable.getReader();
+  try {
+    for (;;) {
+      const { value, done } = await rd.read();
+      if (done) break;
+      bytes += value.length; msgs++;
+      for (const b of value) {
+        if (sync < 4) {                                 // (an old stream's bytes until the start)
+          sync = b === SYNC[sync] ? sync + 1 : b === SYNC[0] ? 1 : 0;
+          if (sync === 4) { px.fill(PAL[0]); dirty = true; }
+          continue;
+        }
+        feed(b);
+      }
+    }
+  } catch (e) { say("Serial stopped: " + e.message + ". Reconnect.", true); }
+  clearInterval(serAlive);
+}
+$("ser").onclick = serial;
 addEventListener("beforeunload", () => send(frame(CMD, [0])));
 
 // audio: the FM-1's USB audio as an input, played here (for OBS, adding the FM-1 as an audio input is better)
@@ -167,7 +207,7 @@ let t0 = performance.now(), draws = 0;
   if (pend && t - pendT > 300) { dirty = true; pend = false; }   // (no 04 coming: a screen outside the UI's)
   if (dirty) { ctx.putImageData(img, 0, 0); dirty = false; draws++; }
   if (t - t0 >= 1000) {
-    $("stats").textContent = `${(bytes / 1024).toFixed(1)} KB/s  ${msgs} msgs/s  ${draws} updates/s  gaps ${gaps}  bad ${lost}`;
+    $("stats").textContent = `${(bytes / 1024).toFixed(1)} KB/s  ${msgs} reads/s  ${draws} updates/s  gaps ${gaps}  bad ${lost}`;
     bytes = msgs = draws = 0; t0 = t;
   }
   requestAnimationFrame(loop);

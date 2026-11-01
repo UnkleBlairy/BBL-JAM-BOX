@@ -115,11 +115,15 @@
 #endif
 #endif
 #if FELUCCA_CDC
-/* the serial port is still presented (the USB layout stays as the installer knows it); what comes in is dropped */
+/* the serial port is still presented (the USB layout stays as the installer knows it); what comes in is dropped,
+ * but for the screen mirror's requests (mirror.c mir_serial: S start, M keep alive, m stop) */
 static void cdc_task(void)
 {
     while (ci_r != ci_w) {
         RING_PUBLISH();
+#if FELUCCA_MIRROR
+        mir_serial(cdc_in[ci_r % CI_N]);
+#endif
         ci_r++;
     }
 }

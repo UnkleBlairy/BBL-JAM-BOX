@@ -308,7 +308,8 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
 
 - Screen mirror (test): firmware/src/mirror.c streams every lcd_fill / lcd_blit as RGB 3-3-2 run-length over USB
   SysEx (cmd 0x70, only while a page keeps asking; ~6-9 KB a full page; 04 = a whole picture, the page shows only those; behind by > 3 KB at a picture's end = the
-  next draws left out, then one fresh full redraw, so the lag stays short); web/mirror.html (site: webapp/mirror/) draws
+  next draws left out, then one fresh full redraw, so the lag stays short); over the USB serial port (CDC, Web Serial; S start, M keep alive; Windows' MIDI
+  only manages ~20 KB/s) or SysEx as the fallback; web/mirror.html (site: webapp/mirror/) draws
   it pixelated (the 8-bit look is wanted) and can play the FM-1's USB audio. H hides the controls (OBS).
 
 ## Workflow (after every change)
