@@ -110,10 +110,11 @@ static uint32_t trk_nvoice(const track_t *t)
     return c && c < NVOICE ? c : NVOICE;
 }
 
-/* the part's voice mode: P_VOICE, POLY for an engine of hits (engine_t.oneshot: DRUM) */
+/* the part's voice mode: P_VOICE, POLY for an engine of hits (engine_t.oneshot: DRUM), MONO for MONO (every press
+ * retriggers the amp and filter envelopes, from where they are) */
 static uint32_t trk_vmode(const track_t *t)
 {
-    return ENGINES[t->engine]->oneshot ? V_POLY : (uint32_t)t->p[P_VOICE];
+    return ENGINES[t->engine]->oneshot ? V_POLY : t->engine == ENGI_MONO ? V_MONO : (uint32_t)t->p[P_VOICE];
 }
 
 /* ------------------------------------------------- the shared voice budget --- */

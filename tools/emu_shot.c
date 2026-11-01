@@ -17,6 +17,7 @@ int main(int argc,char**argv){
     else if(!strncmp(s,"both:",5)) { int a2,b2; sscanf(s+5,"%d,%d",&a2,&b2); web_buttons(1u<<a2); run(120); web_buttons((1u<<a2)|(1u<<b2)); run(100); web_buttons(1u<<a2); run(80); web_buttons(0); run(150);}
     else if(!strcmp(s,"rel")) { web_buttons(0); run(150);} 
     else if(!strncmp(s,"key:",4)) { web_keys(1u<<atoi(s+4)); run(80); web_keys(0); run(100);} 
+    else if(!strncmp(s,"keym:",5)) { web_keys((unsigned)strtoul(s+5,0,0)); run(10);}   /* the key bits as they are (several held) */
     else if(!strncmp(s,"keyd:",5)) { web_keys(1u<<atoi(s+5)); run(100);} 
     else if(!strcmp(s,"keyu")) { web_keys(0); run(100);} 
     else if(!strncmp(s,"wavx:",5)) { char fn[256]; int r,k; sscanf(s+5,"%255[^,],%d,%d",fn,&r,&k); FILE *f=fopen(fn,"wb"); for(int b=0;b<689;b++){ if(b%10==0 && k){ web_enc(r,k<0?-1:1); k+=k<0?1:-1; } run(0); web_render(128); fwrite(out_l,4,128,f);} fclose(f);}   /* 2 s, the encoder turned a step every 10 blocks */

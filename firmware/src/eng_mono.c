@@ -9,7 +9,7 @@
  *          1x .. 8x the note), SAT (P_LN0)  drive into a soft clip before the filter
  *   FILTER: its own (mono_filter): CUT RES, TYPE (P_LN1 on the FILTER page, params.c page_id_an) a blend LP .. BP .. HP,
  *          the filter envelope's AMT; RES from the top quarter rings, squeals and whistles on its own (MS-20-like)
- * Band-limited (polyBLEP) saws, pulses, sync. One voice (.poly 1; the machine is LEGATO).
+ * Band-limited (polyBLEP) saws, pulses, sync. One voice (.poly 1); every press retriggers both envelopes (V_MONO).
  * The voice's state: ph[0] osc 1, ph[1] osc 2, ph[2] the sub; s[0..1] the filter, s[2..3] its envelope (as SAMPLER's),
  * s[4..5] osc 1 / 2's sync partner, s[6..7] their sync jump (the sample before the reset to the one after it). */
 #define MONO_NW 10u
@@ -129,7 +129,7 @@ static inline int32_t mono_osc(uint32_t w, uint32_t *ph, uint32_t inc, uint32_t 
 static void mono_note_on(track_t *t, voice_t *v)
 {
     const int16_t *p = t->p;
-    v->s[2] = p[P_FE_ATK] ? 0 : 1 << 24;               /* the filter envelope (as DIGITAL's) */
+    v->s[2] = !p[P_FE_ATK] ? 1 << 24 : v->env ? v->s[2] : 0;   /* the filter envelope: a retrigger's from where it is */
     v->s[3] = p[P_FE_ATK] ? 1 : 2;
 }
 
@@ -213,5 +213,5 @@ static const engine_t ENG_MONO = {
     .render = mono_render,
     .knob = {P_E0, P_E1, P_E2, P_E3},
     .poly = 1,
-    .keep = 0x33u,                                      /* (a retrigger: the filter and the sync partners go on) */
+    .keep = 0xF3u,                                      /* (a retrigger: the filter and the sync partners go on) */
 };
