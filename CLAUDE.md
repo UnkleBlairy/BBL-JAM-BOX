@@ -367,8 +367,14 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   sent, the table last; an Upload cut short resumes. The page keeps its list in
   the browser. The panel itself is web/smpui.js (emulator and page share it).
 - Machine names and order (engines.c MACHINES, by type, 808 then FM): 8BD FMBD
-  8SD FMSD 8TOM 8RIM 8CLP 8COW 8HH FMHH 8CYM FMCYM FMPRC FMSYN SMPL.
+  8SD FMSD 8TOM 8RIM 8CLP 8COW 8HH FMHH 8CYM FMCYM FMPRC FMSYN MONO SMPL.
 - 808s start with AGE 0 (clean).
+- MONO (eng_mono.c, ENGI_MONO 4, sound byte 4, SYNTH pool): a mono analog-style voice (Minimoog-ish, not a copy),
+  legato. OSC 1: WAVE (pairs SW+SQ SW+TR SW+SN SQ+TR SQ+SN TR+SN, then SW+SW SQ+SQ TR+TR SN+SN), MIX (osc 1..2),
+  FINE (osc 2 +-1 semitone, centre = in tune), SEMI (osc 2 0..+24). OSC 2: SUB (-1 -2 -3 octaves, a square),
+  SUBVL, PW (both oscs: SQR pulse width, TRI wavefold, SIN bits down to a square, SAW hard sync to a hidden
+  oscillator 1x..8x: PW is its pitch, no extra knob), SAT (P_LN0, drive before the filter). The filter / filter
+  env / ENV are DIGITAL's pages (filter to become its own swappable machine later). One preset: a plain saw.
 - REC armed: a red "REC" pill left of the BPM; playing, it breathes twice a bar.
   It records EVERY track you play (seq.c rec_armed), so finger drumming on the
   black track keys in SEQ mode records each hit on its own track.

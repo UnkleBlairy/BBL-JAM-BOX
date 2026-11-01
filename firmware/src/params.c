@@ -271,7 +271,7 @@ static const param_desc_t AD_NONE = {"-", F_INT, 0, 127, 0, 0, 0};
 static int ln_on(const track_t *t, uint32_t id)
 {
     uint32_t e = eng_idx(t->eng_req);
-    return id == P_LN0 ? e == ENGI_ANALOG || e == ENGI_SAMPLER : id == P_LN1 ? e == ENGI_ANALOG : id == P_LN2 ? e == ENGI_SAMPLER : 1;
+    return id == P_LN0 ? e == ENGI_ANALOG || e == ENGI_SAMPLER || e == ENGI_MONO : id == P_LN1 ? e == ENGI_ANALOG : id == P_LN2 ? e == ENGI_SAMPLER : 1;
 }
 static const param_desc_t *track_desc(const track_t *t, uint32_t id)
 {
@@ -284,6 +284,8 @@ static const param_desc_t *track_desc(const track_t *t, uint32_t id)
     }
     if (FELUCCA_SIMPLE && id >= P_LN0 && id <= P_LN2 && !ln_on(t, id))
         return &AD_NONE;                              /* (LEVEL: ANALOG's and SAMPLER's, AGE ANALOG's, GATE SAMPLER's) */
+    if (FELUCCA_SIMPLE && id == P_LN0 && eng_idx(t->eng_req) == ENGI_MONO)
+        return &MONO_SAT;                             /* (MONO's SAT) */
     if (id >= P_IA && id <= P_IC)                     /* the INSERT's values as its TYPE names them */
         return ins_desc(t->p[P_ITYPE], id - P_IA);
     if (t->p[P_ESYNC] && (id == P_ATK || id == P_DEC || id == P_REL))   /* ENV SYNC: note values (1.5, #175) */

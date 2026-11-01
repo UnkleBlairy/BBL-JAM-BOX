@@ -5,6 +5,7 @@
 #include "eng_digital.c"        /* DIGITAL: four-operator FM */
 #include "eng_analog.c"         /* ANALOG: the 808 machines (docs/808lab.html) */
 #include "eng_sampler.c"        /* SAMPLER: the uploaded chunks (docs/samplelab.html) */
+#include "eng_mono.c"           /* MONO: one analog-style voice */
 #define ICON_MUTE GBI_MUTE        /* (ui_icons.h, Felucca's parameter icons, has these three names) */
 #define ICON_DELAY GBI_DELAY
 #define ICON_FADE GBI_FADE
@@ -25,7 +26,7 @@ static const uint16_t *const GB_ICONS[IC_COUNT] = {
     ICON_SMP_ONCE, ICON_SMP_LOOP, ICON_SMP_PING, ICON_SMP_REV};
 
 /* the stores hold engine numbers: DIGITAL is 1 (ENGI_DIGITAL), ANALOG 2 (ENGI_ANALOG), SAMPLER 3; 0 plays DIGITAL too */
-static const engine_t *const ENGINES[NENGINES] = {&ENG_DIGITAL, &ENG_DIGITAL, &ENG_ANALOG, &ENG_SAMPLER};
+static const engine_t *const ENGINES[NENGINES] = {&ENG_DIGITAL, &ENG_DIGITAL, &ENG_ANALOG, &ENG_SAMPLER, &ENG_MONO};
 
 /* a track's engine number as an index (a bad number: 0) */
 static inline uint32_t eng_idx(uint32_t e) { return e < NENGINES ? e : 0u; }
@@ -57,6 +58,7 @@ static const machine_t MACHINES[] = {   /* by type, 808 (8..) before FM (FM..); 
     {"FMCYM", ENGI_DIGITAL, 4, 1, 72, 12, IC_CYMBAL},
     {"FMPRC", ENGI_DIGITAL, 5, 1, 48, 13, IC_PERC},
     {"FMSYN", ENGI_DIGITAL, 0, 0, 48, 0, IC_SYN},
+    {"MONO", ENGI_MONO, 0, 0, 36, 0, IC_SAW},                          /* MONO: one voice, legato */
     {"SMPL", ENGI_SAMPLER, 0, 2, SMP_NOTE, 0, IC_SAMPLE},               /* SAMPLER: one voice, the whole ENV */
 };
 #define NMACH (sizeof MACHINES / sizeof MACHINES[0])
@@ -80,7 +82,7 @@ static uint32_t gb_pool(uint32_t mach)
     case IC_KICK: return GB_KICK;
     case IC_SNARE: case IC_CLAP: return GB_SNARE;
     case IC_HATS: case IC_CYMBAL: return GB_CYMBAL;
-    case IC_SYN: return GB_SYNTH;
+    case IC_SYN: case IC_SAW: return GB_SYNTH;
     case IC_SAMPLE: return GB_SAMPLE;
     default: return GB_PERC;
     }

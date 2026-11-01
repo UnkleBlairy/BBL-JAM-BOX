@@ -1347,6 +1347,9 @@ static void machine_defaults_p(const track_t *t, int16_t *p)   /* (into p: t's v
         p[P_LN0] = 100;
         p[P_LN2] = TP[P_LN2].def;
         p[P_E5] = (int16_t)(trk_index(t) % SMP_MAX);
+    } else if (m->engine == ENGI_MONO) {              /* MONO: SAT off, legato */
+        p[P_LN0] = 0;
+        p[P_VOICE] = V_LEGATO;
     }
 }
 static void machine_defaults(track_t *t) { machine_defaults_p(t, t->p); }

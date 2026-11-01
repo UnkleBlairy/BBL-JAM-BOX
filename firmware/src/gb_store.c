@@ -139,7 +139,7 @@ static void gb_pool_move(void)
         for (j = 0; j < np; j++)
             in[j] = (int16_t)(old[i].p[j] + 64);
         params_by_count(out, in, np, def);
-        eng = old[i].used == 2u ? ENGI_ANALOG : old[i].used == 3u ? ENGI_SAMPLER : ENGI_DIGITAL;
+        eng = old[i].used == 2u ? ENGI_ANALOG : old[i].used == 3u ? ENGI_SAMPLER : old[i].used == 4u ? ENGI_MONO : ENGI_DIGITAL;
         for (m = 0; m < NMACH && !(MACHINES[m].engine == eng && MACHINES[m].sub == (uint32_t)out[P_E7]); m++)
             ;
         pl = gb_pool(m < NMACH ? m : 0u);
@@ -217,7 +217,7 @@ static void gb_store_poll(void)
 static void gb_snd_take(gb_snd_t *s, const track_t *t)
 {
     uint32_t i;
-    s->used = eng_idx(t->eng_req) == ENGI_ANALOG ? 2u : eng_idx(t->eng_req) == ENGI_SAMPLER ? 3u : 1u;
+    s->used = eng_idx(t->eng_req) == ENGI_ANALOG ? 2u : eng_idx(t->eng_req) == ENGI_SAMPLER ? 3u : eng_idx(t->eng_req) == ENGI_MONO ? 4u : 1u;
     s->np = (uint8_t)P_COUNT;
     for (i = 0; i < P_COUNT; i++)
         s->p[i] = (int8_t)(clamp(motion_base_value(t, i), -64, 127) - 64);   /* (the sound's own, not a lock playing) */
@@ -234,7 +234,7 @@ static void gb_snd_put(const gb_snd_t *s, track_t *t)
     params_by_count(out, in, np, def);
     motion_restore(t);                                   /* (the locks playing put back first: motion_rebase) */
     fm1_irq_off();                                       /* (the ISR sees the old engine or the new one, never a mix) */
-    t->eng_req = s->used == 2u ? ENGI_ANALOG : s->used == 3u ? ENGI_SAMPLER : ENGI_DIGITAL;   /* its engine first: the values fit its knobs */
+    t->eng_req = s->used == 2u ? ENGI_ANALOG : s->used == 3u ? ENGI_SAMPLER : s->used == 4u ? ENGI_MONO : ENGI_DIGITAL;   /* its engine first: the values fit its knobs */
     t->p[P_E7] = out[P_E7];
     for (i = 0; i < P_COUNT; i++)
         if (gb_sound_id(i))
