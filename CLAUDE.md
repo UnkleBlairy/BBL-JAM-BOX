@@ -374,10 +374,6 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   sit with the FM drums (the prototype evened them with a compressor).
 - The 808 machine pill is drawn filled (inverted) so you can tell it from FM.
 - CLOCK page 4th dial = CPU % (audio load, read-only; 0 in the emulator).
-- The FM-1's second core is always on in this build (main.c; no MENU to switch it): fx.c mix_block hands it some
-  tracks each block. A part's render must only write its own track's state (per-track arrays, never one shared
-  static), or the two cores clash. If it stops answering: "2ND CORE MISREAD: OFF", one core till the next power-on;
-  a crash in a boot's first 30 s = one core the next boot (bootguard).
 - SAMPLER: one machine "SAMPLE" (PRESETS, after the 808s), one voice a track (a
   new hit takes over, the old sound fades in 4 ms; MACHINES drum = 2: one voice,
   full ENV). OSC 1: PITCH STRCH START LEN, OSC 2: MODE (icons ONCE LOOP PING
