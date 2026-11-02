@@ -550,13 +550,10 @@ static const page_t PAGES[] = {
     {"MIX 3-4", FAM_TRK, SC_TRK, GR_TRK, {2, MIX_PAN | 2, 3, MIX_PAN | 3}},
     {"MIX 5-6", FAM_TRK, SC_TRK, GR_TRK, {4, MIX_PAN | 4, 5, MIX_PAN | 5}},
     {"CLOCK", FAM_TRK, SC_GLOBAL, GR_NONE, {G_BPM, G_SWING, G_CLOCK, 0xFF}},
-    /* ACID mode's (SEQ held + OCT+; ui.sgrid 4, seq.c acid; the SEQ page hidden then; black keys 8..11 pick them):
-     * the stage picked (a white key): PITCH PULSE GATE OCT, SLIDE SKIP ACCNT; the track's ACID: LEN DIR SPD GATE,
-     * PLAY SLIDE SCALE ROOT (ui_input.c acid_knob, ui_gb.c's dials) */
+    /* ACID's (a track playing its ACID: in place of the SEQ page; black keys 8, 9 pick them): the stage picked (a white
+     * key): PITCH PULSE GATE OCT; the track's: LEN DIR SPD GATE (ui_input.c acid_knob, ui_gb.c's dials) */
     {"STAGE", FAM_SEQ, SC_TRACK, GR_ACID, {0xFF, 0xFF, 0xFF, 0xFF}},
-    {"STAGE 2", FAM_SEQ, SC_TRACK, GR_ACID, {0xFF, 0xFF, 0xFF, 0xFF}},
     {"ACID", FAM_SEQ, SC_TRACK, GR_ACID, {0xFF, 0xFF, 0xFF, 0xFF}},
-    {"ACID 2", FAM_SEQ, SC_TRACK, GR_ACID, {0xFF, 0xFF, 0xFF, 0xFF}},
 };
 #define NPAGES (sizeof(PAGES) / sizeof(PAGES[0]))
 static uint8_t mod_ui_slot;      /* the MOD page: the matrix slot (0..3) KNOB 2..4 edit */

@@ -56,6 +56,7 @@ static uint8_t gb_have;
 
 static int name_on(void);
 static uint64_t gbs_held(void);                    /* (ui_input.c) the steps held */
+static int acid_pop(void);                         /* (ui_input.c) a stage key held: its SLIDE pop-up */
 static uint32_t gbsv_leds(void);                   /* (ui_input.c) the SAVE screen's keys */
 static int gbs_used(uint32_t mach, uint32_t slot); /* (gb_store.c) the sounds and kits */
 static int gbk_used(uint32_t k);
@@ -260,6 +261,12 @@ static void gb_ban_fill(gb_view_t *v)
         ban_put(v, "CLEAR ALL?", "PRESS OCT+");
     } else if (v->hint == 3u) {                   /* an empty step held, a trig copied */
         ban_put(v, "PASTE TRIG", "PRESS SAVE");
+    } else if (acid_kon() && acid_pop()) {        /* ACID: a stage key held, its SLIDE */
+        const acid_st_t *st = &acid_of(song.sel)->st[acid_sel[song.sel % NTRK] % ACID_N];
+        char l2[12];
+        str_cpy(l2, "TIME ", sizeof l2);
+        fmt_int(l2 + 5, st->stime ? st->stime : 40);
+        ban_put(v, st->flags & AF_SLIDE ? "SLIDE ON" : "SLIDE OFF", l2);
     } else if (v->hint == 1u) {                   /* SEQ held */
         ban_put(v, "WHITE KEY", "= LOCKS");
         ban_put(v, "WIGGLE KNOB", "= PARAM");
@@ -479,30 +486,38 @@ static void gb_fill(gb_view_t *v)
         v->ratio[3] = (int16_t)((tr < 0 ? 0 : tr) * 1000 / (int32_t)GB_NTC);
         return;
     }
-    if (pg->graph == GR_ACID) {                   /* ACID (seq.c acid): the stage picked's, the track's (ui.c acid_pg) */
-        static const char *const LB[16] = {"PITCH", "PULSE", "GATE", "OCT", "SLIDE", "SKIP", "ACCNT", "",
-                                           "LEN", "DIR", "SPD", "GATE", "PLAY", "SLIDE", "SCALE", "ROOT"};
-        static const char *const GN[AG_N] = {"MUTE", "FIRST", "EVERY", "HOLD"};
+    if (pg->graph == GR_ACID) {                   /* ACID (seq.c acid): the stage picked's, the track's (ui.c acid_pg); */
+        static const char *const LB[8] = {"PITCH", "PULSE", "GATE", "OCT", "LEN", "DIR", "SPD", "GATE"};   /* a stage */
+        static const char *const GN[AG_N] = {"MUTE", "FIRST", "EVERY", "HOLD"};          /* .. key held: SLIDE TIME */
         static const char *const DN[AD_N] = {"FWD", "REV", "PING", "RAND", "BRWN"};
         static const char *const SPN[5] = {"x1/4", "x1/2", "x1", "x2", "x4"};
         const acid_t *a = acid_of(song.sel);
-        uint32_t sp = acid_sel[song.sel % NTRK] % ACID_N, pn = acid_pg(pg), x;
+        uint32_t sp = acid_sel[song.sel % NTRK] % ACID_N, pn = acid_pg(pg), x, pop = acid_pop();
         const acid_st_t *st = &a->st[sp];
         char nb[4];
-        if (pn < 2u) {                            /* "STAGE 3" */
+        if (pn == 0u || pop) {                    /* "STAGE 3" */
             fmt_int(nb, (int32_t)sp + 1);
             str_cpy(v->title, "STAGE ", sizeof v->title);
             str_cpy(v->title + 6, nb, sizeof v->title - 6u);
         }
+        if (pop) {
+            x = st->stime ? st->stime : 40u;
+            str_cpy(v->lab[0], "SLIDE", sizeof v->lab[0]);
+            str_cpy(v->val[0], st->flags & AF_SLIDE ? "ON" : "OFF", sizeof v->val[0]);
+            v->ratio[0] = (int16_t)(st->flags & AF_SLIDE ? 1000 : 0);
+            str_cpy(v->lab[1], "TIME", sizeof v->lab[1]);
+            fmt_int(v->val[1], (int32_t)x);
+            v->ratio[1] = (int16_t)(x * 1000u / 127u);
+            v->mask = 3u;
+            return;
+        }
         for (k = 0; k < 4u; k++) {
             int32_t r = 0;
             char *o = v->val[k];
-            if (!LB[pn * 4u + k][0])
-                continue;
             str_cpy(v->lab[k], LB[pn * 4u + k], sizeof v->lab[k]);
             v->mask |= (uint8_t)(1u << k);
             switch (pn * 4u + k) {
-            case 0:                               /* the note it plays (the scale, ROOT, OCT): "D#4" */
+            case 0:                               /* the note it plays: "D#4" */
                 x = acid_note(a, st);
                 str_cpy(o, N_NOTE[x % 12u], sizeof v->val[k]);
                 fmt_int(nb, (int32_t)x / 12 - 1);
@@ -517,27 +532,18 @@ static void gb_fill(gb_view_t *v)
                 fmt_int(o + (st->oct > 3u), (int32_t)st->oct - 3);
                 r = st->oct * 1000 / 6;
                 break;
-            case 4: case 5: case 6:
-                x = (st->flags & (1u << k)) != 0u;   /* (AF_SLIDE 1, AF_SKIP 2, AF_ACC 4: bit k) */
-                str_cpy(o, x ? "ON" : "OFF", sizeof v->val[k]);
-                r = (int32_t)x * 1000;
-                break;
-            case 8: fmt_int(o, a->stages); r = (a->stages - 1) * 1000 / 15; break;
-            case 9: str_cpy(o, DN[a->dir % AD_N], sizeof v->val[k]); r = a->dir % AD_N * 250; break;
-            case 10:
+            case 4: fmt_int(o, a->stages); r = (a->stages - 1) * 1000 / 15; break;
+            case 5: str_cpy(o, DN[a->dir % AD_N], sizeof v->val[k]); r = a->dir % AD_N * 250; break;
+            case 6:
                 x = gb_speed(TSEL->p[P_SDIV]);
                 str_cpy(o, SPN[x], sizeof v->val[k]);
                 r = (int32_t)x * 250;
                 break;
-            case 11:
+            default:
                 fmt_int(o, a->gate * 100 / 127);
                 str_cpy(o + str_len(o), "%", sizeof v->val[k] - str_len(o));
                 r = a->gate * 1000 / 127;
                 break;
-            case 12: str_cpy(o, a->play ? "ON" : "OFF", sizeof v->val[k]); r = a->play ? 1000 : 0; break;
-            case 13: fmt_int(o, a->slide); r = a->slide * 1000 / 127; break;
-            case 14: str_cpy(o, N_ASCALE[a->scale % ACID_NSC], sizeof v->val[k]); r = a->scale % ACID_NSC * 1000 / 7; break;
-            default: str_cpy(o, N_NOTE[a->root % 12u], sizeof v->val[k]); r = a->root % 12u * 1000 / 11; break;
             }
             v->ratio[k] = (int16_t)r;
         }

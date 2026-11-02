@@ -380,13 +380,13 @@ static int page_visible(uint32_t i)
 {
     if (i >= NPAGES || fxt_x(&PAGES[i]))                /* (the FX track's pages, a track's) */
         return 0;
-    if (FELUCCA_SIMPLE && PAGES[i].fam == FAM_SEQ)      /* (ACID mode: its pages, not SEQ's; the FX track: SEQ's) */
-        return (PAGES[i].graph == GR_ACID) == (ui.sgrid == 4u && !fxl_sel);
+    if (FELUCCA_SIMPLE && PAGES[i].fam == FAM_SEQ)      /* (a track playing its ACID: its pages, not SEQ's; the FX */
+        return (PAGES[i].graph == GR_ACID) == (!fxl_sel && acid_on(&trk[song.sel % NTRK]));   /* track: SEQ's) */
     return PAGES[i].scope != SC_ENGINE || page_id_an(&PAGES[i], PAGES[i].id[0]) != 0xFFu;
 }                                                     /* (SIMPLE: AGE only on an ANALOG track) */
-static uint32_t acid_pg(const page_t *pg)              /* an ACID page's place: 0 STAGE, 1 STAGE 2, 2 ACID, 3 ACID 2 */
+static uint32_t acid_pg(const page_t *pg)              /* an ACID page's place: 0 STAGE, 1 ACID */
 {
-    return (uint32_t)(pg->title[0] == 'A') * 2u + (uint32_t)(pg->title[pg->title[0] == 'A' ? 4 : 5] == ' ');
+    return (uint32_t)(pg->title[0] == 'A');
 }
 
 static uint32_t page_first(uint32_t fam)              /* (the first one shown; none: the first, the FX track's X) */
@@ -589,7 +589,8 @@ static int kit_on(void)
 {
     return FELUCCA_SIMPLE && ui.sgrid == 3u && !ui.confirm && !pm_page() && !pm_down() && !gbsv_keys_on();
 }
-/* SIMPLE, ACID keys on (SEQ held + OCT+): the white keys pick the stages, black 1..6 the track, 8..11 the pages */
+/* SIMPLE, ACID keys on (SEQ held + OCT+, OCT+ tapped in SEQ mode): the white keys pick the stages, black 1..6 the
+ * track, 8 9 the pages */
 static int acid_kon(void)
 {
     return FELUCCA_SIMPLE && ui.sgrid == 4u && !fxl_sel && !ui.confirm && !pm_page() && !pm_down() && !gbsv_keys_on();

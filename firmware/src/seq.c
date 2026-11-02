@@ -798,26 +798,25 @@ static __attribute__((noinline)) int par_key(uint32_t k, track_t *t)   /* 1: the
 /* SIMPLE, ACID (ui.sgrid 4, song.grid 8; ui_input.c acid_*): a Metropolis-style stage sequencer a track plays instead
  * of its steps (its steps stay, silent, and keep their place). Up to 16 stages (the white keys), each PULSES long (1..8
  * pulses of the track's 1/16 at its SPD, swung as its steps are), its note PITCH (C .. C an octave up, middle C + OCT
- * octaves, onto the SCALE, + ROOT) played by its GATE: MUTE none, FIRST on the first pulse, EVERY on each pulse, HOLD
- * one note over all of them. SLIDE: the note before it holds and glides into it (the ACID page's SLIDE time), SKIP:
- * left out, ACCNT: louder, the filter kicked. DIR FWD REV PING RAND BRWN. Kept in the last jam, not in kits */
+ * octaves) played by its GATE: MUTE none, FIRST on the first pulse, EVERY on each pulse, HOLD one note over all of
+ * them. SLIDE (a stage key held: its pop-up, ui_input.c acid_pop): the note before it holds and glides into it, over
+ * the stage's own TIME. DIR FWD REV PING RAND BRWN. Kept in the last jam, not in kits. (SKIP, ACCENT, SCALE, ROOT: in
+ * the data from the first try, nothing sets them now; a jam's are cleared as it loads, gb_store.c) */
 #define ACID_N 16u
 enum { AG_MUTE, AG_FIRST, AG_EVERY, AG_HOLD, AG_N };
 enum { AD_FWD, AD_REV, AD_PING, AD_RAND, AD_BRWN, AD_N };
 #define AF_SLIDE 1u
 #define AF_SKIP 2u
 #define AF_ACC 4u
-typedef struct { uint8_t pitch, oct, pulses, gate, flags, rsv[3]; } acid_st_t;   /* 0..12, 0..6 (-3..+3), 1..8, AG_*, AF_* */
+typedef struct { uint8_t pitch, oct, pulses, gate, flags, stime, rsv[2]; } acid_st_t;   /* 0..12, 0..6 (-3..+3), 1..8,
+                                                         * AG_*, AF_*, the slide's time 1..127 */
 typedef struct {
-    uint8_t play, stages, dir, slide, gate, scale, root, rsv;   /* slide 0..127 its time, gate 1..127 of a pulse */
+    uint8_t play, stages, dir, slide, gate, scale, root, rsv;   /* gate 1..127 of a pulse (slide scale root: unused) */
     acid_st_t st[ACID_N];
 } acid_t;
 static acid_t acid[NTRK];
 static struct { uint32_t pos; uint16_t cnt; uint8_t go, st, pul, nx, back; } acid_rt[NTRK];   /* go: 1 start, 2 running */
 static uint8_t acid_sel[NTRK];                         /* the stage the pages show (ui_input.c) */
-#define ACID_NSC 8u
-static const char *const N_ASCALE[ACID_NSC] = {"CHROM", "MAJOR", "MINOR", "DORIA", "PHRYG", "MIXO", "PENTA", "BLUES"};
-static const uint16_t ACID_SC[ACID_NSC] = {0xFFFu, 0xAB5u, 0x5ADu, 0x6ADu, 0x5ABu, 0x6B5u, 0x4A9u, 0x4E9u};   /* bit s: in */
 static void acid_reset(acid_t *a)
 {
     uint32_t i;
@@ -829,6 +828,7 @@ static void acid_reset(acid_t *a)
         a->st[i].oct = 3;
         a->st[i].pulses = 1;
         a->st[i].gate = AG_FIRST;
+        a->st[i].stime = 40;
     }
 }
 static acid_t *acid_of(uint32_t k)                      /* (never set yet: the defaults) */
@@ -839,13 +839,11 @@ static acid_t *acid_of(uint32_t k)                      /* (never set yet: the d
     return a;
 }
 static int acid_on(const track_t *t) { return FELUCCA_SIMPLE && acid[(uint32_t)(t - trk) % NTRK].play != 0u; }
-/* a stage's note: PITCH snapped down onto the scale, + ROOT, middle C + OCT */
+/* a stage's note: middle C + PITCH + OCT octaves */
 static uint32_t acid_note(const acid_t *a, const acid_st_t *s)
 {
-    int32_t p = s->pitch > 12u ? 12 : s->pitch, sc = ACID_SC[a->scale % ACID_NSC];
-    while (p > 0 && p < 12 && !((sc >> p) & 1))
-        p--;
-    return (uint32_t)clamp(60 + p + (int32_t)(a->root % 12u) + ((int32_t)s->oct - 3) * 12, 0, 127);
+    (void)a;
+    return (uint32_t)clamp(60 + (s->pitch > 12u ? 12 : (int32_t)s->pitch) + ((int32_t)s->oct - 3) * 12, 0, 127);
 }
 /* the stage after stage x (DIR; SKIP stages left out: all of them, x again) */
 static uint32_t acid_next(const acid_t *a, uint32_t k, uint32_t x)
@@ -1476,7 +1474,7 @@ static void acid_pulse(track_t *t, acid_t *a, uint32_t k, uint32_t pl)
     slide_in = (s->flags & AF_SLIDE) && first && t->seq_n && t->seq_hold;
     if (!slide_in)
         seq_release(t);
-    trk_slide[k] = a->slide;
+    trk_slide[k] = s->stime ? s->stime : 40u;
     t->slide_glide = (uint8_t)(slide_in ? 2u : 0u);    /* (2: an ACID slide, legato: voice.c trk_note_on) */
     seq_note_on(t, note, vel);
     for (i = 0; i < t->seq_n; i++)                      /* (sliding: the note before goes) */

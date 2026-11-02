@@ -700,6 +700,13 @@ static int jam_apply(uint8_t *in, uint32_t len)
         sz = jam_r16(&r);
         jam_r(&r, sz == sizeof acid ? (void *)acid : 0, sz);
     }
+    for (k = 0; k < NTRK; k++) {                         /* (the first try's SKIP ACCENT SCALE ROOT: gone) */
+        acid[k].scale = acid[k].root = 0;
+        for (i = 0; i < ACID_N; i++) {
+            acid[k].st[i].flags &= AF_SLIDE;
+            acid[k].st[i].stime = acid[k].st[i].stime ? acid[k].st[i].stime : 40u;
+        }
+    }
     for (k = 0; k < NTRK; k++)
         motion_rebase(&trk[k]);
     song.sel = (uint8_t)(sel < NTRK ? sel : 0u);

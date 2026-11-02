@@ -604,6 +604,7 @@ static uint32_t trk_keys(int playing);
 static uint32_t par_leds(void);
 static uint32_t kit_leds(void);
 static uint32_t acid_leds(uint32_t *br);
+static void acid_follow(void);
 /* MENU > ANIM IDLE (1.2, Discussion #135): after IDLE_LEDS_MS without panel input (ui.c scrn.idle: a button or key
  * pressed or held, a knob turned; what SCREEN OFF counts) the LEDs play the idle animation (hal/fm1_led_anim.h
  * fm1_idle_level: a soft light drifting over the keys and back, the buttons breathing with it; the scan draws it,
@@ -1573,8 +1574,9 @@ static uint32_t kit_leds(void)
     return m;
 }
 
-/* SIMPLE, ACID (seq.c acid; SEQ held + OCT+): a white key picks its stage (its page: STAGE, or STAGE 2 shown already
- * stays), black 1..6 the track, black 8..11 the pages STAGE, STAGE 2, ACID, ACID 2 */
+/* SIMPLE, ACID (seq.c acid; SEQ held + OCT+, or OCT+ tapped in SEQ mode): a white key picks its stage (the STAGE
+ * page; held HINT_MS: its SLIDE pop-up, acid_pop), black 1..6 the track, black 8 9 the pages STAGE, ACID */
+static uint32_t acid_t0;                                 /* a stage key went down (fm1_ms | 1; 0 none held) */
 static void acid_keys(uint32_t pressed)
 {
     uint32_t k;
@@ -1585,11 +1587,12 @@ static void acid_keys(uint32_t pressed)
         if (!key_black(k)) {
             if (p < ACID_N) {
                 acid_sel[song.sel % NTRK] = (uint8_t)p;
-                if (ui.home || cur_page()->graph != GR_ACID || acid_pg(cur_page()) >= 2u)
+                acid_t0 = fm1_ms | 1u;
+                if (ui.home || cur_page()->graph != GR_ACID || acid_pg(cur_page()) != 0u)
                     acid_page(0);
                 ui.force = 1;
             }
-        } else if (p >= GBS_PG && p < GBS_PG + 4u) {
+        } else if (p >= GBS_PG && p < GBS_PG + 2u) {
             acid_page(p - GBS_PG);
         } else if (p < NTRK && !kb_octup) {
             track_select(p);
@@ -1617,13 +1620,13 @@ static uint32_t acid_leds(uint32_t *br)
     for (k = 0; k < 27u; k++) {
         uint32_t p = key_place(k), on;
         if (!key_black(k)) {
-            on = p < a->stages && a->st[p].gate != AG_MUTE && !(a->st[p].flags & AF_SKIP);
+            on = p < a->stages && a->st[p].gate != AG_MUTE;
             on ^= (uint32_t)(p == ph);
             if (br && p == acid_sel[tk] && p != ph) {
                 *br |= 1u << k;
                 on = 0;
             }
-        } else if (p >= GBS_PG && p < GBS_PG + 4u) {
+        } else if (p >= GBS_PG && p < GBS_PG + 2u) {
             on = p - GBS_PG == pg;
         } else {
             on = p == song.sel;
@@ -1632,40 +1635,64 @@ static uint32_t acid_leds(uint32_t *br)
     }
     return m;
 }
-/* .. the knobs of its pages (ui.c acid_pg): STAGE  PITCH PULSE GATE OCT, STAGE 2  SLIDE SKIP ACCNT, ACID  LEN DIR SPD
- * GATE, ACID 2  PLAY SLIDE SCALE ROOT */
+/* .. a stage key held HINT_MS: its SLIDE pop-up (ui_gb.c), KNOB 1 SLIDE on / off, KNOB 2 its TIME */
+static int acid_pop(void)
+{
+    if (!acid_held())
+        acid_t0 = 0;
+    return acid_t0 && (int32_t)(fm1_ms - acid_t0) >= (int32_t)HINT_MS;
+}
+/* .. the knobs of its pages (ui.c acid_pg): STAGE  PITCH PULSE GATE OCT, ACID  LEN DIR SPD GATE */
 static void acid_knob(uint32_t slot, int32_t steps)
 {
     track_t *t = TSEL;
     acid_t *a = acid_of(song.sel);
     acid_st_t *s = &a->st[acid_sel[song.sel % NTRK] % ACID_N];
     int32_t d = steps > 0 ? 1 : -1;
-    switch (acid_pg(cur_page()) * 4u + slot) {
+    if (acid_pop()) {
+        if (slot == 0u)
+            s->flags = (uint8_t)(d > 0 ? s->flags | AF_SLIDE : s->flags & ~AF_SLIDE);
+        else if (slot == 1u)
+            s->stime = (uint8_t)clamp((int32_t)(s->stime ? s->stime : 40u) + accel(EN_K1 + slot, steps, 126), 1, 127);
+        else
+            return;
+    } else switch (acid_pg(cur_page()) * 4u + slot) {
     case 0: s->pitch = (uint8_t)clamp((int32_t)s->pitch + d, 0, 12); break;
     case 1: s->pulses = (uint8_t)clamp((int32_t)s->pulses + d, 1, 8); break;
     case 2: s->gate = (uint8_t)clamp((int32_t)s->gate + d, 0, AG_N - 1); break;
     case 3: s->oct = (uint8_t)clamp((int32_t)s->oct + d, 0, 6); break;
-    case 4: s->flags = (uint8_t)(d > 0 ? s->flags | AF_SLIDE : s->flags & ~AF_SLIDE); break;
-    case 5: s->flags = (uint8_t)(d > 0 ? s->flags | AF_SKIP : s->flags & ~AF_SKIP); break;
-    case 6: s->flags = (uint8_t)(d > 0 ? s->flags | AF_ACC : s->flags & ~AF_ACC); break;
-    case 8: a->stages = (uint8_t)clamp((int32_t)a->stages + d, 1, ACID_N); break;
-    case 9: a->dir = (uint8_t)clamp((int32_t)a->dir + d, 0, AD_N - 1); break;
-    case 10: {
+    case 4: a->stages = (uint8_t)clamp((int32_t)a->stages + d, 1, ACID_N); break;
+    case 5: a->dir = (uint8_t)clamp((int32_t)a->dir + d, 0, AD_N - 1); break;
+    case 6: {
         int16_t was = t->p[P_SDIV];
         t->p[P_SDIV] = GB_SPEED[clamp((int32_t)gb_speed(was) + d, 0, 4)];
         pm_record(t, &t->p[P_SDIV], was);
         break;
     }
-    case 11: a->gate = (uint8_t)clamp((int32_t)a->gate + accel(EN_K1 + slot, steps, 126), 1, 127); break;
-    case 12: a->play = (uint8_t)(d > 0); break;
-    case 13: a->slide = (uint8_t)clamp((int32_t)a->slide + accel(EN_K1 + slot, steps, 126), 1, 127); break;
-    case 14: a->scale = (uint8_t)clamp((int32_t)a->scale + d, 0, ACID_NSC - 1); break;
-    case 15: a->root = (uint8_t)clamp((int32_t)a->root + d, 0, 11); break;
+    case 7: a->gate = (uint8_t)clamp((int32_t)a->gate + accel(EN_K1 + slot, steps, 126), 1, 127); break;
     default: return;
     }
     ui.hot_col = (uint8_t)slot;
     ui.hot_t = 40;
     ui.force = 1;
+}
+/* .. SEQ mode and ACID mode are the selected track's: ACID when it plays its ACID (a track picked, OCT+ flipped) */
+static void acid_follow(void)
+{
+    uint32_t want;
+    if (fxl_sel || (ui.sgrid != 1u && ui.sgrid != 4u))
+        return;
+    want = acid_on(TSEL) ? 4u : 1u;
+    if (ui.sgrid != want) {
+        ui.sgrid = (uint8_t)want;
+        ui.force = 1;
+    }
+    if (!ui.home && cur_page()->fam == FAM_SEQ && !page_visible(ui.page)) {   /* (the SEQ page <-> the ACID page) */
+        if (want == 4u)
+            acid_page(1);
+        else
+            open_family(FAM_SEQ);
+    }
 }
 
 /* [EDIT] with the steps `held` held: their locks go */
@@ -1903,12 +1930,12 @@ static int page_tap(uint32_t b)
             ui.fam_last[FAM_SEQ] = 0;
             ui.home = 0;
             open_family(FAM_SEQ);
+            acid_follow();
         } else {
             t_last = fm1_ms | 1u;
             was = ui.sgrid;
-            ui.sgrid = (uint8_t)(ui.sgrid == 1u ? 0u : 1u);
-            if (!ui.home && !page_visible(ui.page))     /* (out of ACID on its page: the SEQ page) */
-                open_family(FAM_SEQ);
+            ui.sgrid = (uint8_t)(ui.sgrid == 1u || ui.sgrid == 4u ? 0u : 1u);   /* (SEQ: ACID when the track */
+            acid_follow();                              /* .. plays it) */
         }
         ui.force = 1;
         return 1;
@@ -2153,6 +2180,7 @@ static void ui_input(void)
                 ui.sgrid = 4;
                 acid_of(song.sel)->play = 1;
                 acid_page(0);
+                mt_used = 1;                            /* (its release: no flip back) */
                 break;
             }
             if (FELUCCA_SIMPLE && b == B_OCTUP && cla_st == 2u) {   /* CLEAR ALL? asked: OCT+ = yes */
@@ -2260,6 +2288,11 @@ static void ui_input(void)
         if (!dn && ou_dn && !ou_used && fm1_ms - ou_t0 < HINT_MS &&
             !ui.confirm && !sgrid_on() && !par_on() && !acid_kon())
             song.octave += song.octave < 3 ? 1 : 0;
+        else if (FELUCCA_SIMPLE && !dn && ou_dn && !ou_used && fm1_ms - ou_t0 < HINT_MS && !ui.confirm &&
+                 ((sgrid_on() && !fxl_sel) || acid_kon())) {   /* SEQ / ACID mode: OCT+ tapped = the other one */
+            acid_of(song.sel)->play = (uint8_t)!acid_kon();   /* (the track plays it; the steps, the stages stay) */
+            acid_follow();
+        }
         kb_octup = (uint8_t)dn;                         /* (seq.c: OCT+ held + a track key = mute) */
         if (mt_used || mom.n) {
             ou_used = 1;                               /* (a mute, a temporary change: not the octave up) */
@@ -2269,6 +2302,7 @@ static void ui_input(void)
         alt_mode = 0;                                   /* (SIMPLE: no second sets) */
     }
     par_poll();
+    acid_follow();
     song.grid = (uint8_t)keys_mode();                 /* (seq.c: the keys are the grid's) */
     if (song.grid != 7u)                               /* (out of KIT: the keys' locks sounding go back) */
         for (k = 0; k < NTRK; k++)
