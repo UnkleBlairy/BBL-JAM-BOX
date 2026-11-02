@@ -328,9 +328,10 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   1/16 at SPD, swung like the steps. SLIDE = the note before holds and glides in, legato (voice.c slide_glide 2,
   trk_slide). OCT- = the track's ACID cleared; stage held + OCT- = that stage reset; CLEAR ALL resets every ACID.
   Saved in the last jam, not in kits. Not lockable / LFO-able.
-- MASTER LENGTH (seq.c mst_*): while playing, every 4 bars (64 straight 1/16s on the metronome's count) every track,
-  its ACID and the FX lane start again together, so a LEN / page / SPD change mid-play can't leave them drifting
-  (no stop/start needed). Longer when a track's loop is longer (LEN x SPD, an ACID's pulses): whole 4 bars. A track
+- MASTER LENGTH (seq.c mst_*): while playing, every 4 bars (64 straight 1/16s on the metronome's count) every track
+  and the FX lane start again together, so a LEN / page / SPD change mid-play can't leave them drifting (no
+  stop/start needed). ACID is left out: it goes its own way (Blair's choice). Longer when a track's loop is longer
+  (LEN x SPD): whole 4 bars. A track
   already in time is only nudged into place (no double hit); the others restart (up to one block late). Not a knob
   yet (fixed 4 bars for now).
 - Screen mirror (test): firmware/src/mirror.c streams every lcd_fill / lcd_blit as RGB 3-3-2 run-length over USB

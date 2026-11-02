@@ -1676,9 +1676,9 @@ static void fxl_step(uint32_t s)
     mg_ov_n = (uint8_t)n;
 }
 
-/* SIMPLE, the MASTER LENGTH: every track, its ACID and the FX lane start again together at its end (a LEN, a page or
- * a SPD changed while playing has them drift apart: they meet again there). 4 bars (64 1/16s), or longer when a track's
- * loop is (LEN x its SPD, an ACID's pulses), in whole 4 bars. Counted on the metronome's straight 1/16s (click_tick) */
+/* SIMPLE, the MASTER LENGTH: every track and the FX lane start again together at its end (a LEN, a page or a SPD
+ * changed while playing has them drift apart: they meet again there). 4 bars (64 1/16s), or longer when a track's loop
+ * is (LEN x its SPD), in whole 4 bars. Not an ACID: it goes its own way. Counted on the metronome's straight 1/16s (click_tick) */
 static uint16_t mst_step;                               /* 1/16s since the master's start */
 static uint32_t gb_spd(int32_t div)                     /* SPD 0..4 (x1/4 .. x4) of a DIV (another: x1) */
 {
@@ -1687,16 +1687,11 @@ static uint32_t gb_spd(int32_t div)                     /* SPD 0..4 (x1/4 .. x4)
 static __attribute__((noinline)) uint32_t mst_len(void)
 {
     static const uint8_t Q[5] = {16, 8, 4, 2, 1};       /* a step's quarter 1/16s at x1/4 .. x4 */
-    uint32_t i, j, m = 256u;
+    uint32_t i, m = 256u;
     for (i = 0; i < NTRK; i++) {
         const track_t *t = &trk[i];
         uint32_t q = Q[gb_spd(t->p[P_SDIV])], l = (uint32_t)(t->p[P_SLEN] ? t->p[P_SLEN] : 1) * q;
-        if (acid_on(t)) {
-            const acid_t *a = &acid[i];
-            for (l = j = 0; j < a->stages && j < ACID_N; j++)
-                l += a->st[j].pulses * q;
-        }
-        m = l > m ? l : m;
+        m = l > m ? l : m;                              /* (an ACID: not counted, it goes its own way) */
     }
     m = (m + 3u) / 4u;                                  /* (1/16s) */
     m = m > fxl_len() ? m : fxl_len();
@@ -1710,20 +1705,8 @@ static __attribute__((noinline)) void mst_realign(uint32_t e)
     for (i = 0; i < NTRK; i++) {
         track_t *t = &trk[i];
         uint32_t period = div_samples((uint32_t)t->p[P_SDIV]), len = t->p[P_SLEN] ? (uint32_t)t->p[P_SLEN] : 1u;
-        uint32_t force = 0;
-        if (acid_on(t)) {
-            const acid_t *a = acid_of(i);
-            uint32_t first = a->dir == AD_REV ? a->stages - 1u : 0u;
-            if (acid_rt[i].go == 2u && acid_rt[i].st == first && acid_rt[i].pul == 0u &&
-                acid_rt[i].pos < period / 2u) {
-                acid_rt[i].pos = e;
-            } else {                                    /* (it starts with the track's step 1, next block) */
-                acid_rt[i].go = 0;
-                seq_release(t);
-                force = 1;
-            }
-        }
-        if (!force && t->seq_idx == 0u && t->seq_pos < period / 2u) {
+        /* (a track playing its ACID: the ACID is left alone, its silent steps realign) */
+        if (t->seq_idx == 0u && t->seq_pos < period / 2u) {
             t->seq_pos = e;
         } else {
             t->seq_idx = (uint16_t)(len - 1u);
