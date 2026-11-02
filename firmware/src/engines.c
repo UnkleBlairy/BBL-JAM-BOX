@@ -57,8 +57,8 @@ static const machine_t MACHINES[] = {   /* by type, 808 (8..) before FM (FM..); 
     {"8CYM", ENGI_ANALOG, AN_CYM, 1, AN_NOTE, AN_CYM, IC_CYMBAL},
     {"FMCYM", ENGI_DIGITAL, 4, 1, 72, 12, IC_CYMBAL},
     {"FMPRC", ENGI_DIGITAL, 5, 1, 48, 13, IC_PERC},
-    {"FMSYN", ENGI_DIGITAL, 0, 0, 48, 0, IC_SYN},
-    {"MONO", ENGI_MONO, 0, 0, 36, 0, IC_SAW},                          /* MONO: one voice, legato */
+    {"FMSYN", ENGI_DIGITAL, 0, 0, 60, 0, IC_SYN},   /* (synths: middle C) */
+    {"MONO", ENGI_MONO, 0, 0, 60, 0, IC_SAW},                            /* MONO: one voice, legato */
     {"SMPL", ENGI_SAMPLER, 0, 2, SMP_NOTE, 0, IC_SAMPLE},               /* SAMPLER: one voice, the whole ENV */
 };
 #define NMACH (sizeof MACHINES / sizeof MACHINES[0])

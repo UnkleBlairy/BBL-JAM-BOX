@@ -137,6 +137,7 @@ static void cla_clear(int all)
             set_engine_of(t, ENGI_DIGITAL);
             apply_preset_to(t, TRK_DEF[a]);
             acid_reset(&acid[a]);                       /* (ACID off, its stages back) */
+            lastc[a] = 0;                               /* (new steps: middle C again) */
         }
         undo_depth--;
         panic_req |= (uint8_t)((1u << NTRK) - 1u);
@@ -154,6 +155,7 @@ static void cla_clear(int all)
     for (i = 0; i < NSTEP; i++)
         step_clear(&TSEL->step[i]);
     motion_clear(TSEL);                                 /* (its locks and automation too) */
+    lastc[song.sel % NTRK] = 0;                         /* (new steps: middle C again, till a key is played) */
     ui_message("TRACK CLEARED");
 }
 static void cla_poll(uint32_t pressed)
@@ -881,14 +883,19 @@ static void gbsv_keys(uint32_t pressed)
             continue;
         if (!key_black(k) && p < 16u) {
             if (gbsv == 1u ? gbs_save_sound(p) : gbs_load_sound(p)) {
+                if (gbsv == 2u)
+                    lastc[song.sel % NTRK] = 0;         /* (new steps: middle C again, till a key is played) */
                 char nm[10];                            /* "KICK 3": the pool's name */
                 str_cpy(nm, GB_POOL_NAME[gb_pool(trk_mach(TSEL))], sizeof nm - 1u);
                 str_cpy(nm + str_len(nm), " ", sizeof nm - str_len(nm));
                 gbsv_done(nm, p, gbsv == 1u ? (transport_busy() ? "SAVED AT STOP" : "SAVED") : "LOADED");
             }
         } else if (key_black(k) && p < 11u) {
-            if (gbsv == 1u ? gbk_save(p) : gbk_load(p))
+            if (gbsv == 1u ? gbk_save(p) : gbk_load(p)) {
+                if (gbsv == 2u)
+                    memset(lastc, 0, sizeof lastc);     /* (every track's new steps: middle C again) */
                 gbsv_done("KIT ", p, gbsv == 1u ? (transport_busy() ? "SAVED AT STOP" : "SAVED") : "LOADED");
+            }
         } else {
             continue;
         }
@@ -1676,6 +1683,22 @@ static void acid_knob(uint32_t slot, int32_t steps)
     ui.hot_t = 40;
     ui.force = 1;
 }
+/* SIMPLE: each track keeps the key mode it was left in (KEY SEQ PARAM LOCKS ACID): picking it again (black key, ALGO)
+ * brings it back; a track not visited yet takes the mode as it is (trk_sg: the mode + 1, 0 none) */
+static uint8_t trk_sg[NTRK];
+static void trk_mode_poll(void)
+{
+    static uint8_t last = 0xFFu;
+    if (fxl_sel || last == song.sel)
+        return;
+    if (last < NTRK)
+        trk_sg[last] = (uint8_t)(ui.sgrid + 1u);
+    if (trk_sg[song.sel % NTRK] && ui.sgrid != trk_sg[song.sel % NTRK] - 1u) {
+        ui.sgrid = (uint8_t)(trk_sg[song.sel % NTRK] - 1u);
+        ui.force = 1;
+    }
+    last = song.sel;
+}
 /* .. SEQ mode and ACID mode are the selected track's: ACID when it plays its ACID (a track picked, OCT+ flipped) */
 static void acid_follow(void)
 {
@@ -2237,6 +2260,7 @@ static void ui_input(void)
                         track_t *t2 = &trk[hk];
                         apply_preset_to(t2, trk_machine(t2)->preset);
                         machine_defaults(t2);
+                        lastc[hk] = 0;                  /* (new steps: middle C again) */
                         ui_message("SOUND RESET");
                         ui.force = 1;
                         break;
@@ -2302,6 +2326,7 @@ static void ui_input(void)
         alt_mode = 0;                                   /* (SIMPLE: no second sets) */
     }
     par_poll();
+    trk_mode_poll();
     acid_follow();
     song.grid = (uint8_t)keys_mode();                 /* (seq.c: the keys are the grid's) */
     if (song.grid != 7u)                               /* (out of KIT: the keys' locks sounding go back) */

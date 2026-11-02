@@ -188,7 +188,11 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
 - Going to PERF turns the step keys off, so leaving PERF the keys are the keyboard.
   A held macro key is never a step key (knob turns go into the macro, not locks).
 - A new step plays the last note or chord played on that track's keys (drums too);
-  before any, the machine's own note.
+  before any, the machine's own note: middle C (60) for FM SYN, MONO, the 808s and the sampler; the FM drums keep
+  their tuned notes (36 50 84 72 48: at 60 a kick would jump two octaves). A sound / kit load, a track clear, SOUND
+  RESET and CLEAR ALL forget the keys' note (seq.c lastc), so new steps are back on that note until a key is played.
+- Each track remembers its key mode (KEY SEQ PARAM LOCKS ACID; ui_input.c trk_mode_poll, trk_sg): picking the track
+  again brings it back; a track not visited yet keeps the current mode. Not saved.
 - The DJ filter always starts open (centre) at power-on and on project load.
 - Saving (gb_store.c): 16 sound slots per machine (6 machines = 96; more
   machines later). Hold SAVE = SAVE screen: white key = save the selected
