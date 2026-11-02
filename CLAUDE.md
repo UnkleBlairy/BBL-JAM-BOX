@@ -294,6 +294,7 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   locks into that key only (heard at once; key + OCT- clears it). The knobs and dials always show the sound's own
   values (a held key shows its locks inverted); turning a knob edits the sound's own value. Recording: the step gets
   the key's locks. Black keys 1-6 pick the track; keys with locks are lit. Not saved (like macros).
+  8 LOCKS keys a track (white keys 1-8, seq.c KIT_KEYS); keys 9-16 do nothing in LOCKS mode (free for later).
 - PITCH (semitones, -24..+24; P_TRANS, so no new id and old saves load): FM SYN's TUNE page KNOB 2, the sampler's OSC 1
   KNOB 1 (replaced its old fine PITCH; E0 is ignored). Taken as each note starts (voice.c voice_pitch16), so it locks
   per step/key. Drums use TUNE. TRN no longer moves the keys (KB_TRN).

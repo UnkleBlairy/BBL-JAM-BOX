@@ -903,6 +903,7 @@ static uint32_t acid_key(uint32_t k, const track_t *t)
 #define KIT_N 8u
 typedef struct { uint8_t n, id[KIT_N]; int16_t v[KIT_N]; } kit_key_t;
 static kit_key_t kit[NTRK][16];
+#define KIT_KEYS 8u                                     /* SIMPLE: the LOCKS keys a track has (white keys 1..8; 9..16 do nothing there) */
 static struct { uint8_t n, id[KIT_N]; int16_t v[KIT_N], base[KIT_N]; } kit_snd[NTRK];   /* sounding: each with what it replaced */
 static uint8_t kit_cur[NTRK];                       /* the key (+ 1) whose locks sound, 0 none */
 static void kit_undo(track_t *t)
@@ -1053,6 +1054,10 @@ static void keyboard_block(void)
                     kb_layer |= 1u << k;
                     continue;
                 }
+            } else if (song.grid == 7u && !key_black(k) && key_place(k) >= KIT_KEYS) {   /* (LOCKS: keys 9..16 nothing) */
+                kb_note[k] = KB_SILENT;
+                kb_layer |= 1u << k;
+                continue;
             } else if (song.grid == 7u && !key_black(k)) {   /* KIT: the key's locks, the track's step notes */
                 uint8_t c[4];
                 kit_key(k, &trk[kb_trk[k]]);

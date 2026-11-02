@@ -292,7 +292,7 @@ static int gbk_lk_pack(uint8_t *lk)
     for (k = 0; k < NTRK * 16u; k++) {
         const kit_key_t *kk = &kit[k / 16u][k % 16u];
         uint32_t c = kk->n > KIT_N ? KIT_N : kk->n;
-        if (!c)
+        if (!c || k % 16u >= KIT_KEYS)
             continue;
         if (o + 2u + 3u * c > GB_KLK_LK || n == 255u) {   /* (the step notes after them) */
             lk[0] = (uint8_t)n;

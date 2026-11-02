@@ -1501,7 +1501,7 @@ static uint32_t kit_held(void)
     if (!kit_on())
         return 0;
     for (k = 0; k < 27u; k++)
-        if (((keys >> k) & 1u) && !key_black(k) && key_place(k) < 16u)
+        if (((keys >> k) & 1u) && !key_black(k) && key_place(k) < KIT_KEYS)
             m |= 1u << key_place(k);
     return m;
 }
@@ -1575,7 +1575,7 @@ static uint32_t kit_leds(void)
     uint32_t k, m = 0, p;
     for (k = 0; k < 27u; k++) {
         p = key_place(k);
-        if (key_black(k) ? p == song.sel : p < 16u && kit[song.sel][p].n)
+        if (key_black(k) ? p == song.sel : p < KIT_KEYS && kit[song.sel][p].n)
             m |= 1u << k;
     }
     return m;
