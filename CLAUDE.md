@@ -191,6 +191,9 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   before any, the machine's own note: middle C (60) for FM SYN, MONO, the 808s and the sampler; the FM drums keep
   their tuned notes (36 50 84 72 48: at 60 a kick would jump two octaves). A sound / kit load, a track clear, SOUND
   RESET and CLEAR ALL forget the keys' note (seq.c lastc), so new steps are back on that note until a key is played.
+  A KIT keeps each track's step note / chord (the last 32 bytes of its LOCKS-keys area, gb_store.c GB_KLK_LK, marked
+  5A A5; kits saved before have none = middle C); loading it puts them back. The last jam keeps them too. The key that
+  loads a sound / kit makes no note (seq.c kb_eat).
 - Each track remembers its key mode (KEY SEQ PARAM LOCKS ACID; ui_input.c trk_mode_poll, trk_sg): picking the track
   again brings it back; a track not visited yet keeps the current mode. Not saved.
 - The DJ filter always starts open (centre) at power-on and on project load.

@@ -40,6 +40,7 @@ static uint8_t kb_note[27], kb_trk[27];  /* per key: the note it started and on 
 /* SIMPLE: each track's last chord (the notes played together on its keys): the step keys play it and write it into steps, so
  * the root is found by ear, then steps are punched in */
 static uint8_t lastn[NTRK][4], lastc[NTRK], lheld[NTRK], kb_lh[27];   /* (kb_lh: key k counts in lheld) */
+static uint32_t kb_eat;                         /* SIMPLE: keys whose press is silent (the LOAD screen's key: it closed it) */
 static uint8_t kb_g[27];                         /* SIMPLE: key k plays the track's step notes (grid_chord), not its own */
 static uint8_t in_key;                   /* the key (+ 1) whose notes go into input_on now (key_on), 0: none (MIDI IN) */
 static uint8_t kb_vel = 100;             /* 1.5.6 (#84): the keys' velocity (MENU > SELECT VEL, ui_input.c sel_play) */
@@ -1002,6 +1003,11 @@ static void keyboard_block(void)
             continue;
         if ((cur >> k) & 1u) {                    /* the selected track; the key-up goes to the same one */
             kb_trk[k] = song.sel;
+            if ((kb_eat >> k) & 1u) {             /* (it loaded a sound / kit: no note) */
+                kb_eat &= ~(1u << k);
+                kb_note[k] = KB_SILENT;
+                continue;
+            }
             kb_g[k] = (uint8_t)(song.grid == 1u || song.grid == 7u || (song.grid == 6u && (key_black(k) || par_id != 0xFFu)) ||
                                 (song.grid == 8u && key_black(k)));
             if ((song.grid == 1u || song.grid >= 6u) && key_black(k) && key_place(k) < NTRK)
@@ -1065,6 +1071,7 @@ static void keyboard_block(void)
             kb_lat(k);
 #endif
         } else {
+            kb_eat &= ~(1u << k);                 /* (let go: the next press plays) */
             if ((kb_layer >> k) & 1u) {
                 kb_layer &= ~(1u << k);
                 if (kb_mt[k]) {

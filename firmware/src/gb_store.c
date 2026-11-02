@@ -39,6 +39,13 @@ typedef struct {
     uint8_t lk[GB_KLK];
 } gb_kit_t;
 typedef struct { uint32_t magic; uint16_t np, kind; gb_kit_t k[GB_KPER]; } gb_kobj_t;
+/* the end of a kit's lk: each track's step note / chord (seq.c lastc, lastn): GB_NT0 GB_NT1, then per track how many
+ * (0: none, middle C / the machine's) and 4 notes. The LOCKS keys stop before it (GB_KLK_LK); a kit saved before it
+ * has no mark there: none */
+#define GB_NTB (2u + NTRK * 5u)
+#define GB_KLK_LK (GB_KLK - GB_NTB)
+#define GB_NT0 0x5Au
+#define GB_NT1 0xA5u
 /* the kits before the LOCKS keys (GB_KMAGIC): the same up to lk; read once, written as gb_kobj_t */
 typedef struct {
     uint8_t used, rel, fade, rsv;
@@ -287,7 +294,7 @@ static int gbk_lk_pack(uint8_t *lk)
         uint32_t c = kk->n > KIT_N ? KIT_N : kk->n;
         if (!c)
             continue;
-        if (o + 2u + 3u * c > GB_KLK || n == 255u) {
+        if (o + 2u + 3u * c > GB_KLK_LK || n == 255u) {   /* (the step notes after them) */
             lk[0] = (uint8_t)n;
             return 0;
         }
@@ -345,6 +352,13 @@ static int gbk_save(uint32_t k)
                         36u * ((uint32_t)song.g[G_F3WAVE] % 6u));
     if (!gbk_lk_pack(kt->lk))
         ui_message("KEY LOCKS PART SAVED");
+    kt->lk[GB_KLK_LK] = GB_NT0;                          /* the step notes (the keys' last note / chord) */
+    kt->lk[GB_KLK_LK + 1u] = GB_NT1;
+    for (i = 0; i < NTRK; i++) {
+        uint8_t *n = &kt->lk[GB_KLK_LK + 2u + 5u * i];
+        n[0] = lastc[i] > 4u ? 4u : lastc[i];
+        memcpy(n + 1, lastn[i], 4);
+    }
     gb_ko[k / GB_KPER].magic = GB_K3MAGIC;
     gb_ko[k / GB_KPER].np = (uint16_t)P_COUNT;
     gb_dirty |= (uint8_t)(1u << (GB_SOBJ + k / GB_KPER));
@@ -386,6 +400,14 @@ static int gbk_load(uint32_t k)
         song.g[G_F3WAVE] = (int16_t)(w / 36u % 6u);
     }
     gbk_lk_unpack(kt->lk);
+    for (i = 0; i < NTRK; i++)                           /* the step notes as saved (none: middle C, the machine's) */
+        if (kt->s[i].used) {
+            const uint8_t *n = &kt->lk[GB_KLK_LK + 2u + 5u * i];
+            int has = kt->lk[GB_KLK_LK] == GB_NT0 && kt->lk[GB_KLK_LK + 1u] == GB_NT1 && n[0] <= 4u;
+            lastc[i] = (uint8_t)(has ? n[0] : 0u);
+            if (has)
+                memcpy(lastn[i], n + 1, 4);
+        }
     ui.force = 1;
     return 1;
 }
@@ -576,6 +598,11 @@ static uint32_t jam_make(uint8_t *out)                  /* the stream: its lengt
         jam_w16(&w, sizeof acid);
         jam_w(&w, acid, sizeof acid);
     }
+    if (!w.bad) {                                        /* the step notes (seq.c lastc, lastn) */
+        jam_w16(&w, sizeof lastc + sizeof lastn);
+        jam_w(&w, lastc, sizeof lastc);
+        jam_w(&w, lastn, sizeof lastn);
+    }
     return w.n;
 }
 
@@ -699,6 +726,18 @@ static int jam_apply(uint8_t *in, uint32_t len)
     if (!r.bad && r.n + 2u <= r.cap) {
         sz = jam_r16(&r);
         jam_r(&r, sz == sizeof acid ? (void *)acid : 0, sz);
+    }
+    memset(lastc, 0, sizeof lastc);
+    if (!r.bad && r.n + 2u <= r.cap) {                   /* the step notes */
+        sz = jam_r16(&r);
+        if (sz == sizeof lastc + sizeof lastn) {
+            jam_r(&r, lastc, sizeof lastc);
+            jam_r(&r, lastn, sizeof lastn);
+            for (k = 0; k < NTRK; k++)
+                lastc[k] = (uint8_t)(lastc[k] > 4u ? 0u : lastc[k]);
+        } else {
+            jam_r(&r, 0, sz);
+        }
     }
     for (k = 0; k < NTRK; k++) {                         /* (the first try's SKIP ACCENT SCALE ROOT: gone) */
         acid[k].scale = acid[k].root = 0;

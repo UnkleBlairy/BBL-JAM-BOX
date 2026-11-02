@@ -878,7 +878,7 @@ static void gbsv_keys(uint32_t pressed)
 {
     uint32_t k;
     for (k = 0; k < 27u; k++) {
-        uint32_t p = key_place(k);
+        uint32_t p = key_place(k), ld = gbsv == 2u;
         if (!((pressed >> k) & 1u))
             continue;
         if (!key_black(k) && p < 16u) {
@@ -891,14 +891,14 @@ static void gbsv_keys(uint32_t pressed)
                 gbsv_done(nm, p, gbsv == 1u ? (transport_busy() ? "SAVED AT STOP" : "SAVED") : "LOADED");
             }
         } else if (key_black(k) && p < 11u) {
-            if (gbsv == 1u ? gbk_save(p) : gbk_load(p)) {
-                if (gbsv == 2u)
-                    memset(lastc, 0, sizeof lastc);     /* (every track's new steps: middle C again) */
+            if (gbsv == 1u ? gbk_save(p) : gbk_load(p)) {   /* (a kit: its step notes, gb_store.c) */
                 gbsv_done("KIT ", p, gbsv == 1u ? (transport_busy() ? "SAVED AT STOP" : "SAVED") : "LOADED");
             }
         } else {
             continue;
         }
+        if (ld)
+            kb_eat |= 1u << k;                          /* (the key that loaded: no note as the screen closes) */
         gbsv_did = 1;
         ui.force = 1;
         if (!gbsv)
