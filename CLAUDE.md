@@ -194,8 +194,10 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   A KIT keeps each track's step note / chord (the last 32 bytes of its LOCKS-keys area, gb_store.c GB_KLK_LK, marked
   5A A5; kits saved before have none = middle C); loading it puts them back. The last jam keeps them too. The key that
   loads a sound / kit makes no note (seq.c kb_eat).
-- Each track remembers its key mode (KEY SEQ PARAM LOCKS ACID; ui_input.c trk_mode_poll, trk_sg): picking the track
-  again brings it back; a track not visited yet keeps the current mode. Not saved.
+- Each track remembers PARAM, LOCKS or ACID mode (the modes whose black keys pick tracks; ui_input.c trk_mode_poll,
+  trk_sg): picking the track again brings it back. KEY and SEQ are not remembered (scrolling tracks in SEQ stays in
+  SEQ); a track left in KEY/SEQ picked from PARAM/LOCKS goes to SEQ; one not visited yet keeps the current mode.
+  Each track keeps its own octave (OCT-/OCT+; trk_oct). Not saved.
 - The DJ filter always starts open (centre) at power-on and on project load.
 - Saving (gb_store.c): 16 sound slots per machine (6 machines = 96; more
   machines later). Hold SAVE = SAVE screen: white key = save the selected

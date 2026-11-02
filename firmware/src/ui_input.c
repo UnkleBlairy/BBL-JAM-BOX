@@ -1683,18 +1683,29 @@ static void acid_knob(uint32_t slot, int32_t steps)
     ui.hot_t = 40;
     ui.force = 1;
 }
-/* SIMPLE: each track keeps the key mode it was left in (KEY SEQ PARAM LOCKS ACID): picking it again (black key, ALGO)
- * brings it back; a track not visited yet takes the mode as it is (trk_sg: the mode + 1, 0 none) */
+/* SIMPLE: a track left in PARAM, LOCKS or ACID mode (the modes whose black keys pick tracks) brings it back when
+ * picked again (black key, ALGO); KEY / SEQ are not kept (scrolling the tracks in SEQ mode stays in SEQ). A track
+ * left in KEY / SEQ, picked while in PARAM / LOCKS, goes to SEQ; one not visited yet keeps the mode as it is
+ * (trk_sg: 0 none, 1 plain, 3 PARAM, 4 LOCKS, 5 ACID). Each track
+ * keeps its own octave too (trk_oct: song.octave swapped on the change) */
 static uint8_t trk_sg[NTRK];
+static int8_t trk_oct[NTRK];
 static void trk_mode_poll(void)
 {
     static uint8_t last = 0xFFu;
+    uint8_t m;
     if (fxl_sel || last == song.sel)
         return;
-    if (last < NTRK)
-        trk_sg[last] = (uint8_t)(ui.sgrid + 1u);
-    if (trk_sg[song.sel % NTRK] && ui.sgrid != trk_sg[song.sel % NTRK] - 1u) {
-        ui.sgrid = (uint8_t)(trk_sg[song.sel % NTRK] - 1u);
+    if (last < NTRK) {
+        trk_sg[last] = (ui.sgrid >= 2u && ui.sgrid <= 4u) ? (uint8_t)(ui.sgrid + 1u) : 1u;
+        trk_oct[last] = (int8_t)song.octave;
+        song.octave = trk_oct[song.sel % NTRK];
+    }
+    m = trk_sg[song.sel % NTRK];
+    if (m >= 3u && m <= 5u) {
+        if (ui.sgrid != m - 1u) { ui.sgrid = (uint8_t)(m - 1u); ui.force = 1; }
+    } else if (m == 1u && (ui.sgrid == 2u || ui.sgrid == 3u)) {
+        ui.sgrid = 1u;
         ui.force = 1;
     }
     last = song.sel;
