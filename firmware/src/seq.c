@@ -1664,6 +1664,65 @@ static void fxl_step(uint32_t s)
     mg_ov_n = (uint8_t)n;
 }
 
+/* SIMPLE, the MASTER LENGTH: every track, its ACID and the FX lane start again together at its end (a LEN, a page or
+ * a SPD changed while playing has them drift apart: they meet again there). 4 bars (64 1/16s), or longer when a track's
+ * loop is (LEN x its SPD, an ACID's pulses), in whole 4 bars. Counted on the metronome's straight 1/16s (click_tick) */
+static uint16_t mst_step;                               /* 1/16s since the master's start */
+static uint32_t gb_spd(int32_t div)                     /* SPD 0..4 (x1/4 .. x4) of a DIV (another: x1) */
+{
+    return div == 0 ? 0u : div == 1 ? 1u : div == 3 ? 3u : div == 10 ? 4u : 2u;
+}
+static __attribute__((noinline)) uint32_t mst_len(void)
+{
+    static const uint8_t Q[5] = {16, 8, 4, 2, 1};       /* a step's quarter 1/16s at x1/4 .. x4 */
+    uint32_t i, j, m = 256u;
+    for (i = 0; i < NTRK; i++) {
+        const track_t *t = &trk[i];
+        uint32_t q = Q[gb_spd(t->p[P_SDIV])], l = (uint32_t)(t->p[P_SLEN] ? t->p[P_SLEN] : 1) * q;
+        if (acid_on(t)) {
+            const acid_t *a = &acid[i];
+            for (l = j = 0; j < a->stages && j < ACID_N; j++)
+                l += a->st[j].pulses * q;
+        }
+        m = l > m ? l : m;
+    }
+    m = (m + 3u) / 4u;                                  /* (1/16s) */
+    m = m > fxl_len() ? m : fxl_len();
+    return (m + 63u) / 64u * 64u;
+}
+/* .. its end was e samples ago (in this block, after seq_tick): a track that started its step 1 (an ACID its first
+ * stage) about then is moved to the master's place (no new hit); the others start again, in the next block */
+static __attribute__((noinline)) void mst_realign(uint32_t e)
+{
+    uint32_t i;
+    for (i = 0; i < NTRK; i++) {
+        track_t *t = &trk[i];
+        uint32_t period = div_samples((uint32_t)t->p[P_SDIV]), len = t->p[P_SLEN] ? (uint32_t)t->p[P_SLEN] : 1u;
+        uint32_t force = 0;
+        if (acid_on(t)) {
+            const acid_t *a = acid_of(i);
+            uint32_t first = a->dir == AD_REV ? a->stages - 1u : 0u;
+            if (acid_rt[i].go == 2u && acid_rt[i].st == first && acid_rt[i].pul == 0u &&
+                acid_rt[i].pos < period / 2u) {
+                acid_rt[i].pos = e;
+            } else {                                    /* (it starts with the track's step 1, next block) */
+                acid_rt[i].go = 0;
+                seq_release(t);
+                force = 1;
+            }
+        }
+        if (!force && t->seq_idx == 0u && t->seq_pos < period / 2u) {
+            t->seq_pos = e;
+        } else {
+            t->seq_idx = (uint16_t)(len - 1u);
+            t->seq_pos = step_samples(t, period, len - 1u) + e;
+            t->nd_late = t->nd_early = ND_NONE;
+            t->nd_fired = 0;
+            t->rat_left = 0;
+        }
+    }
+}
+
 /* the metronome's beat: adv samples on while the transport runs (click.c sounds it in this block) */
 static void click_tick(uint32_t adv)
 {
@@ -1671,19 +1730,28 @@ static void click_tick(uint32_t adv)
     if (clk_pos == CLK_START) {
         clk_pos = 0;
         clk_step = 0;
+        mst_step = 0;
         beat = 2;
         fxl_pos = 0;
         fxl_step(0);
     } else {
+        uint32_t top = 0;
         clk_pos += adv;
         while (clk_pos >= p) {                      /* (as seq_tick: the remainder kept) */
             clk_pos -= p;
             clk_step = (clk_step + 1u) & 15u;
-            fxl_pos = (fxl_pos + 1u) % fxl_len();
+            if (FELUCCA_SIMPLE && ++mst_step >= mst_len()) {   /* the master length's end: */
+                top = 1;
+                mst_step = 0;
+                clk_step = 0;                       /* (the bar's beat 1 too) */
+            }
+            fxl_pos = !mst_step ? 0u : (fxl_pos + 1u) % fxl_len();   /* (.. the FX lane from its step 1) */
             fxl_step(fxl_pos);
             if (!(clk_step & 3u))
                 beat = clk_step ? 1u : 2u;
         }
+        if (top)
+            mst_realign(clk_pos);                   /* (the tracks: seq_tick ran already) */
     }
     if (beat && click_wanted())
         click_req = (uint8_t)beat;
