@@ -2,6 +2,7 @@
  *   cc -O1 -ffp-contract=off -w -Ibuild/gen -Ifirmware/src -Iweb/emu -o build/emu_shot tools/emu_shot.c -lm
  *   build/emu_shot tap:0 hold:9 enc:4,1 rel a.ppm   (tap:/hold: button number (panel.c B_*), rel, key:n, enc:role,steps,
  *   keyd:n (held) keyu, wav:F (2 s of the left channel, float32), playing? (prints), state?, tapms:button,ms, ms:n, any other word = save the screen there as PPM) */
+#include <time.h>
 #include "felucca_web.c"
 static void run(double ms){ uint32_t n=(uint32_t)(ms*44.1), k; for(k=0;k<n;k+=128) web_render(128); }
 static void tap(uint32_t b){ web_buttons(1u<<b); run(80); web_buttons(0); run(150); }
@@ -18,10 +19,12 @@ int main(int argc,char**argv){
     else if(!strcmp(s,"rel")) { web_buttons(0); run(150);} 
     else if(!strncmp(s,"key:",4)) { web_keys(1u<<atoi(s+4)); run(80); web_keys(0); run(100);} 
     else if(!strncmp(s,"keym:",5)) { web_keys((unsigned)strtoul(s+5,0,0)); run(10);}   /* the key bits as they are (several held) */
+    else if(!strncmp(s,"keyz:",5)) web_keys((unsigned)strtoul(s+5,0,0));   /* the keys, no time passing */
     else if(!strncmp(s,"keyd:",5)) { web_keys(1u<<atoi(s+5)); run(100);} 
     else if(!strcmp(s,"keyu")) { web_keys(0); run(100);} 
     else if(!strncmp(s,"wavx:",5)) { char fn[256]; int r,k; sscanf(s+5,"%255[^,],%d,%d",fn,&r,&k); FILE *f=fopen(fn,"wb"); for(int b=0;b<689;b++){ if(b%10==0 && k){ web_enc(r,k<0?-1:1); k+=k<0?1:-1; } run(0); web_render(128); fwrite(out_l,4,128,f);} fclose(f);}   /* 2 s, the encoder turned a step every 10 blocks */
     else if(!strncmp(s,"wav:",4)) { FILE *f=fopen(s+4,"wb"); for(int b=0;b<689;b++){ web_render(128); fwrite(out_l,4,128,f);} fclose(f);} 
+    else if(!strncmp(s,"bench:",6)) { struct timespec a0,a1; double ms=atof(s+6); clock_gettime(CLOCK_MONOTONIC,&a0); run(ms); clock_gettime(CLOCK_MONOTONIC,&a1); double us=(a1.tv_sec-a0.tv_sec)*1e6+(a1.tv_nsec-a0.tv_nsec)/1e3; int busy=0; for(int p=0;p<NPART;p++) for(int i=0;i<NVOICE;i++) busy+=trk[p].v[i].active; printf("host %.1f%% of real time, kills=%u voices=%d\n", us/(ms*10.0), voice_kills, busy); }
     else if(!strcmp(s,"oct?")) printf("sel=%u oct=%d sgrid=%u\n", song.sel, song.octave, ui.sgrid);
     else if(!strcmp(s,"state?")) printf("sgrid=%u page=%u ly=%u lyt0=%u tm=%u hint=%u msg=%u grid=%u\n", ui.sgrid, ui.page, ui.ly, ui.ly_t0 & 15u, tm_dn, gb_hint, ui.msg_t, song.grid);
     else if(!strncmp(s,"tapms:",6)) { int b,d; sscanf(s+6,"%d,%d",&b,&d); web_buttons(1u<<b); run(d); web_buttons(0); run(120);} 

@@ -8,8 +8,8 @@
  * a voice while the budget is full takes one from any part (voice_victim): the oldest
  * released voice, else the oldest extra UNISON voice, else the oldest held voice of a
  * POLY part that is not its lowest note. A voice taken from another part fades out
- * over one block (stage 4: the envelope goes to 0, the block's amplitude ramp
- * declicks it); one of the part's own is restarted in place, as before. Extra UNISON
+ * over ~6 ms (stage 4: the envelope halves each block, the block's amplitude ramp
+ * smooths it); one of the part's own is restarted in place, as before. Extra UNISON
  * voices only start when there is room. */
 static uint32_t vage;                                   /* voice ages: one clock for every part */
 static int32_t lfo_wave(track_t *t, uint32_t ph)
@@ -172,7 +172,7 @@ static uint32_t voice_victim(const track_t *self, int soft, track_t **pp)
 }
 
 static uint32_t voice_kills;                            /* voices given up (budget, overload): console, hostsim */
-static void voice_kill(voice_t *v)                      /* fade out over the next block (env_tick stage 4) */
+static void voice_kill(voice_t *v)                      /* fade out over ~6 ms (env_tick stage 4) */
 {
     v->gate = 0;
     v->stage = 4;
@@ -647,10 +647,13 @@ static int32_t env_tick(track_t *t, voice_t *v)
             v->active = 0;
         }
         break;
-    case 4:                                             /* given up for another part: this block fades it */
-        v->env = 0;
-        v->stage = 0;
-        v->active = 0;
+    case 4:                                             /* given up for another part: halves each block (~6 ms to */
+        v->env >>= 1;                                   /* 1/256; one block clicked on a loud drum) */
+        if (v->env < (1 << 16)) {
+            v->env = 0;
+            v->stage = 0;
+            v->active = 0;
+        }
         break;
     default:
         v->env = 0;
@@ -753,7 +756,8 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
             continue;
         {
             env = env_tick(t, v);
-            if (e->ownenv && v->active) {               /* the engine's envelopes (FM6): they end the voice */
+            if (e->ownenv && v->active && v->stage != 4u) {   /* the engine's envelopes (808): they end the voice (being
+                                                         * cut: env_tick's fade scales it) */
                 if (e->done(t, v)) {
                     v->active = v->gate = 0;
                     v->stage = 0;
