@@ -20,8 +20,13 @@ cable: some cheap cables only charge).
    like your Downloads folder. Don't rename or change it: the installer checks it's the exact official file.
 3. **Close every other music app** that might be using the FM-1: your DAW (Ableton, FL Studio, etc.),
    M-VAVE's own apps, and any other browser tabs with the installer or the Samples page open.
-4. **Plug the FM-1 straight into the computer**, not through a USB hub. No extra hardware is needed.
-5. **Make sure your laptop is charged or plugged in**, so it doesn't go to sleep halfway.
+4. **Plug the FM-1 straight into the computer: NO USB HUB** (no dock, keyboard or monitor port either). Hubs can
+   drop the connection part way through and leave the FM-1 stuck. No extra hardware is needed.
+5. **Charge the FM-1, and make sure your laptop is charged or plugged in**, so neither runs flat or sleeps halfway.
+6. **Don't leave the install unattended.** Stay with the computer until it says **Done**: don't let it sleep or
+   lock the screen, and don't close or refresh the page. An install left alone can stop half way, and an FM-1
+   stuck like that may need extra hardware to recover. If something goes wrong, **copy or photograph the message
+   on the page before you refresh it.**
 
 ### What happens to your stuff
 - **Your official V15 sounds:** we tested this on a real FM-1: a sound saved in V15 was still there after
