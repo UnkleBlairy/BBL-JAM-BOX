@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.4 beta (2026-11-03): members' preview
+
+A Metropolis-style ACID sequencer, patterns that stay locked together, and tracks that remember how you left them.
+
+### ACID sequencer
+- **ACID mode**: a stage sequencer in the style of the Intellijel Metropolis, on any track. In SEQ mode **tap
+  OCT+** to flip the track between its steps and its ACID stages (tap again to go back; both are kept).
+- **White keys = stages 1-16.** Press one to edit it. **STAGE** page (black key 8): PITCH (0-12 semitones from
+  middle C, shown as the note), PULSE (1-8 repeats), GATE (MUTE, FIRST, EVERY, HOLD), OCT (-3..+3).
+- **ACID** page (black key 9): LEN (1-16 stages), DIR (FWD, REV, PING, RAND, BRWN), SPD, GATE length.
+- **Slides**: hold a stage key for its SLIDE pop-up: knob 1 = slide on/off, knob 2 = slide time. The note before
+  glides into it, legato, 303-style.
+- OCT- clears the track's ACID; hold a stage + OCT- resets that stage.
+
+### Sequencer
+- **Patterns stay locked together**: every 4 bars all tracks and the FX lane restart together, so changing LEN,
+  adding pages or changing SPD while playing no longer leaves tracks drifting (no stop/start needed). ACID lines
+  run free and go their own way.
+- **New steps start on middle C** after a sound or kit load, a clear, SOUND RESET or CLEAR ALL, until you play a
+  note on the keys (then new steps use your last note or chord, as before).
+- **Kits keep each track's step note / chord**: set the kick two octaves down, save the kit, and it comes back that
+  way. The key you load a sound or kit with no longer plays a note.
+
+### Playing
+- **Tracks remember their mode**: a track left in PARAM, LOCKS or ACID comes back to it when you pick it again.
+  KEY and SEQ aren't remembered, so scrolling through tracks in SEQ mode stays in SEQ.
+- **Each track keeps its own octave**: bass low on track 1, lead high on track 2, and swapping back and forth keeps
+  both.
+- **LOCKS mode has 8 keys** a track (white keys 1-8); keys 9-16 are free for later.
+
+### Sound
+- When too many notes play at once and a sound has to be cut for another, it now fades out smoothly instead of
+  clicking (808 drums too).
+
 ## 0.3 beta (2026-11-01): members' preview
 
 Two new synths, a much deeper sequencer, an FX track and a jam that survives switching off.
