@@ -335,7 +335,9 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   stop/start needed). ACID is left out: it goes its own way (Blair's choice). Longer when a track's loop is longer
   (LEN x SPD): whole 4 bars. A track
   already in time is only nudged into place (no double hit); the others restart (up to one block late). Not a knob
-  yet (fixed 4 bars for now).
+  yet (fixed 4 bars for now). A LEN / page / SPD change while playing also jumps that track at once to where it would
+  be had it played that way since the master's start (seq.c mst_follow; Elektron-style, no waiting); the FX lane's
+  step is always the master's count mod its LEN.
 - Screen mirror (test): firmware/src/mirror.c streams every lcd_fill / lcd_blit as RGB 3-3-2 run-length over USB
   SysEx (cmd 0x70, only while a page keeps asking; ~6-9 KB a full page; 04 = a whole picture, the page shows only those; behind by > 3 KB at a picture's end = the
   next draws left out, then one fresh full redraw, so the lag stays short); over the USB serial port (CDC, Web Serial; S start, M keep alive; Windows' MIDI

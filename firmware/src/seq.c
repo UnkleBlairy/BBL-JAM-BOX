@@ -1718,6 +1718,47 @@ static __attribute__((noinline)) void mst_realign(uint32_t e)
     }
 }
 
+/* SIMPLE: a track's LEN or SPD changed while playing (a page added, a knob): it jumps at once to where it would be had
+ * it played that length / speed since the master's start (all tracks start together there), so nothing waits for the
+ * master's end. A step landed on within this block plays; landed on part way through, it waits for the next step.
+ * Called before the seq_ticks (they and the metronome are at the block's start). n: the block */
+static uint8_t mst_len_was[NTRK], mst_div_was[NTRK];
+static __attribute__((noinline)) void mst_follow(uint32_t n)
+{
+    uint32_t i;
+    for (i = 0; i < NTRK; i++) {
+        track_t *t = &trk[i];
+        uint32_t len = t->p[P_SLEN] ? (uint32_t)t->p[P_SLEN] : 1u, div = (uint32_t)t->p[P_SDIV] & 0xFFu;
+        uint32_t ch = len != mst_len_was[i] || div != mst_div_was[i];
+        mst_len_was[i] = (uint8_t)len;
+        mst_div_was[i] = (uint8_t)div;
+        if (!ch || !song.playing || clk_pos == CLK_START || t->seq_pos >= 0x7FFFFFFFu)
+            continue;                                   /* (not yet started: PLAY's first step is still to come) */
+        {
+            uint32_t period = div_samples(div), s0 = step_samples(t, period, 0u), s1 = step_samples(t, period, 1u);
+            uint32_t e = (uint32_t)mst_step * div_samples(2) + clk_pos, k = e / (s0 + s1) * 2u, r = e % (s0 + s1), idx;
+            if (r >= s0) {
+                r -= s0;
+                k++;
+            }
+            idx = k % len;
+            if (idx == t->seq_idx && (r > t->seq_pos ? r - t->seq_pos : t->seq_pos - r) <= n)
+                continue;                               /* (already there: a longer LEN early in the loop) */
+            if (r < n) {                                /* (on the step's start: it plays, from the step before) */
+                uint32_t pv = (idx + len - 1u) % len;
+                t->seq_idx = (uint16_t)pv;
+                t->seq_pos = step_samples(t, period, pv) + r;
+            } else {
+                t->seq_idx = (uint16_t)idx;
+                t->seq_pos = r;
+            }
+            t->nd_late = t->nd_early = ND_NONE;
+            t->nd_fired = 0;
+            t->rat_left = 0;
+        }
+    }
+}
+
 /* the metronome's beat: adv samples on while the transport runs (click.c sounds it in this block) */
 static void click_tick(uint32_t adv)
 {
@@ -1740,7 +1781,7 @@ static void click_tick(uint32_t adv)
                 mst_step = 0;
                 clk_step = 0;                       /* (the bar's beat 1 too) */
             }
-            fxl_pos = !mst_step ? 0u : (fxl_pos + 1u) % fxl_len();   /* (.. the FX lane from its step 1) */
+            fxl_pos = mst_step % fxl_len();         /* (.. the FX lane from its step 1; a LEN change: where it would be) */
             fxl_step(fxl_pos);
             if (!(clk_step & 3u))
                 beat = clk_step ? 1u : 2u;
@@ -1866,6 +1907,9 @@ static void events_block(uint32_t n)
     }
     if (aud_req)
         seq_audition();                               /* (STEP PREVIEW: a step sounds, stopped) */
+#if FELUCCA_SIMPLE
+    mst_follow(seq_n);
+#endif
     for (i = 0; i < NTRK; i++)
         seq_tick(&trk[i], seq_n);
     if (cin_flush)

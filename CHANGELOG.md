@@ -18,6 +18,8 @@ A Metropolis-style ACID sequencer, patterns that stay locked together, and track
 - **Patterns stay locked together**: every 4 bars all tracks and the FX lane restart together, so changing LEN,
   adding pages or changing SPD while playing no longer leaves tracks drifting (no stop/start needed). ACID lines
   run free and go their own way.
+- **Length and speed changes land in time at once**: add a page, change LEN or SPD while playing and the track jumps
+  straight to where it would be if it had always been that length / speed (no waiting for the 4-bar reset).
 - **New steps start on middle C** after a sound or kit load, a clear, SOUND RESET or CLEAR ALL, until you play a
   note on the keys (then new steps use your last note or chord, as before).
 - **Kits keep each track's step note / chord**: set the kick two octaves down, save the kit, and it comes back that
