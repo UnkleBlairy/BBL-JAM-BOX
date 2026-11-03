@@ -151,11 +151,15 @@ footer small { font-size: 12px; }
 
 <section class="pop c5" id="ks" hidden>
   <h2>MIDI</h2>
-  <p>A MIDI keyboard plays the FM-1's keys. <b>MIDI LEARN</b>: press it, click a knob on the panel (KNOB 1-4, SELECT,
+  <p>Plug in a MIDI keyboard or controller, then press SWITCH ON (allow MIDI when the browser asks). Pick it under
+  <b>CONTROLLER</b> (or ALL). Its keys play notes on the selected track, like the FM-1's keys. <b>MIDI LEARN</b>: press it, click a knob on the panel (KNOB 1-4, SELECT,
   PRESETS, ALGORITHM or MASTER), then move a control on your controller. Do it again for each knob you want. The
   emulator remembers them.</p>
   <div class="midi">
     <label><input type="checkbox" id="kson" checked> MIDI ON</label>
+    <label>CONTROLLER <select id="ksdev" aria-label="Which MIDI controller to listen to">
+      <option value="">ALL</option>
+    </select></label>
     <button id="kslearn" type="button">MIDI LEARN</button>
     <button id="ksclear" type="button">CLEAR</button>
     <label>KNOBS SEND <select id="knobmode" aria-label="How the controller sends its knobs">
@@ -621,10 +625,24 @@ async function midiOn() {
   if (!navigator.requestMIDIAccess) return;
   try {
     const access = await navigator.requestMIDIAccess();
+    const devSel = document.getElementById("ksdev");
+    let want = "";
+    try { want = localStorage.getItem("bbl-emu-dev") || ""; } catch {}
+    devSel.addEventListener("change", () => {
+      want = devSel.value;
+      try { localStorage.setItem("bbl-emu-dev", want); } catch {}
+      keyBy.forEach((_, n) => { if (String(n).startsWith("pm")) keyBy.delete(n); });   // (no key left held)
+      syncKeys();
+    });
     const bind = () => {
-      for (const input of access.inputs.values()) {
+      const ins = [...access.inputs.values()];
+      devSel.replaceChildren(new Option("ALL", ""), ...ins.map((i) => new Option((i.name || "MIDI IN").toUpperCase(), i.id)));
+      if (want && !ins.some((i) => i.id === want)) devSel.append(new Option("(NOT PLUGGED IN)", want));
+      devSel.value = want;
+      for (const input of ins) {
         input.onmidimessage = (e) => {
           const d = e.data;
+          if (want && input.id !== want) return;
           if (d.length < 2 || d[0] < 0x80 || d[0] >= 0xF0) return;
           if (!ksBox.checked) return;
           if (ksMessage(d)) return;
