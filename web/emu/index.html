@@ -6,17 +6,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Felucca</title>
+<title>BBL JAM BOX Emulator</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Crect width=%2216%22 height=%2216%22 rx=%223%22/%3E%3Crect x=%224%22 y=%224%22 width=%228%22 height=%228%22 fill=%22%23fff%22/%3E%3C/svg%3E">
-<meta name="description" content="Felucca, the multi-engine synth firmware for the FM-1, running in your browser: the same code the instrument runs.">
+<meta name="description" content="BBL JAM BOX, the groovebox firmware for the M-VAVE FM-1, running in your browser: the same code the FM-1 runs.">
 <style>
-/* DotGothic16 (SIL OFL 1.1, fonts/OFL.txt), cut to printable ASCII, for the knob labels */
-@font-face { font-family: "DotGothic16"; src: url("fonts/DotGothic16-subset.woff") format("woff"); font-display: swap; }
-:root { --bg: #8e8e93; --fg: #111; --dim: #2c2c2e; --rule: #5a5a5e;
+/* Blair's BLB Pixel 7 Chunky (SIL OFL 1.1), the firmware's screen font */
+@font-face { font-family: "BLBPixel"; src: url("fonts/BLBPixel7-Chunky.ttf") format("truetype"); font-display: swap; }
+:root { --bg: #000; --fg: #fff; --dim: #9a9a9e; --rule: #3a3a3e;
         --body: #1d1d1f; --tray: #141415; --part: #2a2a2d; --edge: #3a3a3e; --label: #d6d6d8;
-        --lit: #fff4d6; --green: #5fe08a; color-scheme: light; }
+        --lit: #fff4d6; --green: #5fe08a; color-scheme: dark;
+        --t1: #ff5a36; --t2: #ffd60a; --t3: #2ec4ff; --t4: #b388ff; --t5: #40d678; --t6: #ff70c4; }
 html, body { background: var(--bg); }
-body { margin: 0; color: var(--fg); font: 13px/1.6 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; }
+body { margin: 0; color: var(--fg); font: 15px/1.5 "BLBPixel", ui-monospace, monospace; letter-spacing: .03em; }
 main { max-width: 1040px; margin: 0 auto; padding: 24px 16px 32px; }
 @media (orientation: portrait) and (max-width: 700px) { main { padding: 8px 8px 24px; } }
 a { color: inherit; }
@@ -60,66 +61,115 @@ a { color: inherit; }
 .start { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 12px;
          background: rgba(0, 0, 0, .5); border-radius: 4% / 6%; }
 .start[hidden] { display: none; }
-.start button { font: inherit; font-size: 18px; padding: 12px 28px; background: #fff; color: #000; border: 0; cursor: pointer; }
+.start button { font: inherit; font-size: 24px; padding: 12px 30px; background: #fff; color: #000; border: 0; border-radius: 12px; cursor: pointer; }
 .start button:disabled { opacity: .4; cursor: progress; }
 .start p { margin: 0; max-width: 32em; text-align: center; color: #fff; }
-.keys, footer { margin: 16px 0 0; color: var(--dim); text-align: center; }
-.keys span { white-space: nowrap; margin: 0 8px; }
-.keys select { font: inherit; font-size: 12px; }
-kbd { font: 600 11px ui-monospace, Menlo, monospace; border: 1px solid var(--rule); padding: 0 4px; color: var(--fg); }
-footer { margin-top: 12px; font-size: 12px; }
-footer nav a { margin: 0 6px; }
-footer small { font-size: 11px; opacity: .8; }
+/* BBL JAM BOX: the firmware's look (black, the six track colours, white pop-up boxes with chunky text) */
+.top { display: flex; align-items: center; gap: 16px; margin: 0 0 18px; }
+.top img { width: 72px; height: 72px; image-rendering: pixelated; border-radius: 10px; }
+.top h1 { margin: 0; font-size: 34px; line-height: 1; font-weight: normal; letter-spacing: .04em; }
+.top .sub { margin: 4px 0 0; color: var(--dim); }
+.stripes { display: flex; height: 6px; margin: 0 0 18px; border-radius: 3px; overflow: hidden; }
+.stripes i { flex: 1; }
+.stripes i:nth-child(1) { background: var(--t1); } .stripes i:nth-child(2) { background: var(--t2); }
+.stripes i:nth-child(3) { background: var(--t3); } .stripes i:nth-child(4) { background: var(--t4); }
+.stripes i:nth-child(5) { background: var(--t5); } .stripes i:nth-child(6) { background: var(--t6); }
+.pop { background: #fff; color: #000; border-radius: 12px; padding: 14px 18px; margin: 18px 0 0; }
+.pop h2 { margin: 0 0 8px; font-size: 24px; line-height: 1.1; font-weight: normal; color: var(--ink, #000); }
+.pop p { margin: 0 0 8px; }
+.pop p:last-child { margin-bottom: 0; }
+.pop.c1 { --ink: #d63a18; } .pop.c3 { --ink: #0a8fc4; } .pop.c4 { --ink: #7a4fd6; } .pop.c5 { --ink: #1f9a50; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 0 18px; }
+.kbrow { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 10px; }
+.kc { display: inline-grid; place-items: center; min-width: 46px; height: 46px; padding: 0 4px; border-radius: 7px;
+      background: #000; color: #fff; text-align: center; line-height: 1.05; font-size: 12px; box-sizing: border-box; }
+.kc b { display: block; font-size: 17px; font-weight: normal; color: var(--t2); }
+.kc.w { background: #fff; color: #000; border: 2px solid #000; } .kc.w b { color: #d63a18; }
+.kc.gap { visibility: hidden; }
+kbd { font: inherit; border: 2px solid #000; border-radius: 5px; padding: 0 5px; }
+.midi { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.midi button, .midi select { font: inherit; font-size: 15px; padding: 6px 14px; border-radius: 8px; border: 2px solid #000;
+      background: #000; color: #fff; cursor: pointer; }
+.midi button.on { background: var(--t1); border-color: var(--t1); }
+.midi output { color: #d63a18; }
+.hit.learn { outline: 3px dashed var(--t1); outline-offset: 3px; }
+footer { margin: 22px 0 0; color: var(--dim); font-size: 13px; text-align: center; }
+footer small { font-size: 12px; }
 /* the sample uploader */
-.smp { margin: 20px auto 0; max-width: 720px; background: var(--body); color: var(--label); border-radius: 12px; padding: 16px; }
-.smp h2 { margin: 0 0 4px; font-size: 15px; color: #fff; }
+.smp { margin: 18px 0 0; background: #fff; color: #000; border-radius: 12px; padding: 14px 18px; }
+.smp h2 { margin: 0 0 8px; font-size: 24px; line-height: 1.1; font-weight: normal; color: #0a8fc4; }
 .smp p { margin: 0 0 10px; }
 .smp .row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 8px 0; }
-.smp button, .smp select { font: inherit; padding: 4px 12px; border-radius: 6px; border: 1px solid var(--edge); background: var(--part); color: #fff; cursor: pointer; }
+.smp button, .smp select { font: inherit; padding: 4px 12px; border-radius: 8px; border: 2px solid #000; background: #000; color: #fff; cursor: pointer; }
 .smp button:disabled { opacity: .4; cursor: default; }
-.smp button.go { background: #fff; color: #000; border-color: #fff; }
-.smp canvas { display: block; width: 100%; height: 96px; background: var(--tray); border-radius: 6px; }
+.smp button.go { background: #0a8fc4; border-color: #0a8fc4; }
+.smp canvas { display: block; width: 100%; height: 96px; background: #000; border-radius: 6px; }
 .smp input[type=range] { flex: 1; min-width: 120px; }
-.smp .msg { color: #aaa; }
-.smp .msg.bad { color: #ff8a80; }
-.smp .msg.ok { color: var(--green); }
-.smp .meter { height: 8px; background: var(--tray); border-radius: 4px; overflow: hidden; flex: 1; min-width: 160px; }
-.smp .meter div { height: 100%; width: 0; background: var(--green); }
+.smp .msg { color: #555; }
+.smp .msg.bad { color: #d63a18; }
+.smp .msg.ok { color: #1f9a50; }
+.smp .meter { height: 10px; background: #ddd; border-radius: 4px; overflow: hidden; flex: 1; min-width: 160px; }
+.smp .meter div { height: 100%; width: 0; background: #0a8fc4; }
 .smp ol { margin: 8px 0; padding: 0; list-style: none; }
-.smp li { display: grid; grid-template-columns: 40px 1fr auto auto auto; gap: 10px; align-items: center; padding: 4px 0; border-top: 1px solid var(--part); }
-.smp li .n { font-family: ui-monospace, Menlo, monospace; color: #fff; }
-.smp li .sz { color: #aaa; font-size: 12px; }
+.smp li { display: grid; grid-template-columns: 40px 1fr auto auto auto; gap: 10px; align-items: center; padding: 4px 0; border-top: 2px solid #eee; }
+.smp li .n { color: #0a8fc4; }
+.smp li .sz { color: #555; font-size: 12px; }
 .smp li button { padding: 2px 10px; }
 </style>
 </head>
 <body>
 <main>
+<header class="top">
+  <img id="logo" src="logo.jpg" alt="BBL JAM BOX logo" width="72" height="72">
+  <div><h1>BBL JAM BOX</h1><p class="sub">EMULATOR · @VERSION@ · THE REAL FIRMWARE, IN YOUR BROWSER</p></div>
+</header>
+<div class="stripes"><i></i><i></i><i></i><i></i><i></i><i></i></div>
 <div class="device" id="device">
   <svg id="panel" viewBox="0 0 1000 624" aria-hidden="true"></svg>
   <canvas id="screen" width="240" height="240" role="img" aria-label="The screen"></canvas>
-  <div class="start" id="start"><button id="go" type="button">Switch on</button><p id="status" hidden></p></div>
+  <div class="start" id="start"><button id="go" type="button">SWITCH ON</button><p id="status" hidden></p></div>
 </div>
 
-<p class="keys">
-  <span><kbd>Z</kbd>–<kbd>'</kbd> <kbd>Q</kbd>–<kbd>O</kbd> keys</span>
-  <span><kbd>1</kbd>–<kbd>=</kbd> FX … REC</span>
-  <span><kbd>[</kbd> <kbd>]</kbd> OCT</span>
-  <span><kbd>↑</kbd> <kbd>↓</kbd> SELECT</span>
-  <span><kbd>←</kbd> <kbd>→</kbd> ALGORITHM</span>
-  <span><kbd>Shift</kbd>-click holds a button</span>
-  <span id="ks" hidden><label><input type="checkbox" id="kson" checked> MIDI keyboard + knobs</label>
-  <button id="kslearn" type="button">Learn knobs 1–4</button> <output id="ksinfo"></output></span>
-  <span id="midiknobs" hidden><label><input type="checkbox" id="knobson"> MIDI CC 20–27 turn the panel's knobs</label>
-  <select id="knobmode" aria-label="How the controller sends CC 20–26" hidden>
-    <option value="abs">absolute</option>
-    <option value="bin">relative 64±n</option>
-    <option value="twos">relative 2's complement</option>
-    <option value="sign">relative sign bit</option>
-  </select></span>
-</p>
+<section class="pop c1">
+  <h2>WHAT IS THIS?</h2>
+  <p>The same BBL JAM BOX firmware the M-VAVE FM-1 runs, running in your browser: the same sounds, screen, sequencer and
+  saves. Click the panel, use your computer keyboard, or plug in a MIDI keyboard / controller. Your sounds, kits and last
+  jam are kept in this browser. Works best in Chrome or Edge.</p>
+</section>
+
+<section class="pop c4">
+  <h2>COMPUTER KEYBOARD</h2>
+  <p>Laid out like the FM-1: the two rows of buttons on the number row and Q row, the keys like a piano on the Z and A
+  rows (W = white key, B = black key; in SEQ mode B1-B6 pick the tracks, B7 the FX track, the black keys 8-11 the pages).</p>
+  <div class="kbrow"><span class="kc"><b>1</b>FX</span><span class="kc"><b>2</b>SCL</span><span class="kc"><b>3</b>ENV</span><span class="kc"><b>4</b>LFO</span><span class="kc"><b>5</b>EDIT</span><span class="kc"><b>6</b>GLO</span><span class="kc"><b>7</b>OCT-</span><span class="kc"><b>8</b>OCT+</span><span class="kc"><b>9</b>B9</span><span class="kc"><b>0</b>B10</span><span class="kc gap"></span><span class="kc"><b>=</b>B11</span></div>
+  <div class="kbrow"><span class="kc"><b>Q</b>HOME</span><span class="kc"><b>W</b>SAVE</span><span class="kc"><b>E</b>ARP</span><span class="kc"><b>R</b>SEQ</span><span class="kc"><b>T</b>PLAY</span><span class="kc"><b>Y</b>REC</span><span class="kc w"><b>U</b>W11</span><span class="kc w"><b>I</b>W12</span><span class="kc w"><b>O</b>W13</span><span class="kc w"><b>P</b>W14</span><span class="kc w"><b>[</b>W15</span><span class="kc w"><b>]</b>W16</span></div>
+  <div class="kbrow"><span class="kc gap"></span><span class="kc"><b>S</b>B1</span><span class="kc"><b>D</b>B2</span><span class="kc"><b>F</b>B3</span><span class="kc gap"></span><span class="kc"><b>H</b>B4</span><span class="kc"><b>J</b>B5</span><span class="kc gap"></span><span class="kc"><b>L</b>B6</span><span class="kc"><b>;</b>B7</span><span class="kc"><b>'</b>B8</span></div>
+  <div class="kbrow"><span class="kc w"><b>Z</b>W1</span><span class="kc w"><b>X</b>W2</span><span class="kc w"><b>C</b>W3</span><span class="kc w"><b>V</b>W4</span><span class="kc w"><b>B</b>W5</span><span class="kc w"><b>N</b>W6</span><span class="kc w"><b>M</b>W7</span><span class="kc w"><b>,</b>W8</span><span class="kc w"><b>.</b>W9</span><span class="kc w"><b>/</b>W10</span></div>
+  <p><kbd>↑</kbd> <kbd>↓</kbd> SELECT · <kbd>←</kbd> <kbd>→</kbd> ALGORITHM (track) · mouse wheel or drag on any knob turns it ·
+  Shift-click a button holds it down.</p>
+</section>
+
+<section class="pop c5" id="ks" hidden>
+  <h2>MIDI</h2>
+  <p>A MIDI keyboard plays the FM-1's keys. <b>MIDI LEARN</b>: press it, click a knob on the panel (KNOB 1-4, SELECT,
+  PRESETS, ALGORITHM or MASTER), then move a control on your controller. Do it again for each knob you want. The
+  emulator remembers them.</p>
+  <div class="midi">
+    <label><input type="checkbox" id="kson" checked> MIDI ON</label>
+    <button id="kslearn" type="button">MIDI LEARN</button>
+    <button id="ksclear" type="button">CLEAR</button>
+    <label>KNOBS SEND <select id="knobmode" aria-label="How the controller sends its knobs">
+      <option value="abs">ABSOLUTE</option>
+      <option value="bin">RELATIVE 64±N</option>
+      <option value="twos">RELATIVE 2'S COMP</option>
+      <option value="sign">RELATIVE SIGN BIT</option>
+    </select></label>
+    <output id="ksinfo"></output>
+  </div>
+</section>
 
 <section class="smp" id="smp" aria-labelledby="smph">
-  <h2 id="smph">Samples</h2>
+  <h2 id="smph">SAMPLES</h2>
   <p>Pick a sound file, choose the part you want and press <b>Write</b> to add it to the list. Then press <b>Upload</b>:
   the list replaces everything in the FM-1's sample memory. A SAMPLE track plays slot S01 to S32 (its SLOT knob).</p>
   <div class="row"><input type="file" id="sfile" accept="audio/*,.wav,.mp3,.ogg,.flac,.aif,.aiff" aria-label="Sound file"> <span class="msg" id="sfinfo">WAV, MP3, OGG or FLAC.</span></div>
@@ -136,17 +186,20 @@ footer small { font-size: 11px; opacity: .8; }
 </section>
 
 <footer>
-  <small class="version">@VERSION@@PREVIEW@</small><br>
-  Felucca by Leo Kuroshita, Hügelton Instruments · <a href="https://www.gnu.org/licenses/gpl-3.0.html">GPL-3.0</a> · browser build after charlesvestal's <a href="https://github.com/charlesvestal/fm1-x0x">X0X</a> · DotGothic16 font, <a href="fonts/OFL.txt">SIL OFL 1.1</a><br>
-  <nav><a href="../installer/">Install</a><a href="../editor/">Editor</a><a href="https://github.com/hugelton/Felucca">Source</a></nav>
-  <small>M-VAVE and FM-1 are trademarks of their respective owners. Felucca is not affiliated with or endorsed by them.</small>
+  <small>BBL JAM BOX @VERSION@ by Blair (blairysbeatlab) · based on Felucca by Leo Kuroshita, Hügelton Instruments ·
+  <a href="https://www.gnu.org/licenses/gpl-3.0.html">GPL-3.0</a> · <a href="https://github.com/UnkleBlairy/BBL-JAM-BOX">source</a> ·
+  browser build after charlesvestal's <a href="https://github.com/charlesvestal/fm1-x0x">X0X</a> · font BLB Pixel 7 Chunky
+  by Blair, SIL OFL 1.1 · the logo is not under the GPL</small><br>
+  <small>M-VAVE and FM-1 are trademarks of their respective owners. BBL JAM BOX is not affiliated with or endorsed by them.</small>
 </footer>
 </main>
 
 <script type="module">
-import { midiKnob, KNOB_MODES } from "./worklet.js";
-import { SMP_BASE, SMP_REGION, parseImage } from "./smpimg.js";
-import { mountUploader } from "./smpui.js";
+// the files beside the page; the one-file build (web/emu/bundle.py) gives blob URLs for them in window.BBL_FILES
+const FILE = (n) => (window.BBL_FILES && window.BBL_FILES[n]) || n;
+const { SMP_BASE, SMP_REGION, parseImage } = await import(FILE("smpimg.js"));
+const { mountUploader } = await import(FILE("smpui.js"));
+if (window.BBL_FILES && window.BBL_FILES["logo.jpg"]) document.getElementById("logo").src = window.BBL_FILES["logo.jpg"];
 const NS = "http://www.w3.org/2000/svg";
 // panel.c's labels (bit = label) and encoder roles
 const B = { FX: 0, SCL: 1, ENV: 2, LFO: 3, EDIT: 4, GLO: 5, HOME: 6, SAVE: 7, ARP: 8, SEQ: 9, PLAY: 10, REC: 11, "OCT-": 12, "OCT+": 13 };
@@ -156,7 +209,7 @@ const PLAY_GREEN = 14;
 const WHITE = [0, 2, 4, 6, 7, 9, 11, 12, 14, 16, 18, 19, 21, 23, 24, 26];
 const BLACK = [1, 3, 5, 8, 10, 13, 15, 17, 20, 22, 25];
 const BLACK_AFTER = [0, 1, 2, 4, 5, 7, 8, 9, 11, 12, 14];      // the white key each black one follows
-const STORE = "felucca-emu-flash", KNOBS_ON = "felucca-emu-knobs", KNOB_MODE = "felucca-emu-knobmode";
+const STORE = "felucca-emu-flash", KNOB_MODE = "felucca-emu-knobmode", KNOB_MODES = ["abs", "bin", "twos", "sign"];
 
 // ------------------------------------------------------------------ the panel
 // Two drawings of the same controls: WIDE after the FM-1's own layout, TALL for a phone held upright (the
@@ -186,10 +239,10 @@ function el(tag, attrs, parent = svg) {
   parent.appendChild(e);
   return e;
 }
-const SANS = "-apple-system, 'Helvetica Neue', Arial, sans-serif", DOT = "'DotGothic16', " + SANS;
+const SANS = "'BLBPixel', ui-monospace, monospace", DOT = SANS;
 function label(parent, x, y, s, size, font = SANS, ink = "var(--label)") {
   const t = el("text", { x, y, "text-anchor": "middle", "font-family": font,
-                         "font-size": size, "font-weight": 600, fill: ink, "letter-spacing": ".04em" }, parent);
+                         "font-size": size, fill: ink, "letter-spacing": ".04em" }, parent);
   t.textContent = s;
   return t;
 }
@@ -377,20 +430,22 @@ function bindKnob(k) {
 const tall = matchMedia("(orientation: portrait) and (max-width: 700px)");
 build(tall.matches ? "tall" : "wide");
 tall.addEventListener("change", () => build(tall.matches ? "tall" : "wide"));
-document.fonts?.load("16px DotGothic16").then(() => build(layout), () => {});   // the labels' width: the hit areas
+document.fonts?.load("16px BLBPixel").then(() => build(layout), () => {});   // the labels' width: the hit areas
 
-// the computer keyboard, every key one control: F3..A#4 on the Z (white) and A (black) rows, B4..G5 on Q..O
-// in semitones, the twelve buttons on the number row in the panel's order (held while the key is), [ ] OCT
+// the computer keyboard, laid out like the FM-1 (Blair's map): 1-6 the top row of buttons (FX .. GLO), Q-Y the bottom
+// row (HOME .. REC), 7 8 OCT- OCT+; the keys as a piano: white keys 1-10 on Z../ with the black ones on S D F H J L ; ',
+// white keys 11-16 on U I O P [ ] with their black ones on 9 0 =
 const KEYMAP = {};
-["KeyZ", "KeyX", "KeyC", "KeyV", "KeyB", "KeyN", "KeyM", "Comma", "Period", "Slash"].forEach((c, i) => KEYMAP[c] = { key: WHITE[i] });
-[["KeyS", 1], ["KeyD", 3], ["KeyF", 5], ["KeyH", 8], ["KeyJ", 10], ["KeyL", 13], ["Semicolon", 15], ["Quote", 17]].forEach(([c, k]) => KEYMAP[c] = { key: k });
-["KeyQ", "KeyW", "KeyE", "KeyR", "KeyT", "KeyY", "KeyU", "KeyI", "KeyO"].forEach((c, i) => KEYMAP[c] = { key: 18 + i });
-["Digit1", "Digit2", "Digit3", "Digit4", "Digit5", "Digit6", "Digit7", "Digit8", "Digit9", "Digit0", "Minus", "Equal"]
-  .forEach((c, i) => KEYMAP[c] = { btn: B[[...ROW1, ...ROW2][i]] });
-Object.assign(KEYMAP, { BracketLeft: { btn: B["OCT-"] }, BracketRight: { btn: B["OCT+"] } });
+["KeyZ", "KeyX", "KeyC", "KeyV", "KeyB", "KeyN", "KeyM", "Comma", "Period", "Slash", "KeyU", "KeyI", "KeyO", "KeyP", "BracketLeft", "BracketRight"]
+  .forEach((c, i) => KEYMAP[c] = { key: WHITE[i] });
+[["KeyS", 1], ["KeyD", 3], ["KeyF", 5], ["KeyH", 8], ["KeyJ", 10], ["KeyL", 13], ["Semicolon", 15], ["Quote", 17],
+ ["Digit9", 20], ["Digit0", 22], ["Equal", 25]].forEach(([c, k]) => KEYMAP[c] = { key: k });
+["Digit1", "Digit2", "Digit3", "Digit4", "Digit5", "Digit6"].forEach((c, i) => KEYMAP[c] = { btn: B[ROW1[i]] });
+["KeyQ", "KeyW", "KeyE", "KeyR", "KeyT", "KeyY"].forEach((c, i) => KEYMAP[c] = { btn: B[ROW2[i]] });
+Object.assign(KEYMAP, { Digit7: { btn: B["OCT-"] }, Digit8: { btn: B["OCT+"] } });
 const ARROWS = { ArrowUp: [EN.SELECT, 1], ArrowDown: [EN.SELECT, -1], ArrowRight: [EN.ALGORITHM, 1], ArrowLeft: [EN.ALGORITHM, -1] };
 addEventListener("keydown", (e) => {
-  if (!node || e.metaKey || e.ctrlKey || e.altKey || e.target.closest?.(".hit.knob")) return;
+  if (!node || e.metaKey || e.ctrlKey || e.altKey || e.target.closest?.(".hit.knob, input, select, textarea")) return;
   if (ARROWS[e.code]) { const [r, n] = ARROWS[e.code]; turn(knobs.find((k) => k.role === r), n); e.preventDefault(); return; }
   const m = KEYMAP[e.code];
   if (!m) return;
@@ -477,46 +532,60 @@ function saveFlash(sectors) {
   } catch { return false; }                                       // private mode, full: this session only
 }
 
-// ------------------------------------------------------------------ Web MIDI in (channel messages)
-// With the page's checkbox on, CC 20..27 turn the panel's knobs (worklet.js midiKnob), any channel, CC 20..26 sent
-// as the select says; off (the default), and the rest, go to the firmware
-const knobCC = [], knobBox = document.getElementById("knobson"), knobSelect = document.getElementById("knobmode");
-let knobsOn = false, knobMode = "abs";
+// ------------------------------------------------------------------ Web MIDI in
+// Notes play the panel's keys (folded by octaves into F3..G5). MIDI LEARN: press it, click a knob, move a control: that
+// CC turns the knob from then on (KNOB 1-4 start on CC 74 71 76 77). MASTER takes the value as it is (a pot); the
+// others turn by what the controller sends (the select: absolute = by how far it moved, or relative). Anything else
+// (other CCs, program changes, ..) goes to the firmware, as a cable into the FM-1 would.
+const knobSelect = document.getElementById("knobmode"), ksBox = document.getElementById("kson");
+const ksLearn = document.getElementById("kslearn"), ksInfo = document.getElementById("ksinfo");
+const CC_STORE = "bbl-emu-cc";
+let knobMode = "abs", ccMap = { 3: 74, 4: 71, 5: 76, 6: 77 }, learn = 0, learnRole = null;   // role -> CC
 try {
-  knobsOn = localStorage.getItem(KNOBS_ON) === "1";
   const m = localStorage.getItem(KNOB_MODE);
   if (KNOB_MODES.includes(m)) knobMode = m;
+  const v = JSON.parse(localStorage.getItem(CC_STORE));
+  if (v && typeof v === "object") ccMap = v;
 } catch {}
-knobBox.checked = knobsOn;
-knobSelect.hidden = !knobsOn;
 knobSelect.value = knobMode;
-knobBox.addEventListener("change", () => {
-  knobsOn = knobBox.checked;
-  knobSelect.hidden = !knobsOn;
-  knobCC.length = 0;
-  try { localStorage.setItem(KNOBS_ON, knobsOn ? "1" : "0"); } catch {}
-});
 knobSelect.addEventListener("change", () => {
   knobMode = knobSelect.value;
-  knobCC.length = 0;                                              // absolute again: no jump on the first touch
+  ccLast.clear();                                                 // absolute again: no jump on the first touch
   try { localStorage.setItem(KNOB_MODE, knobMode); } catch {}
 });
-document.getElementById("midiknobs").hidden = !navigator.requestMIDIAccess;
-// KeyStep-style controller: notes play the panel's keys (folded by octaves into F3..G5), four CCs turn KNOB 1..4
-// (default CC 74,71,76,77; "Learn": move four controls in turn). Relative/absolute follows the select below.
-const ksBox = document.getElementById("kson"), ksLearn = document.getElementById("kslearn"), ksInfo = document.getElementById("ksinfo");
 document.getElementById("ks").hidden = !navigator.requestMIDIAccess;
-knobSelect.hidden = false;
-knobSelect.title = "How the controller sends its knob CCs";
-let ksCC = [74, 71, 76, 77], learning = -1;
-try { const v = JSON.parse(localStorage.getItem("felucca-ks-cc")); if (Array.isArray(v) && v.length === 4) ksCC = v; } catch {}
-const ksText = () => { ksInfo.textContent = learning >= 0 ? `move control for KNOB ${learning + 1}…` : `knobs: CC ${ksCC.join(", ")}`; };
-ksText();
-ksLearn.addEventListener("click", () => { learning = 0; ksCC = []; ksText(); });
-const ksLast = [];
+const roleName = (r) => (knobs.find((k) => String(k.role) === String(r)) || {}).name || r;
+const ccText = () => {
+  if (learn === 1) { ksInfo.textContent = "CLICK A KNOB ON THE PANEL"; return; }
+  if (learn === 2) { ksInfo.textContent = `MOVE A CONTROL FOR ${roleName(learnRole)}`; return; }
+  const l = Object.entries(ccMap).map(([r, c]) => `${roleName(r)} = CC ${c}`);
+  ksInfo.textContent = l.length ? l.join(" · ") : "NO KNOBS LEARNT";
+};
+const saveCC = () => { try { localStorage.setItem(CC_STORE, JSON.stringify(ccMap)); } catch {} };
+const learnMarks = () => knobs.forEach((k) => k.hit && k.hit.classList.toggle("learn", learn === 1));
+ksLearn.addEventListener("click", () => {
+  learn = learn ? 0 : 1;
+  ksLearn.classList.toggle("on", !!learn);
+  learnMarks();
+  ccText();
+});
+document.getElementById("ksclear").addEventListener("click", () => { ccMap = {}; saveCC(); learn = 0; ksLearn.classList.remove("on"); learnMarks(); ccText(); });
+// (a knob clicked while learning: build's hits are new each layout, so the panel catches it)
+device.addEventListener("pointerdown", (e) => {
+  if (learn !== 1) return;
+  const k = knobs.find((x) => x.hit === e.target);
+  if (!k) return;
+  e.stopPropagation();
+  e.preventDefault();
+  learnRole = k.role;
+  learn = 2;
+  learnMarks();
+  ccText();
+}, true);
+const ccLast = new Map();
 function ksMessage(d) {
   const st = d[0] & 0xF0;
-  if ((st === 0x90 && d[2]) || st === 0x80 || st === 0x90) {
+  if (st === 0x90 || st === 0x80) {
     let k = d[1] - 53;
     while (k < 0) k += 12;
     while (k > 26) k -= 12;
@@ -525,22 +594,29 @@ function ksMessage(d) {
     return true;
   }
   if (st !== 0xB0) return false;
-  if (learning >= 0) {
-    if (ksCC.includes(d[1])) return true;
-    ksCC.push(d[1]);
-    if (++learning >= 4) { learning = -1; try { localStorage.setItem("felucca-ks-cc", JSON.stringify(ksCC)); } catch {} }
-    ksText();
+  if (learn === 2) {
+    for (const r of Object.keys(ccMap)) if (ccMap[r] === d[1]) delete ccMap[r];   // (one knob a CC)
+    ccMap[learnRole] = d[1];
+    saveCC();
+    learn = 0;
+    ksLearn.classList.remove("on");
+    ccLast.delete(d[1]);
+    ccText();
     return true;
   }
-  const i = ksCC.indexOf(d[1]);
-  if (i < 0) return false;
-  const was = ksLast[i];
-  ksLast[i] = d[2];
+  const r = Object.keys(ccMap).find((x) => ccMap[x] === d[1]);
+  if (r === undefined) return false;
+  const k = knobs.find((x) => String(x.role) === r);
+  if (!k) return true;
+  if (k.role === "master") { setMaster(Math.round(d[2] * 1023 / 127)); drawKnob(k); return true; }
+  const was = ccLast.get(d[1]);
+  ccLast.set(d[1], d[2]);
   const n = knobMode === "abs" ? (was === undefined ? 0 : d[2] - was)
     : knobMode === "bin" ? d[2] - 64 : knobMode === "twos" ? (d[2] < 64 ? d[2] : d[2] - 128) : (d[2] < 64 ? d[2] : 64 - d[2]);
-  turn(knobs.find((x) => x.role === 3 + i), n);
+  turn(k, n);
   return true;
 }
+ccText();
 async function midiOn() {
   if (!navigator.requestMIDIAccess) return;
   try {
@@ -550,11 +626,9 @@ async function midiOn() {
         input.onmidimessage = (e) => {
           const d = e.data;
           if (d.length < 2 || d[0] < 0x80 || d[0] >= 0xF0) return;
-          if (ksBox.checked && ksMessage(d)) return;
-          const k = knobsOn && (d[0] & 0xF0) === 0xB0 ? midiKnob(knobCC, d[1], d[2] || 0, knobMode) : null;
-          if (!k) send({ type: "midi", data: [d[0], d[1], d[2] || 0] });
-          else if (k.master !== undefined) { setMaster(k.master); drawKnob(knobs.find((x) => x.role === "master")); }
-          else turn(knobs.find((x) => x.role === k.role), k.n);
+          if (!ksBox.checked) return;
+          if (ksMessage(d)) return;
+          send({ type: "midi", data: [d[0], d[1], d[2] || 0] });
         };
       }
     };
@@ -569,12 +643,12 @@ const say = (t) => { status.textContent = t; status.hidden = !t; };
 async function switchOn() {
   const go = document.getElementById("go");
   go.disabled = true;
-  go.textContent = "Starting…";
+  go.textContent = "STARTING…";
   try {
     const ac = new AudioContext({ sampleRate: 44100, latencyHint: "interactive" });
     const [wasm] = await Promise.all([
-      fetch("felucca.wasm").then((r) => { if (!r.ok) throw new Error(`felucca.wasm: ${r.status}`); return r.arrayBuffer(); }),
-      ac.audioWorklet.addModule("worklet.js")]);
+      fetch(FILE("felucca.wasm")).then((r) => { if (!r.ok) throw new Error(`felucca.wasm: ${r.status}`); return r.arrayBuffer(); }),
+      ac.audioWorklet.addModule(FILE("worklet.js"))]);
     node = new AudioWorkletNode(ac, "felucca", { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2] });
     node.connect(ac.destination);
     let warned = false;
@@ -588,7 +662,7 @@ async function switchOn() {
           if (m.leds) drawLights(lastLeds = m.leds, m.anim);
           if (m.sectors && !saveFlash(m.sectors) && !warned) {
             warned = true;
-            console.warn("Felucca: this browser does not keep the saves; they last until the page closes.");
+            console.warn("BBL JAM BOX: this browser does not keep the saves; they last until the page closes.");
           }
         }
       };
@@ -597,7 +671,7 @@ async function switchOn() {
     await ac.resume();
     document.getElementById("start").hidden = true;
     go.textContent = "On";
-    if (ac.sampleRate !== 44100) console.warn(`Felucca: the browser plays at ${ac.sampleRate} Hz, the pitch is off by ${(1200 * Math.log2(ac.sampleRate / 44100)).toFixed(0)} cents.`);
+    if (ac.sampleRate !== 44100) console.warn(`BBL JAM BOX: the browser plays at ${ac.sampleRate} Hz, the pitch is off by ${(1200 * Math.log2(ac.sampleRate / 44100)).toFixed(0)} cents.`);
     syncButtons();
     syncKeys();
     send({ type: "visible", on: !document.hidden });
@@ -605,8 +679,8 @@ async function switchOn() {
   } catch (err) {
     node = null;
     go.disabled = false;
-    go.textContent = "Switch on";
-    say("Could not start: " + (err && err.message || err) + ". A current Chrome, Edge, Firefox or Safari should work.");
+    go.textContent = "SWITCH ON";
+    say("Could not start: " + (err && err.message || err) + ". Chrome or Edge works best.");
   }
 }
 document.getElementById("go").addEventListener("click", switchOn);
