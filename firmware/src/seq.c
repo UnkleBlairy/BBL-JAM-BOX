@@ -1676,48 +1676,10 @@ static void fxl_step(uint32_t s)
     mg_ov_n = (uint8_t)n;
 }
 
-/* SIMPLE, the MASTER LENGTH: every track and the FX lane start again together at its end (a LEN, a page or a SPD
- * changed while playing has them drift apart: they meet again there). 4 bars (64 1/16s), or longer when a track's loop
- * is (LEN x its SPD), in whole 4 bars. Not an ACID: it goes its own way. Counted on the metronome's straight 1/16s (click_tick) */
-static uint16_t mst_step;                               /* 1/16s since the master's start */
-static uint32_t gb_spd(int32_t div)                     /* SPD 0..4 (x1/4 .. x4) of a DIV (another: x1) */
-{
-    return div == 0 ? 0u : div == 1 ? 1u : div == 3 ? 3u : div == 10 ? 4u : 2u;
-}
-static __attribute__((noinline)) uint32_t mst_len(void)
-{
-    static const uint8_t Q[5] = {16, 8, 4, 2, 1};       /* a step's quarter 1/16s at x1/4 .. x4 */
-    uint32_t i, m = 256u;
-    for (i = 0; i < NTRK; i++) {
-        const track_t *t = &trk[i];
-        uint32_t q = Q[gb_spd(t->p[P_SDIV])], l = (uint32_t)(t->p[P_SLEN] ? t->p[P_SLEN] : 1) * q;
-        m = l > m ? l : m;                              /* (an ACID: not counted, it goes its own way) */
-    }
-    m = (m + 3u) / 4u;                                  /* (1/16s) */
-    m = m > fxl_len() ? m : fxl_len();
-    return (m + 63u) / 64u * 64u;
-}
-/* .. its end was e samples ago (in this block, after seq_tick): a track that started its step 1 (an ACID its first
- * stage) about then is moved to the master's place (no new hit); the others start again, in the next block */
-static __attribute__((noinline)) void mst_realign(uint32_t e)
-{
-    uint32_t i;
-    for (i = 0; i < NTRK; i++) {
-        track_t *t = &trk[i];
-        uint32_t period = div_samples((uint32_t)t->p[P_SDIV]), len = t->p[P_SLEN] ? (uint32_t)t->p[P_SLEN] : 1u;
-        /* (a track playing its ACID: the ACID is left alone, its silent steps realign) */
-        if (t->seq_idx == 0u && t->seq_pos < period / 2u) {
-            t->seq_pos = e;
-        } else {
-            t->seq_idx = (uint16_t)(len - 1u);
-            t->seq_pos = step_samples(t, period, len - 1u) + e;
-            t->nd_late = t->nd_early = ND_NONE;
-            t->nd_fired = 0;
-            t->rat_left = 0;
-        }
-    }
-}
-
+/* SIMPLE, the master's count: straight 1/16s since PLAY (click_tick). Nothing restarts on it (the 4-bar MASTER LENGTH
+ * reset is gone, 0.4): a LEN / page / SPD change jumps the track to where it would be (mst_follow), the FX lane's step
+ * is the count mod its LEN */
+static uint32_t mst_step;                               /* 1/16s since PLAY (no reset: Blair's choice, 0.4) */
 /* SIMPLE: a track's LEN or SPD changed while playing (a page added, a knob): it jumps at once to where it would be had
  * it played that length / speed since the master's start (all tracks start together there), so nothing waits for the
  * master's end. A step landed on within this block plays; landed on part way through, it waits for the next step.
@@ -1736,7 +1698,8 @@ static __attribute__((noinline)) void mst_follow(uint32_t n)
             continue;                                   /* (not yet started: PLAY's first step is still to come) */
         {
             uint32_t period = div_samples(div), s0 = step_samples(t, period, 0u), s1 = step_samples(t, period, 1u);
-            uint32_t e = (uint32_t)mst_step * div_samples(2) + clk_pos, k = e / (s0 + s1) * 2u, r = e % (s0 + s1), idx;
+            uint64_t e = (uint64_t)mst_step * div_samples(2) + clk_pos;   /* (64-bit: hours of playing) */
+            uint32_t k = (uint32_t)(e / (s0 + s1)) * 2u, r = (uint32_t)(e % (s0 + s1)), idx;
             if (r >= s0) {
                 r -= s0;
                 k++;
@@ -1771,23 +1734,16 @@ static void click_tick(uint32_t adv)
         fxl_pos = 0;
         fxl_step(0);
     } else {
-        uint32_t top = 0;
         clk_pos += adv;
         while (clk_pos >= p) {                      /* (as seq_tick: the remainder kept) */
             clk_pos -= p;
             clk_step = (clk_step + 1u) & 15u;
-            if (FELUCCA_SIMPLE && ++mst_step >= mst_len()) {   /* the master length's end: */
-                top = 1;
-                mst_step = 0;
-                clk_step = 0;                       /* (the bar's beat 1 too) */
-            }
+            mst_step++;                             /* (no 4-bar restart any more: mst_follow keeps time) */
             fxl_pos = mst_step % fxl_len();         /* (.. the FX lane from its step 1; a LEN change: where it would be) */
             fxl_step(fxl_pos);
             if (!(clk_step & 3u))
                 beat = clk_step ? 1u : 2u;
         }
-        if (top)
-            mst_realign(clk_pos);                   /* (the tracks: seq_tick ran already) */
     }
     if (beat && click_wanted())
         click_req = (uint8_t)beat;

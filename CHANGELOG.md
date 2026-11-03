@@ -2,7 +2,7 @@
 
 ## 0.4 beta (2026-11-03): members' preview
 
-A Metropolis-style ACID sequencer, patterns that stay locked together, and tracks that remember how you left them.
+A Metropolis-style ACID sequencer, length changes that land in time at once, and tracks that remember how you left them.
 
 ### ACID sequencer
 - **ACID mode**: a stage sequencer in the style of the Intellijel Metropolis, on any track. In SEQ mode **tap
@@ -15,11 +15,10 @@ A Metropolis-style ACID sequencer, patterns that stay locked together, and track
 - OCT- clears the track's ACID; hold a stage + OCT- resets that stage.
 
 ### Sequencer
-- **Patterns stay locked together**: every 4 bars all tracks and the FX lane restart together, so changing LEN,
-  adding pages or changing SPD while playing no longer leaves tracks drifting (no stop/start needed). ACID lines
-  run free and go their own way.
 - **Length and speed changes land in time at once**: add a page, change LEN or SPD while playing and the track jumps
-  straight to where it would be if it had always been that length / speed (no waiting for the 4-bar reset).
+  straight to where it would be if it had always been that length / speed, so tracks never drift apart and you never
+  need to stop and start. Nothing restarts every few bars, so odd lengths (3, 5, 7 steps..) keep running against each
+  other as polyrhythms.
 - **New steps start on middle C** after a sound or kit load, a clear, SOUND RESET or CLEAR ALL, until you play a
   note on the keys (then new steps use your last note or chord, as before).
 - **Kits keep each track's step note / chord**: set the kick two octaves down, save the kit, and it comes back that
