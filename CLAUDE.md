@@ -338,6 +338,10 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   yet (fixed 4 bars for now). A LEN / page / SPD change while playing also jumps that track at once to where it would
   be had it played that way since the master's start (seq.c mst_follow; Elektron-style, no waiting); the FX lane's
   step is always the master's count mod its LEN.
+- Emulator page (web/emu/index.html): the firmware's look (black, BLB Pixel font, track colours, white boxes). Computer
+  keys (Blair's map): 1-6 FX..GLO, Q-Y HOME..REC, 7 8 OCT- OCT+, white keys Z../ then U..], black keys S D F H J L ; '
+  then 9 0 =. MIDI LEARN: press it, click any knob, move a control (bbl-emu-cc). One-file copy for Patreon:
+  web/emu/bundle.py (no server needed).
 - Screen mirror (test): firmware/src/mirror.c streams every lcd_fill / lcd_blit as RGB 3-3-2 run-length over USB
   SysEx (cmd 0x70, only while a page keeps asking; ~6-9 KB a full page; 04 = a whole picture, the page shows only those; behind by > 3 KB at a picture's end = the
   next draws left out, then one fresh full redraw, so the lag stays short); over the USB serial port (CDC, Web Serial; S start, M keep alive; Windows' MIDI
