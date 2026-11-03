@@ -28,7 +28,7 @@ loader = f"""<script>
   const txt = (s) => URL.createObjectURL(new Blob([s], {{ type: "text/javascript" }}));
   const F = {{}};
   F["felucca.wasm"] = bin("{b64("felucca.wasm")}", "application/wasm");
-  F["worklet.js"] = txt({js("worklet.js")});
+  F["worklet.js"] = "data:text/javascript;base64,{b64("worklet.js")}";   // (a blob: worklet fails on a file:// page)
   F["smpimg.js"] = txt({js("smpimg.js")});
   F["smpui.js"] = txt({js("smpui.js")}.split('"./smpimg.js"').join(JSON.stringify(F["smpimg.js"])));
   window.BBL_FILES = F;
