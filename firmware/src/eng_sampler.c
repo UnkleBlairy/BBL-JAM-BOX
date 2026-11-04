@@ -17,8 +17,10 @@
  * SCRUB, a tape head (0 off, 1..127 = where it sits in the whole chunk; START LEN MODE STRETCH GATE don't apply). The
  * head chases the knob with some weight (smp_scrub_block), its speed is the speed the tape is read at: fast = high,
  * backwards = reversed, still = silent. The note scales that (a tape of the same length read at another pitch): two Hann
- * grains read at speed x note, each restarted at the head, so at middle C they ARE the tape. Moving the knob starts a
- * voice by itself (sampler_block); a note only sets the pitch. The voice ends when the head has been still a moment. */
+ * grains read at speed x note, each restarted at the head, so at middle C they ARE the tape. Moving the knob starts SCRUB's
+ * voice by itself (sampler_block), at the last note played; it ends when the head has been still a moment. A key or trig
+ * always plays the sample as normal, from its start: the knob moving takes over from it, the next trig snaps back. So a
+ * step's SCRUB lock only parks the head; a trigless lock moves the tape. */
 #ifndef SMP_XIP                                     /* the emulator and the host tests: a RAM image of the flash */
 #include "../hal/fm1_xip.h"
 #define SMP_XIP(off) fm1_xip_ptr(off)
@@ -303,9 +305,12 @@ static void sampler_note_on(track_t *t, voice_t *v)
     int32_t dc = 0;
     const smp_chunk_t *c;
     smp_s_t *s = &smp_s[(uint32_t)(t - trk) % NPART];
-    uint32_t scr = s->want || p[P_DIST] > 0, was = h->scr && !h->done;
-    if (!s->want)
+    uint32_t scr = s->want;
+    int32_t val = clamp(p[P_DIST], 0, 127);
+    if (!scr) {
         s->note = v->note;                            /* (the last played: SCRUB's pitch when it starts by itself) */
+        s->pv = (uint8_t)val;                         /* (a value this note brought, its lock: no tape move) */
+    }
     if (h->owner && !h->done && h->owner <= NVOICE && t->v[h->owner - 1u].active) {
         dc = h->last + ((h->dc * h->dcn) / SMP_DECLICK);   /* a takeover: the old sound fades out */
         if (h->owner != vi)
@@ -318,8 +323,6 @@ static void sampler_note_on(track_t *t, voice_t *v)
         smp_rcp = 0xFFFFFFFFu / (pitch_inc(SMP_NOTE * 16) >> 8);
     memset(h, 0, sizeof *h);
     h->owner = (uint8_t)vi;
-    if (scr && was && s->on)                          /* a new note on a moving tape: the tape goes on, no fade needed */
-        dc = 0;
     h->dc = dc;
     h->dcn = dc ? SMP_DECLICK : 0;
     h->gen = smp_gen;
@@ -348,11 +351,13 @@ static void sampler_note_on(track_t *t, voice_t *v)
     if ((h->mode == SM_LOOP || h->mode == SM_PING) && g)   /* GATE in steps (1/16s at the tempo) */
         h->gate = g * (FS * 60u / 4u) / (bpm ? bpm : 120u);
     h->keyg = (uint8_t)!g;
-    if (scr) {                                        /* SCRUB: the head stays where it is on this chunk, else at the knob */
+    if (scr) {
         h->scr = 1;
         h->keyg = 0;                                  /* (the voice ends when the tape stops, not with the key) */
-        if (!s->on || s->off != c->off) {
-            int32_t val = clamp(p[P_DIST], 1, 127);
+    }
+    if (val || scr) {                                 /* a normal note parks the head at the knob; SCRUB's own keeps it */
+        if (!scr || !s->on || s->off != c->off) {     /* (.. unless it's not on this chunk) */
+            val = val ? val : 1;
             s->vel = s->rate = s->gain = s->gt = 0;
             s->ph = 0;
             s->s1 = s->s2 = s->head = s->ra = s->rb = (int32_t)((uint32_t)(val - 1) * (n - 1u) / 126u) << 12;
