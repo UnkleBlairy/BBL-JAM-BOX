@@ -398,6 +398,8 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
 - Sample memory: flash 0xA0000..0xD9FFF (232 KB; the last 8 KB went to the last jam),
   survives power-off and firmware updates. 8-bit mu-law (the user chose twice the time
   over 16 bits): ~10.6 s at 22 kHz in all. Table "FSM2" + CRCs; a bad table = no samples.
+- Uploader preview (web/smpui.js): Play shows a playhead on the waveform; Loop plays the part round and round, Start / End move it live
+  (sliders 100000 steps, arrow keys for tiny moves). The page asks the FM-1 its memory size (fm1smp.js, BEGIN's cap).
 - The uploader replaces the whole sample memory each Upload (up to 32 chunks).
   On the real FM-1: the installer site's Samples page (web/samples.html,
   webapp/samples/; web/fm1smp.js) over USB SysEx (firmware/src/smp_usb.c, the

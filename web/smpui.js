@@ -1,44 +1,89 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Copyright (C) 2026 Blair (blairysbeatlab), BBL JAM BOX
 // The sample uploader's panel (the emulator page and the FM-1 samples page share it): pick a sound file, choose a
-// part, Write it to the list, Upload the list. The page has the markup (ids sfile sfinfo swave sA sB spv srate snorm
+// part (Play shows a playhead; Loop plays the part round and round, and Start / End move it live, to find a loop), Write
+// it to the list, Upload the list. The page has the markup (ids sfile sfinfo swave sA sB spv sloop srate snorm
 // swr swmsg smbar smtxt slist sup sclr sumsg). opts:
 //   initial         the chunks to start with (smpimg.js parseImage)
 //   upload(img, say) -> Promise of a message: sends the region image (smpimg.js buildImage); say(text) for progress
 //   changed(list)   the list changed (to keep it)
 import { SMP_CAP, SMP_MAX, makeChunk, chunkFloat, usedBytes, buildImage } from "./smpimg.js";
 
+const POS = 100000;                                     // the Start / End sliders' steps (the arrow keys: one at a time)
 export function mountUploader(opts) {
   const $ = (id) => document.getElementById(id);
   let src = null, list = (opts.initial || []).slice(), pac = null, pnode = null, busy = false;
+  let head = -1, headT = 0, raf = 0, shown = null;      // the part's playhead: where (s), when last moved; the list row playing
+  $("sA").max = $("sB").max = POS;
   const msg = (id, t, cls) => { const e = $(id); e.textContent = t; e.className = "msg" + (cls ? " " + cls : ""); };
   const kb = (b) => (b / 1024).toFixed(b < 10240 ? 1 : 0) + " KB";
-  const secs = () => [+$("sA").value / 1000 * (src ? src.dur : 0), +$("sB").value / 1000 * (src ? src.dur : 0)];
+  const secs = () => [+$("sA").value / POS * (src ? src.dur : 0), +$("sB").value / POS * (src ? src.dur : 0)];
   const changed = () => { if (opts.changed) opts.changed(list); };
-  function stopPlay() { if (pnode) { try { pnode.onended = null; pnode.stop(); } catch {} pnode = null; } $("spv").textContent = "Play"; }
+  function stopPlay() {
+    if (pnode) { try { pnode.onended = null; pnode.stop(); } catch {} pnode = null; }
+    $("spv").textContent = "Play";
+    if (shown) { shown.textContent = "Play"; shown = null; }
+    cancelAnimationFrame(raf);
+    if (head >= 0) { head = -1; drawWave(); }
+  }
   function play(samples, rate) {
     stopPlay();
     pac = pac || new AudioContext();
+    if (pac.state === "suspended") pac.resume();
     const b = pac.createBuffer(1, samples.length, rate);
     b.copyToChannel(samples, 0);
     pnode = pac.createBufferSource();
     pnode.buffer = b;
     pnode.connect(pac.destination);
-    pnode.onended = () => { pnode = null; $("spv").textContent = "Play"; };
-    pnode.start();
+    pnode.onended = stopPlay;
+    return pnode;
+  }
+  // the part playing: the whole file in one buffer, so its loop points can move as it plays. The head follows the clock
+  // the way the browser's loop does (past the end: back by the loop's length)
+  function tick() {
+    if (!pnode || head < 0) return;
+    const [a, b] = secs(), now = pac.currentTime, loop = $("sloop").checked;
+    pnode.loop = loop;
+    pnode.loopStart = a;
+    pnode.loopEnd = b;
+    head += now - headT;
+    headT = now;
+    if (loop) { while (head >= b && b > a) head -= b - a; }
+    else if (head >= b) { stopPlay(); return; }
+    drawWave();
+    raf = requestAnimationFrame(tick);
+  }
+  function playPart() {
+    const [a, b] = secs(), n = play(src.mono, src.rate);
+    n.loop = $("sloop").checked;
+    n.loopStart = a;
+    n.loopEnd = b;
+    n.start(0, a);
+    head = a;
+    headT = pac.currentTime;
+    $("spv").textContent = "Stop";
+    raf = requestAnimationFrame(tick);
   }
   function drawWave() {
     const c = $("swave"), g = c.getContext("2d"), W = c.width, H = c.height;
     g.fillStyle = "#141415"; g.fillRect(0, 0, W, H);
     if (!src) return;
     const [a, b] = secs(), xa = a / src.dur * W, xb = b / src.dur * W, n = src.mono.length;
+    if (!src.peaks) {                                   // (once a file: this draws every frame while it plays)
+      src.peaks = new Float32Array(W);
+      for (let x = 0; x < W; x++) {
+        let m = 0;
+        for (let i = Math.floor(x / W * n), e = Math.floor((x + 1) / W * n); i < e; i++) m = Math.max(m, Math.abs(src.mono[i]));
+        src.peaks[x] = m;
+      }
+    }
     for (let x = 0; x < W; x++) {
-      let m = 0;
-      for (let i = Math.floor(x / W * n), e = Math.floor((x + 1) / W * n); i < e; i++) m = Math.max(m, Math.abs(src.mono[i]));
+      const m = src.peaks[x];
       g.fillStyle = x >= xa && x <= xb ? "#fff" : "#555";
       g.fillRect(x, H / 2 - m * H / 2, 1, Math.max(1, m * H));
     }
     g.fillStyle = "#5fe08a"; g.fillRect(xa, 0, 2, H); g.fillRect(xb - 2, 0, 2, H);
+    if (head >= 0) { g.fillStyle = "#ff5a36"; g.fillRect(head / src.dur * W - 1, 0, 3, H); }
   }
   function render() {
     const used = usedBytes(list);
@@ -52,15 +97,24 @@ export function mountUploader(opts) {
       li.children[0].textContent = "S" + String(i + 1).padStart(2, "0");
       li.children[1].textContent = c.name;
       li.children[2].textContent = (c.data.length / c.rate).toFixed(2) + " s · " + Math.round(c.rate / 1000) + " kHz · " + kb(c.data.length);
-      li.children[3].addEventListener("click", () => play(chunkFloat(c), c.rate));
-      li.children[4].addEventListener("click", () => { list.splice(i, 1); render(); changed(); msg("sumsg", "Not on the FM-1 until you upload.", ""); });
+      li.children[3].addEventListener("click", (e) => {     // (Loop on: round and round, so it has a Stop)
+        const was = shown === e.target;
+        stopPlay();
+        if (was) return;
+        const n = play(chunkFloat(c), c.rate);
+        n.loop = $("sloop").checked;
+        n.start();
+        shown = e.target;
+        shown.textContent = "Stop";
+      });
+      li.children[4].addEventListener("click", () => { stopPlay(); list.splice(i, 1); render(); changed(); msg("sumsg", "Not on the FM-1 until you upload.", ""); });
       L.appendChild(li);
     });
   }
   function sync(which) {
-    if (+$("sA").value >= +$("sB").value) { if (which === "a") $("sB").value = Math.min(1000, +$("sA").value + 1); else $("sA").value = Math.max(0, +$("sB").value - 1); }
+    if (+$("sA").value >= +$("sB").value) { if (which === "a") $("sB").value = Math.min(POS, +$("sA").value + 1); else $("sA").value = Math.max(0, +$("sB").value - 1); }
     const [a, b] = secs();
-    if (src) msg("sfinfo", src.name + " · " + src.dur.toFixed(2) + " s · part " + a.toFixed(2) + "–" + b.toFixed(2) + " s (" + (b - a).toFixed(2) + " s)");
+    if (src) msg("sfinfo", src.name + " · " + src.dur.toFixed(2) + " s · part " + a.toFixed(3) + "–" + b.toFixed(3) + " s (" + (b - a).toFixed(3) + " s)");
     drawWave();
   }
   $("sA").addEventListener("input", () => sync("a"));
@@ -75,17 +129,14 @@ export function mountUploader(opts) {
       const mono = new Float32Array(buf.length);
       for (let ch = 0; ch < buf.numberOfChannels; ch++) { const d = buf.getChannelData(ch); for (let i = 0; i < d.length; i++) mono[i] += d[i] / buf.numberOfChannels; }
       src = { name: f.name.replace(/\.[^.]*$/, ""), rate: buf.sampleRate, mono, dur: buf.duration };
-      $("sA").value = 0; $("sB").value = 1000;
+      $("sA").value = 0; $("sB").value = POS;
       $("spv").disabled = $("swr").disabled = false;
       sync("a");
     } catch { src = null; drawWave(); msg("sfinfo", "Could not read that file. Try a WAV, MP3 or OGG.", "bad"); }
   });
   $("spv").addEventListener("click", () => {
-    if (pnode) { stopPlay(); return; }
-    if (!src) return;
-    const [a, b] = secs();
-    play(src.mono.slice(Math.floor(a * src.rate), Math.floor(b * src.rate)), src.rate);
-    $("spv").textContent = "Stop";
+    if (head >= 0) { stopPlay(); return; }
+    if (src) playPart();
   });
   $("swr").addEventListener("click", () => {
     if (!src) return;

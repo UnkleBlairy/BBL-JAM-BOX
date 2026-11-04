@@ -43,6 +43,7 @@
   <p>Pick a sound file, choose the part you want and press <b>Write</b> to add it to the list. Then connect the FM-1 by
   USB and press <b>Upload</b>: the list replaces everything in the FM-1's sample memory. A SAMPLE track plays slot S01
   to S32 (its SLOT knob). The FM-1 keeps them when it's switched off.</p>
+  <p class="small">To find a loop: tick <b>Loop</b>, press <b>Play</b> and move Start and End as it plays. For tiny moves click a slider, then use the arrow keys.</p>
   <p class="small">Chrome or Edge (Web MIDI). Close other apps that use the FM-1 first. The sound stops while it loads.
   This browser keeps your list, so next time you can add to it.</p>
   <div class="row"><input type="file" id="sfile" accept="audio/*,.wav,.mp3,.ogg,.flac,.aif,.aiff" aria-label="Sound file"> <span class="msg" id="sfinfo">WAV, MP3, OGG or FLAC.</span></div>
@@ -50,6 +51,7 @@
   <div class="row"><label for="sA">Start</label><input type="range" id="sA" min="0" max="1000" value="0">
     <label for="sB">End</label><input type="range" id="sB" min="0" max="1000" value="1000"></div>
   <div class="row"><button type="button" id="spv" disabled>Play</button>
+    <label><input type="checkbox" id="sloop"> Loop</label>
     <label>Rate <select id="srate"><option value="11025">11 kHz</option><option value="22050" selected>22 kHz</option><option value="32000">32 kHz</option></select></label>
     <label><input type="checkbox" id="snorm" checked> Normalise</label>
     <button type="button" id="swr" disabled>Write</button> <span class="msg" id="swmsg"></span></div>
