@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.5 beta (2026-11-04): members' preview
+
+Bug fixes from your reports, saves on newer FM-1s, and a better Samples page.
+
+### Fixes
+- **Newer FM-1s can now save.** Some newer units have a different memory chip, and sounds, kits, the last jam and
+  samples didn't work on them. They do now.
+- **LFOs on VOL, PAN and the sends no longer add crunch or buzz**: those levels now glide.
+- **A saved sound keeps its step note / chord**, so it sounds the same from the track key after loading. Sounds saved
+  before this version start on middle C, as they did.
+- **Clearing a track's steps needs OCT- pressed twice** within a moment ("OCT- AGAIN TO CLEAR"), so a pattern can't
+  go by accident. The same goes for ACID and the FX lane.
+- **ALGO back from the FX track** returns to the track you came from.
+- **The Samples page no longer stops with "The FM-1 stopped answering"**: it now asks the FM-1 how much memory it has.
+
+### Easier to use
+- **The LFO and ENV DEST knobs skip anything that does nothing** on the track's machine.
+- **Samples page**: a playhead on the waveform, and LOOP: the part plays round and round while START and END move it
+  live, so you can find a loop by ear.
+- **The Samples and install pages have the firmware's look.**
+
 ## 0.4 beta (2026-11-03): members' preview
 
 A Metropolis-style ACID sequencer, length changes that land in time at once, and tracks that remember how you left them.
