@@ -80,7 +80,7 @@ static const char *const N_IRATE[] = {"689", "919", "1.1k", "1.4k", "1.8k", "2.2
  * (1.5.6, #213: at the note) after DEPTH */
 static const char *const N_MSRC[] = {"OFF", "LFO", "ENV", "VEL", "KEY", "RAND", "MODW", "AT", "EXPR", "S&H", "SLEW", "FENV"};
 static const char *const N_HOLD[] = {"HOLD"};   /* (an F_TIME with these names: its top is HOLD, FM SYN's C.DEC D.DEC) */
-static const char *const N_MDST[] = {"OFF", "PITCH", "CUT", "SHP", "AMP", "PAN", "-", "-", "DLY", "REV", "RATE",
+static const char *const N_MDST[] = {"OFF", "PITCH", "CUT", "SHP", "AMP", "PAN", "SCRUB", "-", "DLY", "REV", "RATE",
                                      "L.PIT", "E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "DEPTH", "VEL", "TIME",
                                      /* SIMPLE: every other knob that moves smoothly (mod.c MDX), page by page */
                                      "ATK", "DEC", "SUS", "REL", "E.FLT", "E.PIT", "E.SHP", "E.R2", "L.FLT", "L.SHP", "L.AMP",
@@ -146,7 +146,7 @@ static const param_desc_t TP[P_COUNT] = {
     [P_SDIV] = PE("DIV", N_SDIV, 2),
     [P_SSWING] = PD("SWG", F_PCT, 0, 100, 0),
     [P_SGATE] = PD("GATE", F_PCT, 1, 127, 64),
-    [P_DIST] = PD("DST", F_PCT, 0, 127, 0),
+    [P_DIST] = PD("SCRUB", F_INT, 0, 127, 0),   /* (the old distortion's id: SAMPLER's SCRUB, eng_sampler.c) */
     [P_CHOR] = PD("CHO", F_PCT, 0, 127, 0),
     [P_DLY] = PD("DLY", F_PCT, 0, 127, 0),
     [P_REV] = PD("REV", F_PCT, 0, 127, 0),
@@ -340,7 +340,7 @@ static const uint8_t DTIME_ORDER[13] = {9, 8, 7, 6, 12, 0, 10, 1, 11, 4, 2, 5, 3
 /* SIMPLE: the LFO DEST knob's order: the knobs as their pages show them, left to right (OSC 1, OSC 2, AGE / GATE,
  * FILTER, FILTER ENV, ENV, ENV DEST, LFO, LFO DEST, DELAY, VERB, COMB, DJ), then PITCH and AMP. Left out: PAN SHP
  * DEPTH VEL TIME, E8 (MACH) and DIST CHO (a sound saved with one keeps it). The stored values (mod.c MD_*) stay */
-static const uint8_t MDST_ORDER[] = {0, 12, 13, 14, 15, 16, 17, 18, 62, 63, 64, 65, 66, 67, 51, 52, 53, 2, 40, 41, 42, 43, 44, 45, 23, 24, 25,
+static const uint8_t MDST_ORDER[] = {0, 12, 13, 14, 15, 16, 17, 18, 62, 63, 64, 65, 66, 67, 51, 52, 53, 6, 2, 40, 41, 42, 43, 44, 45, 23, 24, 25,
                                      26, 61, 5, 10, 8, 34, 35, 36, 9, 37, 38, 39, 46, 47, 48,
                                      49, 50, 1, 4};   /* (the old ENV DEST / LFO DEST depths 27..33 and VIB: off their pages) */
 static int32_t mdst_rank(int32_t v)               /* v's place in MDST_ORDER (one left out: OFF's) */
@@ -357,6 +357,8 @@ static int32_t mdst_rank(int32_t v)               /* v's place in MDST_ORDER (on
 static int mdst_live(const track_t *t, int32_t v)
 {
     uint32_t e = eng_idx(t->eng_req);
+    if (v == 6)                                     /* SCRUB: the sampler's */
+        return e == ENGI_SAMPLER;
     if (v >= 12 && v <= 18)                         /* E1..E7 */
         return track_desc(t, P_E0 + (uint32_t)v - 12u)->label[0] != '-';
     if (v >= 51 && v <= 53)                         /* LEVEL / SAT, AGE / TYPE, GATE */
@@ -570,7 +572,7 @@ static const page_t PAGES[] = {
     {"LFO 3", FAM_LFO, SC_GLOBAL, GR_NONE, {G_F3RATE, G_F3WAVE, G_F3DEST, G_F3AMT}, 1},
     {"OSC 1", FAM_EDIT, SC_ENGINE, GR_NONE, {P_E0, P_E1, P_E2, P_E3}},   /* the machine's first four (the PRESETS knob: MACH) */
     {"OSC 2", FAM_EDIT, SC_ENGINE, GR_NONE, {P_E4, P_E5, P_E6, P_LN0}},  /* the rest (ANALOG: .. DRIVE LEVEL) */
-    {"CRUSH", FAM_EDIT, SC_ENGINE, GR_NONE, {P_LN1, 0xFF, 0xFF, 0xFF}},   /* ANALOG's CRUSH, SAMPLER's GATE (page_id_an; ui.c page_visible) */
+    {"CRUSH", FAM_EDIT, SC_ENGINE, GR_NONE, {P_LN1, P_DIST, 0xFF, 0xFF}},   /* ANALOG's CRUSH, SAMPLER's GATE SCRUB (page_id_an; ui.c page_visible) */
     {"MOD C", FAM_EDIT, SC_ENGINE, GR_NONE, {P_FM3_ATK, P_FM3_DEC, P_E4, P_E6}},       /* FM SYN's (its OSC 2 is hidden): */
     {"MOD D", FAM_EDIT, SC_ENGINE, GR_NONE, {P_FM4_ATK, P_FM4_DEC, P_E5, P_FM3_LEVEL}}, /* ATK DEC AMT MIX / .. FB */
     {"TUNE", FAM_EDIT, SC_ENGINE, GR_NONE, {P_FM4_LEVEL, P_TRANS, 0xFF, 0xFF}},       /* DTUN PITCH */
@@ -612,6 +614,8 @@ static uint32_t page_id_an(const page_t *pg, uint32_t id)
         if (syn && pg->id[0] == P_E4)
             return 0xFFu;
     }
+    if (FELUCCA_SIMPLE && id == P_DIST && pg->scope == SC_ENGINE)
+        return eng_idx(TSEL->eng_req) == ENGI_SAMPLER ? id : 0xFFu;   /* (SCRUB: the sampler's) */
     if (FELUCCA_SIMPLE && id == P_FTYPE && flt_blend(TSEL))
         return P_LN1;                                 /* (MONO's and FM SYN's filter: TYPE a blend, P_LN1) */
     if (!FELUCCA_SIMPLE || pg->scope != SC_ENGINE || (id != P_LN0 && id != P_LN1 && id != P_E0))

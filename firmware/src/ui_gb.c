@@ -167,6 +167,9 @@ static uint32_t smp_format(uint32_t id, int32_t cur, char *b)
         b[1] = (char)('0' + (cur + 1) / 10);
         b[2] = (char)('0' + (cur + 1) % 10);
         b[3] = 0;
+    } else if (id == P_DIST) {                        /* SCRUB: 0 off */
+        if (!cur)
+            str_cpy(b, "OFF", 8);
     } else if (id == P_LN2) {                         /* 0 the key's length, else 1/16 .. BAR as FADE shows them */
         uint32_t n = (uint32_t)cur, d = 16u;
         if (!n) {

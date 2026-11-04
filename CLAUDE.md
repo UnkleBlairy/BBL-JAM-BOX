@@ -398,6 +398,11 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   turn left always closes the braces in. Both live while a sound plays (knob, locks, LFOs,
   macros): the playhead keeps its place in the window (a scrub), each new grain takes the moved window so the grains'
   overlap fades it in (no clicks).
+- SCRUB (Blair's idea; eng_sampler.c smp_scrub*, sampler_block; GATE page KNOB 2, stored in P_DIST: the old distortion's id, 0 in sampler sounds saved before,
+  P_LN3 would have read 127): a tape head. 0 = off. 1..127 = where the head sits in the WHOLE sample, always, whatever the note (START LEN MODE STRCH GATE don't apply).
+  The head chases the value with weight (20..250 ms, following the knob's pace, SMP_ST_*); pitch = hand speed x the note (Blair chose that over the note alone, so scratches
+  and hand tape stops work): two Hann grains read at that speed, restarted at the head, so middle C is plain tape and other notes smear. Still = silent. Moving it starts a voice with no key (the last note played, else
+  middle C); a note only sets the pitch; the voice ends ~1/3 s after the head stops. LOFI, filter, ENV, LEVEL apply. Locks, macros, the fader, LFO DEST "SCRUB".
 - STRCH and LOFI follow the knob live while a sound plays (knob, macros, LFOs
   sweep them): grains always run (Hann pairs half a grain apart; at 1.00x they
   add back to the sample exactly), each new grain starts STRCH further on.

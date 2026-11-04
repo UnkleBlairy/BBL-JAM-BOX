@@ -658,6 +658,8 @@ static uint32_t tm_md(const page_t *pg, uint32_t k)
         id = 0x80u | (id & 0x7Fu);
     else if (id >= P_E0 && id < P_E7)
         return MD_E1 + id - P_E0;
+    else if (id == P_DIST)
+        return MD_DIST;                               /* (SCRUB) */
     else if (id == P_TRANS || id == P_LRATE || id == P_LD_PIT || id == P_DLY || id == P_REV || id == P_PAN ||
              id == P_FLT_CUT)
         return id == P_TRANS ? MD_PITCH : id == P_LRATE ? MD_RATE : id == P_LD_PIT ? MD_VIB : id == P_DLY ? MD_DLY :
@@ -1555,6 +1557,7 @@ static void machine_defaults_p(const track_t *t, int16_t *p)   /* (into p: t's v
     } else if (m->engine == ENGI_SAMPLER) {           /* the sampler: LEVEL, GATE, track n's slot n */
         p[P_LN0] = 100;
         p[P_LN2] = TP[P_LN2].def;
+        p[P_DIST] = 0;                                /* SCRUB: off */
         p[P_E5] = (int16_t)(trk_index(t) % SMP_MAX);
     } else if (m->engine == ENGI_DIGITAL && m->sub == 0u) {   /* FM SYN: its modulators' envelopes, FB, DTUN */
         for (i = P_FM3_ATK; i <= P_FM4_LEVEL; i++)

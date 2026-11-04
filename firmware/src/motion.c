@@ -316,7 +316,7 @@ static void motion_snapshot_track(track_t *t, motion_store_t *out)
 /* an id whose meaning is the engine's own: EDIT's E1..E8, DIGITAL's operators, DRUM's lane levels */
 static int motion_engine_id(uint32_t id)
 {
-    return (id >= P_E0 && id <= P_E7) || (id >= P_FM1_ATK && id <= P_FM4_LEVEL) || (id >= P_LN0 && id <= P_LN7);
+    return (id >= P_E0 && id <= P_E7) || (id >= P_FM1_ATK && id <= P_FM4_LEVEL) || (id >= P_LN0 && id <= P_LN7) || id == P_DIST;   /* (SCRUB) */
 }
 /* a sound load put engine `to` where `from` was: when they differ, track t's records on the engine's own ids go (their
  * meaning changed); the ones on the common parameters (LEVEL, ENV, LFO, FILTER ENV, the sends, GLIDE, PAN, DETUNE)

@@ -4,7 +4,8 @@
  *   keyd:n (held) keyu, wav:F (2 s of the left channel, float32), playing? (prints), state?, tapms:button,ms, ms:n, any other word = save the screen there as PPM) */
 #include <time.h>
 #include "felucca_web.c"
-static void run(double ms){ uint32_t n=(uint32_t)(ms*44.1), k; for(k=0;k<n;k+=128) web_render(128); }
+static FILE *recf;   /* rec:F .. the left channel of everything that runs after it, float32 */
+static void run(double ms){ uint32_t n=(uint32_t)(ms*44.1), k; for(k=0;k<n;k+=128){ web_render(128); if(recf) fwrite(out_l,4,128,recf);} }
 static void tap(uint32_t b){ web_buttons(1u<<b); run(80); web_buttons(0); run(150); }
 static void dump(const char *fn){ FILE *f=fopen(fn,"wb"); fprintf(f,"P6 240 240 255\n"); for(int i=0;i<240*240;i++){ uint16_t c=web_fb[i]; c=(uint16_t)((c>>8)|(c<<8)); fputc((c>>11)<<3,f); fputc(((c>>5)&63)<<2,f); fputc((c&31)<<3,f);} fclose(f);}
 int main(int argc,char**argv){
@@ -12,7 +13,10 @@ int main(int argc,char**argv){
   if(argc>1 && !strncmp(argv[1],"nor:",4)) { FILE *f=fopen(argv[1]+4,"rb"); if(f){ fread(nor,1,sizeof nor,f); fclose(f);} argv++; argc--; }   /* the flash of an earlier run */
   web_boot(); run(4000);
   for(int a=1;a<argc;a++){ char *s=argv[a];
-    if(!strncmp(s,"cc:",3)) { int c,v; sscanf(s+3,"%d,%d",&c,&v); web_midi(0xB0,c,v); run(5); }   /* a CC in, channel 1 */
+    if(!strncmp(s,"rec:",4)) recf=fopen(s+4,"wb");
+    else if(!strncmp(s,"recstop",7)){ fclose(recf); recf=0; }
+    else if(!strncmp(s,"smptest:",8)) { int n; sscanf(s+8,"%d",&n); for(int i=0;i<n;i++){ double f=i<n/2?500:2000, v=32000*sin(6.283185307*f*i/22050.0); int b=0,bd=1<<30; for(int k=0;k<256;k++){int e=abs(SMP_ULAW[k]-(int)v); if(e<bd){bd=e;b=k;}} ((uint8_t*)nor)[SMP_DATA+i]=(uint8_t)b; } smp_tab[0].off=SMP_DATA; smp_tab[0].len=n; smp_tab[0].rate=22050; smp_n=1; }   /* slot 0: half 500 Hz, half 2 kHz at 22 kHz (not uploaded: no table) */
+    else if(!strncmp(s,"cc:",3)) { int c,v; sscanf(s+3,"%d,%d",&c,&v); web_midi(0xB0,c,v); run(5); }   /* a CC in, channel 1 */
     else if(!strncmp(s,"mac:",4)) { int m,t,i,v; sscanf(s+4,"%d,%d,%d,%d",&m,&t,&i,&v); perf_mac_t *pm=&pm_mac[m]; pm->trk[pm->n]=(uint8_t)t; pm->id[pm->n]=(uint8_t)i; pm->val[pm->n]=(int16_t)v; pm->n++; }   /* macro m holds track t's id (t 255: a global) at v */
     else if(!strncmp(s,"pv:",3)) { int t,i; sscanf(s+3,"%d,%d",&t,&i); printf("%d\n", t==255?song.g[i]:trk[t].p[i]); }   /* one value */
     else if(!strncmp(s,"tap:",4)) tap((uint32_t)atoi(s+4));

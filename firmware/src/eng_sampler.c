@@ -10,8 +10,15 @@
  *   0xA1000  the data: 8-bit mu-law (G.711), one byte a sample (the user chose twice the time over 16 bits)
  * All little endian. The web uploader builds the image (web/emu/index.html smpImage); the device checks it whole.
  *
- * Knobs: OSC 1 PITCH STRETCH START LEN, OSC 2 MODE SLOT LOFI LEVEL (P_LN0), the GATE page GATE (P_LN2). E7 = the
- * machine (one). The ENV and FILTER pages work as on the FM machines (the filter is DIGITAL's). */
+ * Knobs: OSC 1 PITCH STRETCH START LEN, OSC 2 MODE SLOT LOFI LEVEL (P_LN0), the GATE page GATE (P_LN2) SCRUB (P_DIST:
+ * the old distortion's id, 0 in every sampler sound saved before). E7 = the machine (one). The ENV and FILTER pages work
+ * as on the FM machines (the filter is DIGITAL's).
+ *
+ * SCRUB, a tape head (0 off, 1..127 = where it sits in the whole chunk; START LEN MODE STRETCH GATE don't apply). The
+ * head chases the knob with some weight (smp_scrub_block), its speed is the speed the tape is read at: fast = high,
+ * backwards = reversed, still = silent. The note scales that (a tape of the same length read at another pitch): two Hann
+ * grains read at speed x note, each restarted at the head, so at middle C they ARE the tape. Moving the knob starts a
+ * voice by itself (sampler_block); a note only sets the pitch. The voice ends when the head has been still a moment. */
 #ifndef SMP_XIP                                     /* the emulator and the host tests: a RAM image of the flash */
 #include "../hal/fm1_xip.h"
 #define SMP_XIP(off) fm1_xip_ptr(off)
@@ -26,6 +33,10 @@
 #define SMP_DECLICK 176                             /* a hit taking over: the old sound fades over 4 ms */
 #define SMP_GFADE 529                               /* GATE's end: 12 ms */
 #define SMP_EFADE 48                                /* ONCE / REV: in and out over 48 samples (the prototype's) */
+#define SMP_ST_MIN 882                              /* SCRUB's weight, samples: 20 ms at the least (a fast hand) .. */
+#define SMP_ST_MAX 11025                            /* .. 250 ms (a slow sweep: smooths the 127 knob steps into a glide) */
+#define SMP_SR_MAX (8 << 12)                        /* the tape's fastest: 8 samples of the chunk a sample out */
+#define SMP_SG_SLEW 186                             /* its gain's fastest move, a sample (~4 ms end to end) */
 #define GB_WAVE 224                                 /* the screen's waveform: columns (gb_store.c smp_peaks) */
 
 static const char *const N_SMODE[4] = {"ONCE", "LOOP", "PING", "REV"};
@@ -96,6 +107,7 @@ typedef struct { uint32_t L, Lp, cf, cfw, per; } smp_g_t;   /* a window's loop: 
                                                              * crossfade cf, its gain step cfw), the period */
 typedef struct {                 /* a track's voice (one: a hit takes over) */
     uint8_t owner;               /* the voice's index + 1 (0: none) */
+    uint8_t scr;                 /* SCRUB: the tape head plays this voice (smp_s) */
     uint8_t mode, done, keyg, hc, gb, tail;   /* gb: log2 of the grain; tail: ONCE / REV past the end, the last grain fades */
     int32_t dir;                 /* 1, REV -1 */
     const uint8_t *d, *dp, *dq;  /* the window's first sample (REV: its last) for the grain playing, the one before, and
@@ -111,6 +123,18 @@ typedef struct {                 /* a track's voice (one: a hit takes over) */
     int32_t y, last, dc, dcn, gf;
 } smp_v_t;
 static smp_v_t smp_v[NPART];
+typedef struct {                 /* a track's tape head: outlives the voices, so a new note doesn't move it */
+    uint8_t on, want, note;      /* on: the head is valid; want: this note is SCRUB's own; note: the last played (0: none) */
+    uint8_t pv, sv;              /* the value seen last (sampler_block, smp_scrub_block) */
+    uint32_t off;                /* the chunk the head is on */
+    int32_t s1, s2, head;        /* the chase's two stages and the head, Q12 samples */
+    int32_t vel, rate;           /* the head's speed; the reading speed (with the note), Q12 samples a sample */
+    int32_t ra, rb;              /* the grains' read positions, Q12 */
+    int32_t gain, gt;            /* Q15: the sound's, what the head's speed asks */
+    uint32_t ph;                 /* the grains' phase, 0..1023 */
+    uint32_t since, tau, idle;   /* samples: since the knob's last step, the chase's time, the head still */
+} smp_s_t;
+static smp_s_t smp_s[NPART];
 static uint32_t smp_rcp;                            /* 2^32 / (pitch_inc(SMP_NOTE) >> 8): pitch ratios without a divide */
 
 static inline smp_v_t *smp_of(track_t *t, voice_t *v)
@@ -199,6 +223,77 @@ static void smp_win(smp_v_t *h, int32_t st, int32_t ln)
     smp_len_set(h, &h->g[2]);
 }
 
+/* one sample of the chunk at a Q12 position (held at its ends: no click) */
+static inline int32_t smp_tap(const smp_v_t *h, int32_t pos, uint32_t near)
+{
+    uint32_t i = (uint32_t)pos >> 12;
+    int32_t a = SMP_ULAW[h->base[i]];
+    if (near || i + 1u >= h->n)
+        return a;
+    return a + (((SMP_ULAW[h->base[i + 1u]] - a) * (pos & 4095)) >> 12);
+}
+/* SCRUB's block: the chase to the knob, the speeds it gives. r: the note's ratio, Q16 */
+static void smp_scrub_block(smp_v_t *h, smp_s_t *s, int32_t val, uint32_t n, uint32_t r)
+{
+    int32_t tg = (int32_t)((uint32_t)(val > 0 ? val - 1 : 0) * (h->n - 1u) / 126u) << 12, a, av, thr;
+    if (val && val != s->sv) {                        /* the knob moved: its pace sets the weight */
+        uint32_t t0 = s->since * 3u / 2u;
+        t0 = t0 < SMP_ST_MIN ? SMP_ST_MIN : t0 > SMP_ST_MAX ? SMP_ST_MAX : t0;
+        s->tau = s->since > SMP_ST_MAX ? SMP_ST_MIN : (s->tau + t0) / 2u;   /* (from rest: at once) */
+        s->since = 0;
+        s->sv = (uint8_t)val;
+    }
+    if (s->since <= SMP_ST_MAX)
+        s->since += n;
+    if (val) {
+        a = (int32_t)((n << 15) / s->tau);
+        s->s1 += (int32_t)(((int64_t)(tg - s->s1) * a) >> 15);
+        s->s2 += (int32_t)(((int64_t)(s->s1 - s->s2) * a) >> 15);
+    }                                                 /* (off: it stays, the sound fades) */
+    s->vel = (s->s2 - s->head) / (int32_t)n;
+    {
+        int64_t rt = ((int64_t)s->vel * r) >> 16;
+        s->rate = rt > SMP_SR_MAX ? SMP_SR_MAX : rt < -SMP_SR_MAX ? -SMP_SR_MAX : (int32_t)rt;
+    }
+    av = s->vel < 0 ? -s->vel : s->vel;               /* the sound: full from 1/8 of the chunk's own speed, down to none */
+    thr = (int32_t)(h->srq >> 7);
+    thr = thr < 1 ? 1 : thr;
+    s->gt = !val ? 0 : av >= thr ? 32767 : av * 32767 / thr;
+    if (s->gain || s->gt || s->vel)
+        s->idle = 0;
+    else if ((s->idle += n) > FS / 3u)
+        h->done = 1;                                  /* still for a moment: the voice ends (a knob move starts another) */
+    if (!val && !s->gain)
+        h->done = 1;
+}
+/* SCRUB's sample */
+static inline int32_t smp_scrub(smp_v_t *h, smp_s_t *s, uint32_t near, uint32_t hold, uint32_t sh)
+{
+    int32_t top = (int32_t)((h->n - 1u) << 12), d, y;
+    s->head += s->vel;
+    s->ra += s->rate;
+    s->rb += s->rate;
+    s->ph = (s->ph + 1u) & 1023u;
+    if (s->ph == 0u)                                  /* a grain's window is at 0 here: it starts again at the head */
+        s->ra = s->head;
+    else if (s->ph == 512u)
+        s->rb = s->head;
+    s->ra = clamp(s->ra, 0, top);
+    s->rb = clamp(s->rb, 0, top);
+    if (!h->hc) {                                     /* LOFI's sample-hold, its bits */
+        uint32_t wi = s->ph >> 2;
+        y = (smp_tap(h, s->ra, near) * (int32_t)SMP_HANN[wi] + smp_tap(h, s->rb, near) * (int32_t)SMP_HANN[(wi + 128u) & 255u]) >> 15;
+        if (sh)
+            y = ((y + (1 << (sh - 1u))) >> sh) << sh;
+        h->y = y;
+    }
+    if (++h->hc >= hold)
+        h->hc = 0;
+    d = s->gt - s->gain;
+    s->gain += d > SMP_SG_SLEW ? SMP_SG_SLEW : d < -SMP_SG_SLEW ? -SMP_SG_SLEW : d;
+    return (h->y * s->gain) >> 15;
+}
+
 static void sampler_note_on(track_t *t, voice_t *v)
 {
     const int16_t *p = t->p;
@@ -207,6 +302,10 @@ static void sampler_note_on(track_t *t, voice_t *v)
     uint32_t g = (uint32_t)p[P_LN2], bpm = (uint32_t)song.g[G_BPM];
     int32_t dc = 0;
     const smp_chunk_t *c;
+    smp_s_t *s = &smp_s[(uint32_t)(t - trk) % NPART];
+    uint32_t scr = s->want || p[P_DIST] > 0, was = h->scr && !h->done;
+    if (!s->want)
+        s->note = v->note;                            /* (the last played: SCRUB's pitch when it starts by itself) */
     if (h->owner && !h->done && h->owner <= NVOICE && t->v[h->owner - 1u].active) {
         dc = h->last + ((h->dc * h->dcn) / SMP_DECLICK);   /* a takeover: the old sound fades out */
         if (h->owner != vi)
@@ -219,6 +318,8 @@ static void sampler_note_on(track_t *t, voice_t *v)
         smp_rcp = 0xFFFFFFFFu / (pitch_inc(SMP_NOTE * 16) >> 8);
     memset(h, 0, sizeof *h);
     h->owner = (uint8_t)vi;
+    if (scr && was && s->on)                          /* a new note on a moving tape: the tape goes on, no fade needed */
+        dc = 0;
     h->dc = dc;
     h->dcn = dc ? SMP_DECLICK : 0;
     h->gen = smp_gen;
@@ -247,6 +348,22 @@ static void sampler_note_on(track_t *t, voice_t *v)
     if ((h->mode == SM_LOOP || h->mode == SM_PING) && g)   /* GATE in steps (1/16s at the tempo) */
         h->gate = g * (FS * 60u / 4u) / (bpm ? bpm : 120u);
     h->keyg = (uint8_t)!g;
+    if (scr) {                                        /* SCRUB: the head stays where it is on this chunk, else at the knob */
+        h->scr = 1;
+        h->keyg = 0;                                  /* (the voice ends when the tape stops, not with the key) */
+        if (!s->on || s->off != c->off) {
+            int32_t val = clamp(p[P_DIST], 1, 127);
+            s->vel = s->rate = s->gain = s->gt = 0;
+            s->ph = 0;
+            s->s1 = s->s2 = s->head = s->ra = s->rb = (int32_t)((uint32_t)(val - 1) * (n - 1u) / 126u) << 12;
+            s->on = 1;
+            s->off = c->off;
+            s->sv = (uint8_t)val;
+            s->tau = SMP_ST_MIN;
+            s->since = SMP_ST_MAX + 1u;
+        }
+        s->idle = 0;
+    }
 }
 
 /* the amplitude hook: the voice ends when the sound does; GATE in steps: the key's release doesn't end it */
@@ -268,7 +385,8 @@ static void sampler_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, con
 {
     smp_v_t *hp = smp_of(t, v), hv, *h = &hv;
     const int16_t *p = t->p;
-    uint32_t i, step, lf = (uint32_t)p[P_E6] & 127u, hq, adv;
+    uint32_t i, step, lf = (uint32_t)p[P_E6] & 127u, hq, adv, r;
+    smp_s_t *s = &smp_s[(uint32_t)(t - trk) % NPART];
     uint32_t near = lf >= 16u, hold = SMP_HOLD[lf];  /* LOFI (live): nearest sample above ~12 %, the sample-hold, */
     uint32_t sh = lf >= 2u ? 16u - (16u * 127u - 12u * lf + 63u) / 127u : 0u;   /* 16 .. 4 bits */
     int32_t lg = p[P_LN0] * 284;                      /* LEVEL: 0 .. 1.1 (the prototype's), Q15 */
@@ -281,11 +399,13 @@ static void sampler_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, con
         smp_win(h, p[P_E2], p[P_E3]);
     {                                                 /* the note (with PITCH, voice.c): a resampling rate */
         int32_t p16 = m->pitch16;
-        uint32_t r = (uint32_t)(((uint64_t)pitch_inc((uint32_t)p16) * smp_rcp) >> 24);   /* Q16 */
+        r = (uint32_t)(((uint64_t)pitch_inc((uint32_t)p16) * smp_rcp) >> 24);   /* Q16 */
         step = (uint32_t)(((uint64_t)r * h->srq) >> 16);
     }
     hq = 1u << (h->gb - 1u + 16u);                    /* half a grain, Q16 */
     adv = (1u << (h->gb - 1u + 20u)) / SMP_STRETCH[(uint32_t)p[P_E1] & 127u];   /* STRETCH (live): the next grain, Q8 */
+    if (h->scr && !h->done)
+        smp_scrub_block(h, s, clamp(p[P_DIST], 0, 127), n, r);
     /* the filter (DIGITAL's, with its envelope and DRIVE) */
     int32_t cut = (p[P_FLT_CUT] << 8) + m->cutoff + (p[P_FLT_KTR] * (v->pitch16 - 60 * 16) >> 4);
     {
@@ -314,7 +434,10 @@ static void sampler_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, con
     tsvf_coef(&flt, cut, p[P_FLT_RES]);
     for (i = 0; i < n; i++) {
         int32_t y = 0;
-        if (!h->done) {
+        if (h->done) {
+        } else if (h->scr) {
+            y = smp_scrub(h, s, near, hold, sh);
+        } else {
             if (!h->hc) {                             /* LOFI's sample-hold: a new value every hold samples */
                 uint32_t k = h->gpos >> 16;
                 y = smp_gr(h, h->cin, h->d, &h->g[0], h->pin, h->dp, &h->g[1], k, !h->tail);
@@ -382,6 +505,30 @@ static void sampler_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, con
     *hp = hv;
 }
 
+static void trk_note_on(track_t *t, uint32_t note, uint32_t vel);   /* (voice.c) */
+/* the knob moved: SCRUB needs no key, it starts its own voice (or takes over a sample playing normally); at 0, off.
+ * Each block, voices or none (track_render), the value as the matrix leaves it */
+static void sampler_block(track_t *t)
+{
+    uint32_t k = (uint32_t)(t - trk) % NPART;
+    smp_v_t *h = &smp_v[k];
+    smp_s_t *s = &smp_s[k];
+    int32_t val = clamp(t->p[P_DIST], 0, 127);
+    if (val == s->pv)
+        return;
+    s->pv = (uint8_t)val;
+    if (!val) {
+        s->on = 0;                                    /* (the voice fades, smp_scrub_block; next time from the knob) */
+        return;
+    }
+    if (!(h->scr && !h->done && h->gen == smp_gen && h->owner && h->owner <= NVOICE && t->v[h->owner - 1u].active &&
+          t->v[h->owner - 1u].stage != 4u)) {
+        s->want = 1;
+        trk_note_on(t, s->note ? s->note : SMP_NOTE, 100);
+        s->want = 0;
+    }
+}
+
 static const char *const N_SMACH[1] = {"SAMPLE"};
 static const preset_t SAMPLER_PRESETS[1] = {
     {"SAMPLE", {64, 64, 0, 127, 0, 0, 0, 0}, {0, 60, 127, 20}, 0, 0, FX(0, 0, 0, 0), PAT(0)},
@@ -397,6 +544,7 @@ static const engine_t ENG_SAMPLER = {
     .note_on = sampler_note_on,
     .render = sampler_render,
     .amp = sampler_amp,
+    .block = sampler_block,
     .knob = {P_E0, P_E1, P_E2, P_E3},
     .poly = 1,
     .sampled = 1,
