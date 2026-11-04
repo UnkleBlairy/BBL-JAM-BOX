@@ -1,0 +1,84 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-only
+     The PC's end of the phone link (bridge.py): the phone's CCs to the FM-1 by USB. Keep this tab open. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BBL Fader Link</title>
+<style>
+@font-face { font-family: "BLBPixel"; src: url("/font.ttf") format("truetype"); font-display: swap; }
+:root { color-scheme: dark; --dim: #9a9a9e; --ink: #0a8fc4; --ok: #1f9a50; --bad: #d63a18; }
+html, body { background: #000; }
+body { margin: 0; color: #fff; font: 15px/1.5 "BLBPixel", ui-monospace, monospace; letter-spacing: .03em; }
+main { max-width: 620px; margin: 0 auto; padding: 24px 16px; }
+h1 { margin: 0 0 14px; font-size: 30px; line-height: 1; font-weight: normal; }
+.pop { background: #fff; color: #000; border-radius: 12px; padding: 14px 18px; margin: 14px 0 0; }
+.pop h2 { margin: 0 0 8px; font-size: 20px; line-height: 1.1; font-weight: normal; color: var(--ink); }
+.pop p { margin: 0 0 8px; } .pop p:last-child { margin: 0; }
+.url { font-size: 24px; color: var(--ink); overflow-wrap: anywhere; }
+select, button { font: inherit; letter-spacing: inherit; padding: 6px 14px; border-radius: 8px; border: 2px solid #000; background: #000; color: #fff; max-width: 100%; }
+button { cursor: pointer; text-transform: uppercase; }
+.ok { color: var(--ok); } .bad { color: var(--bad); } .small { font-size: 13px; color: #555; }
+</style>
+</head>
+<body>
+<main>
+<h1>BBL FADER LINK</h1>
+<section class="pop">
+  <h2>1. OPEN THIS ON YOUR PHONE</h2>
+  <p class="url">PHONE_URL</p>
+  <p class="small">In Chrome, with the phone on the same Wi-Fi as this PC. It only shows the fader.</p>
+</section>
+<section class="pop">
+  <h2>2. THE FM-1</h2>
+  <p><select id="out" aria-label="MIDI output"><option>Looking for it</option></select> <button id="go" type="button">Connect</button></p>
+  <p id="midi" class="bad">Press CONNECT and allow MIDI.</p>
+  <p class="small">Close other apps using the FM-1's MIDI first, and keep this tab open.</p>
+</section>
+<section class="pop">
+  <h2>3. THE LINK</h2>
+  <p id="link" class="bad">Connecting to the link program.</p>
+  <p>Last from the phone: <span id="last">nothing yet</span></p>
+  <p>Sent to the FM-1: <span id="count">0</span></p>
+</section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+let midi = null, out = null, count = 0;
+function outputs() {
+  const all = [...midi.outputs.values()], sel = $("out"), keep = localStorage.getItem("bbl-fader-out");
+  sel.replaceChildren(...all.map((o) => new Option(o.name, o.id)));
+  if (!all.length) { sel.add(new Option("No MIDI outputs found")); out = null; }
+  else out = all.find((o) => o.name === keep) || all.find((o) => /fm-?1|felucca|m-?vave|jam/i.test(o.name)) || all[0];
+  if (out) sel.value = out.id;
+  $("midi").textContent = out ? "Sending to " + out.name : "The FM-1 isn't showing up. Check its USB cable.";
+  $("midi").className = out ? "ok" : "bad";
+}
+async function connect() {
+  if (!navigator.requestMIDIAccess) { $("midi").textContent = "This browser has no Web MIDI. Use Chrome or Edge."; return; }
+  try { midi = await navigator.requestMIDIAccess(); midi.onstatechange = outputs; outputs(); }
+  catch (e) { $("midi").textContent = "MIDI was blocked: " + e.message; $("midi").className = "bad"; }
+}
+$("go").addEventListener("click", connect);
+$("out").addEventListener("change", (e) => {
+  if (!midi) return;
+  out = midi.outputs.get(e.target.value) || null;
+  if (out) { try { localStorage.setItem("bbl-fader-out", out.name); } catch {} $("midi").textContent = "Sending to " + out.name; }
+});
+const ev = new EventSource("/events");
+ev.onopen = () => { $("link").textContent = "The link program is running."; $("link").className = "ok"; };
+ev.onerror = () => { $("link").textContent = "Lost the link program. Is its window still open?"; $("link").className = "bad"; };
+ev.onmessage = (e) => {
+  for (const m of JSON.parse(e.data)) {
+    $("last").textContent = "CC " + m[1] + " = " + m[2];
+    if (out) {
+      try { out.send(m); $("count").textContent = ++count; }
+      catch (err) { $("midi").textContent = "Send failed: " + err.message; $("midi").className = "bad"; }
+    }
+  }
+};
+connect();
+</script>
+</body>
+</html>
