@@ -14,7 +14,8 @@
  * the old distortion's id, 0 in every sampler sound saved before). E7 = the machine (one). The ENV and FILTER pages work
  * as on the FM machines (the filter is DIGITAL's).
  *
- * SCRUB, a tape head (0 off, 1..127 = where it sits in the whole chunk; START LEN MODE STRETCH GATE don't apply). The
+ * SCRUB, a tape head (0 off, 1..127 = where it sits from the start to the end of START / LEN's window, however small;
+ * MODE STRETCH GATE don't apply). The
  * head chases the knob with some weight (smp_scrub_block), its speed is the speed the tape is read at: fast = high,
  * backwards = reversed, still = silent. The note scales that (a tape of the same length read at another pitch): two Hann
  * grains read at speed x note, each restarted at the head, so at middle C they ARE the tape. Moving the knob starts SCRUB's
@@ -132,6 +133,7 @@ typedef struct {                 /* a track's tape head: outlives the voices, so
     uint8_t pv, sv;              /* the value seen last (sampler_block, smp_scrub_block) */
     uint8_t catch, fresh;        /* catch: the head is on its way to the knob; fresh: the note taking over is yet to start */
     int32_t cv;                  /* the catch-up's speed, Q12 samples a sample */
+    int32_t wa, wb;              /* START / LEN's window, Q12: the tape there is */
     uint32_t off;                /* the chunk the head is on */
     int32_t s1, s2, head;        /* the chase's two stages and the head, Q12 samples */
     int32_t vel, rate;           /* the head's speed; the reading speed (with the note), Q12 samples a sample */
@@ -238,10 +240,19 @@ static inline int32_t smp_tap(const smp_v_t *h, int32_t pos, uint32_t near)
         return a;
     return a + (((SMP_ULAW[h->base[i + 1u]] - a) * (pos & 4095)) >> 12);
 }
-/* SCRUB's block: the chase to the knob, the speeds it gives. r: the note's ratio, Q16 */
-static void smp_scrub_block(smp_v_t *h, smp_s_t *s, int32_t val, uint32_t n, uint32_t r)
+/* where the knob puts the head (Q12): val 1..127 from the window's first sample to its last */
+static int32_t smp_scrub_tg(smp_s_t *s, uint32_t n, const int16_t *p, int32_t val)
 {
-    int32_t tg = (int32_t)((uint32_t)(val > 0 ? val - 1 : 0) * (h->n - 1u) / 126u) << 12, a, av, thr;
+    uint32_t a, L;
+    smp_window(n, p[P_E2], p[P_E3], &a, &L, 65u);
+    s->wa = (int32_t)(a << 12);
+    s->wb = (int32_t)((a + L - 1u) << 12);
+    return (int32_t)(a + (uint32_t)(val > 0 ? val - 1 : 0) * (L - 1u) / 126u) << 12;
+}
+/* SCRUB's block: the chase to the knob, the speeds it gives. r: the note's ratio, Q16 */
+static void smp_scrub_block(smp_v_t *h, smp_s_t *s, const int16_t *p, int32_t val, uint32_t n, uint32_t r)
+{
+    int32_t tg = smp_scrub_tg(s, h->n, p, val), a, av, thr;
     if (val && val != s->sv) {                        /* the knob moved: its pace sets the weight */
         uint32_t t0 = s->since * 3u / 2u;
         t0 = t0 < SMP_ST_MIN ? SMP_ST_MIN : t0 > SMP_ST_MAX ? SMP_ST_MAX : t0;
@@ -271,8 +282,10 @@ static void smp_scrub_block(smp_v_t *h, smp_s_t *s, int32_t val, uint32_t n, uin
         int64_t rt = ((int64_t)s->vel * r) >> 16;
         s->rate = rt > SMP_SR_MAX ? SMP_SR_MAX : rt < -SMP_SR_MAX ? -SMP_SR_MAX : (int32_t)rt;
     }
-    av = s->vel < 0 ? -s->vel : s->vel;               /* the sound: full from 1/8 of the chunk's own speed, down to none */
-    thr = (int32_t)(h->srq >> 7);
+    av = s->vel < 0 ? -s->vel : s->vel;               /* the sound: full from 1/8 of the chunk's own speed, or from the speed */
+    thr = (int32_t)(h->srq >> 7);                     /* that crosses the window in 4 s if that's less (a tiny one), down to none */
+    a = ((s->wb - s->wa) >> 12) / 43;                 /* (Q12: L * 4096 / (4 * FS)) */
+    thr = a < thr ? a : thr;
     thr = thr < 1 ? 1 : thr;
     s->gt = !val ? 0 : av >= thr ? 32767 : av * 32767 / thr;
     if (s->gain || s->gt || s->vel)
@@ -284,11 +297,11 @@ static void smp_scrub_block(smp_v_t *h, smp_s_t *s, int32_t val, uint32_t n, uin
 }
 /* a sample playing normally, the knob moved: the head takes over where the sound has got to, at its speed, bound for
  * the knob. Called before the takeover's note */
-static void smp_scrub_catch(const smp_v_t *h, smp_s_t *s, int32_t val)
+static void smp_scrub_catch(const smp_v_t *h, smp_s_t *s, const int16_t *p, int32_t val)
 {
     const smp_g_t *g = &h->g[0];
     int32_t i = (h->cin >> 8) + (int32_t)(h->gpos >> 16), pos, v0, dist;
-    int32_t tg = (int32_t)((uint32_t)(val - 1) * (h->n - 1u) / 126u) << 12, least = (int32_t)(h->srq >> 3);
+    int32_t tg = smp_scrub_tg(s, h->n, p, val), least = (int32_t)(h->srq >> 3);
     i = i < 0 ? 0 : i;
     if (h->mode == SM_LOOP) {
         while (i >= (int32_t)g->Lp)
@@ -318,7 +331,7 @@ static void smp_scrub_catch(const smp_v_t *h, smp_s_t *s, int32_t val)
 /* SCRUB's sample */
 static inline int32_t smp_scrub(smp_v_t *h, smp_s_t *s, uint32_t near, uint32_t hold, uint32_t sh)
 {
-    int32_t top = (int32_t)((h->n - 1u) << 12), d, y;
+    int32_t lo = s->wa < s->head ? s->wa : s->head, hi = s->wb > s->head ? s->wb : s->head, d, y;   /* (the tape: the window, and the head still on its way) */
     s->head += s->vel;
     s->ra += s->rate;
     s->rb += s->rate;
@@ -327,8 +340,8 @@ static inline int32_t smp_scrub(smp_v_t *h, smp_s_t *s, uint32_t near, uint32_t 
         s->ra = s->head;
     else if (s->ph == 512u)
         s->rb = s->head;
-    s->ra = clamp(s->ra, 0, top);
-    s->rb = clamp(s->rb, 0, top);
+    s->ra = clamp(s->ra, lo, hi);
+    s->rb = clamp(s->rb, lo, hi);
     if (!h->hc) {                                     /* LOFI's sample-hold, its bits */
         uint32_t wi = s->ph >> 2;
         y = (smp_tap(h, s->ra, near) * (int32_t)SMP_HANN[wi] + smp_tap(h, s->rb, near) * (int32_t)SMP_HANN[(wi + 128u) & 255u]) >> 15;
@@ -408,7 +421,7 @@ static void sampler_note_on(track_t *t, voice_t *v)
             s->catch = 0;
             s->vel = s->rate = s->gain = s->gt = 0;
             s->ph = 0;
-            s->s1 = s->s2 = s->head = s->ra = s->rb = (int32_t)((uint32_t)(val - 1) * (n - 1u) / 126u) << 12;
+            s->s1 = s->s2 = s->head = s->ra = s->rb = smp_scrub_tg(s, n, p, val);
             s->on = 1;
             s->off = c->off;
             s->sv = (uint8_t)val;
@@ -463,7 +476,7 @@ static void sampler_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, con
     hq = 1u << (h->gb - 1u + 16u);                    /* half a grain, Q16 */
     adv = (1u << (h->gb - 1u + 20u)) / SMP_STRETCH[(uint32_t)p[P_E1] & 127u];   /* STRETCH (live): the next grain, Q8 */
     if (h->scr && !h->done)
-        smp_scrub_block(h, s, clamp(p[P_DIST], 0, 127), n, r);
+        smp_scrub_block(h, s, p, clamp(p[P_DIST], 0, 127), n, r);
     /* the filter (DIGITAL's, with its envelope and DRIVE) */
     int32_t cut = (p[P_FLT_CUT] << 8) + m->cutoff + (p[P_FLT_KTR] * (v->pitch16 - 60 * 16) >> 4);
     {
@@ -583,7 +596,7 @@ static void sampler_block(track_t *t)
           t->v[h->owner - 1u].stage != 4u)) {
         if (!h->scr && !h->done && h->gen == smp_gen && h->owner && h->owner <= NVOICE && t->v[h->owner - 1u].active &&
             t->v[h->owner - 1u].stage != 4u)
-            smp_scrub_catch(h, s, val);               /* a sample playing: the head picks it up where it is */
+            smp_scrub_catch(h, s, t->p, val);               /* a sample playing: the head picks it up where it is */
         s->want = 1;
         trk_note_on(t, s->note ? s->note : SMP_NOTE, 100);
         s->want = 0;

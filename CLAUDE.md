@@ -399,7 +399,7 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   macros): the playhead keeps its place in the window (a scrub), each new grain takes the moved window so the grains'
   overlap fades it in (no clicks).
 - SCRUB (Blair's idea; eng_sampler.c smp_scrub*, sampler_block; GATE page KNOB 2, stored in P_DIST: the old distortion's id, 0 in sampler sounds saved before,
-  P_LN3 would have read 127): a tape head. 0 = off. 1..127 = where the head sits in the WHOLE sample, always, whatever the note (START LEN MODE STRCH GATE don't apply).
+  P_LN3 would have read 127): a tape head. 0 = off. 1..127 = where the head sits from the start to the end of START / LEN's window, however tiny (Blair), whatever the note (MODE STRCH GATE don't apply; START / LEN moving it live moves the head with weight).
   The head chases the value with weight (20..250 ms, following the knob's pace, SMP_ST_*); pitch = hand speed x the note (Blair chose that over the note alone, so scratches
   and hand tape stops work): two Hann grains read at that speed, restarted at the head, so middle C is plain tape and other notes smear. Still = silent. Moving it starts SCRUB's voice with no key (the last note played, else
   middle C), ending ~1/3 s after the head stops. A key or trig ALWAYS plays the sample as normal from its start, at once (Blair). Moving SCRUB then takes over with no jump: the head starts where the sound has got to and travels to the knob's value (smp_scrub_catch: twice the sample's speed or more, ~1/2 s at most), where they meet the knob has it. A step's SCRUB lock only parks the head; a trigless lock moves the tape. LOFI, filter, ENV, LEVEL apply. Locks, macros, the fader, LFO DEST "SCRUB".
