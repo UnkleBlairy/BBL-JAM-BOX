@@ -41,7 +41,8 @@
 #define SMP_ST_MAX 11025                            /* .. 250 ms (a slow sweep: smooths the 127 knob steps into a glide) */
 #define SMP_SR_MAX (8 << 12)                        /* the tape's fastest: 8 samples of the chunk a sample out */
 #define SMP_SC_TAU 1764                              /* the catch-up's weight: 40 ms; at most ~1/2 s (at twice the chunk's own speed or more) */
-#define SMP_TR_HOLD 3528                             /* a trig always sounds: for 80 ms the knob can't take over (1/16 at 120 = 125 ms) */
+#define SMP_TR_HOLD 5292                             /* a trig always sounds: for 120 ms what the knob does counts for nothing (a fader's glide
+                                                     * and late messages from a phone still landing as you hit it) */
 #define SMP_TR_MOVE 3                               /* .. and after that it takes a real move, this many steps (a fader's jitter doesn't) */
 #define SMP_SG_SLEW 186                             /* its gain's fastest move, a sample (~4 ms end to end) */
 #define GB_WAVE 224                                 /* the screen's waveform: columns (gb_store.c smp_peaks) */
@@ -593,6 +594,9 @@ static void sampler_block(track_t *t)
                     t->v[h->owner - 1u].active && t->v[h->owner - 1u].stage != 4u;
     if (s->hold) {                                    /* a trig just played: it sounds whatever the knob is doing */
         s->hold = s->hold > CTL ? s->hold - CTL : 0u;
+        s->pv = (uint8_t)val;                         /* (not put off: only a move after this counts) */
+        if (!val)
+            s->on = 0;
         return;
     }
     if (!d || (val && play && d > -SMP_TR_MOVE && d < SMP_TR_MOVE))
