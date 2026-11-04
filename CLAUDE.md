@@ -186,6 +186,10 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
 - Mutes (seq.c keyboard_block): hold OCT+ and press black key 1-6 (the track
   keys, = track 1-6). Quick press latches the mute, holding mutes only while
   held. With OCT+ held those keys don't select the track.
+- CROSSFADER (Octatrack-style, ui.c xf_*): CCs on the MIDI channels already listened to: 102 = A slot, 103 = B slot (1-8 = M1-M8, 0 = empty), 104 = fader
+  (0 A, 127 B; XF_CC_*). Every parameter a slot's macro holds sits between A and B; an empty slot or a macro not holding it = its base value. Written on the live
+  values like held macros; xf.base keeps the real ones: saves and the last jam take them (xf_save), a load replaces them (xf_leave), a knob turn moves them (xf_knob, heard
+  only at a base end). Held macros win. BLE would call xf_cc too. Slots aren't saved. PERF shows A/B pills and a small fader; covered dials invert. Phone link: web/fader.
 - PERF page: black keys 1-6 are lit while that track is NOT muted.
 - OCT+ held (any page): black keys 1-6 are lit while that track is NOT muted.
 - Going to PERF turns the step keys off, so leaving PERF the keys are the keyboard.

@@ -111,6 +111,8 @@ static int8_t cla_oct;                                  /* (the octave before OC
 static void cla_clear(int all)
 {
     uint32_t a, i;
+    if (all)
+        xf_leave(XF_ALL);
     if (all || fxl_on()) {
         int16_t fl = fxl.len;                           /* (its LEN stays) */
         memset(&fxl, 0, sizeof fxl);
@@ -953,6 +955,7 @@ static void pm_poll(void)
         if (!((fm1_in.notes >> pm_h.key[i - 1u]) & 1u))
             pm_drop(i - 1u);
     pm_update();
+    xf_poll();
     if (was && !pm_h.n && !pm_page()) {                 /* all let go: back to the macros */
         for (i = 0; i < NPAGES; i++)
             if (PAGES[i].graph == GR_PERF) {

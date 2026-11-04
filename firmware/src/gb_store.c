@@ -249,6 +249,7 @@ static void gb_snd_put(const gb_snd_t *s, track_t *t)
     for (i = 0; i < np; i++)
         in[i] = (int16_t)(s->p[i] + 64);
     params_by_count(out, in, np, def);
+    xf_leave(trk_index(t));
     motion_restore(t);                                   /* (the locks playing put back first: motion_rebase) */
     fm1_irq_off();                                       /* (the ISR sees the old engine or the new one, never a mix) */
     t->eng_req = s->used == 2u ? ENGI_ANALOG : s->used == 3u ? ENGI_SAMPLER : s->used == 4u ? ENGI_MONO : ENGI_DIGITAL;   /* its engine first: the values fit its knobs */
@@ -275,7 +276,9 @@ static int gbs_save_sound(uint32_t slot)
 {
     uint32_t m = gb_mach_of(TSEL);
     gb_store_init();
+    xf_save(1);
     gb_snd_take(gb_slot(m, slot), TSEL);
+    xf_save(0);
     gb_so[m / 2u].magic = GB_PMAGIC;
     gb_so[m / 2u].np = (uint16_t)P_COUNT;
     gb_dirty |= (uint8_t)(1u << (m / 2u));
@@ -362,6 +365,7 @@ static int gbk_save(uint32_t k)
     kt = gb_kit(k);
     memset(kt, 0, sizeof *kt);
     kt->used = 1;
+    xf_save(1);
     for (i = 0; i < NTRK; i++)
         gb_snd_take(&kt->s[i], &trk[i]);
     memcpy(kt->mac, pm_mac, sizeof kt->mac);
@@ -371,6 +375,7 @@ static int gbk_save(uint32_t k)
         kt->g[i] = song.g[i];
     kt->rsv = (uint8_t)(1u + (uint32_t)song.g[G_F1WAVE] % 6u + 6u * ((uint32_t)song.g[G_F2WAVE] % 6u) +
                         36u * ((uint32_t)song.g[G_F3WAVE] % 6u));
+    xf_save(0);
     if (!gbk_lk_pack(kt->lk))
         ui_message("KEY LOCKS PART SAVED");
     kt->lk[GB_KLK_LK] = GB_NT0;                          /* the step notes (the keys' last note / chord) */
@@ -401,6 +406,7 @@ static int gbk_load(uint32_t k)
         ui_message("LET GO OF THE MACROS");
         return 0;
     }
+    xf_leave(XF_ALL);
     for (i = 0; i < NTRK; i++)
         if (kt->s[i].used)                               /* (a kit of the four-track build: tracks 5 and 6 stay) */
             gb_snd_put(&kt->s[i], &trk[i]);
@@ -632,6 +638,7 @@ static int jam_apply(uint8_t *in, uint32_t len)
 {
     jam_io_t r = {in, 0, len, 0};
     uint32_t magic = 0, sel, rel, fade, ng, sz, np, ssz, k, i, n;
+    xf_leave(XF_ALL);
     static const uint8_t JAM_G[] = {G_BPM, G_SWING, G_DTIME, G_DFDBK, G_DCOLOR, G_DMIX, G_RSIZE, G_RDAMP, G_RTYPE,
                                     G_SYNC, G_CRATE, G_CDEPTH, G_INFO, G_AMP, G_F1RATE, G_F1WAVE, G_F1DEST, G_F1AMT,
                                     G_F2RATE, G_F2WAVE, G_F2DEST, G_F2AMT, G_F3RATE, G_F3WAVE, G_F3DEST, G_F3AMT, G_PAN};
@@ -825,7 +832,9 @@ static void jam_poll(void)
         if (jam_t && (int32_t)(fm1_ms - jam_t) < 1000)
             return;                                      /* (looked a second ago) */
         jam_t = fm1_ms | 1u;
+        xf_save(1);
         jam_n = jam_make(jam_buf);
+        xf_save(0);
         if (jam_n == jam_oldn && !memcmp(jam_buf, jam_old, jam_n))
             return;
         jam_gen++;

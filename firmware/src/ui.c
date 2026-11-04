@@ -697,8 +697,13 @@ static int pm_bfind(uint32_t tr, uint32_t id)
     return -1;
 }
 /* the value vp of track t is moving under a held macro: its dial shows inverted (ui_graph.c graph_dials) */
+static int xf_vp(const int16_t *vp);
+static int mom_down(void);
+static uint64_t lock_held(void);
 static int pm_altered(const track_t *t, const int16_t *vp)
 {
+    if (vp && xf_vp(vp) >= 0)                            /* (the crossfader's: shown as a macro's) */
+        return 1;
     if (!pm_h.n || !vp)
         return 0;
     if (vp >= song.g && vp < song.g + G_COUNT)
@@ -934,6 +939,181 @@ static void pm_clear(void)                               /* OCT-: the macro held
     pm_mac[pm_h.mac[0]].n = 0;
     pm_h.nb = 0;
 }
+/* The crossfader (Octatrack-style, MIDI CCs from a controller page, BLE later: everything comes in through xf_cc). A slot
+ * holds one of the macros, or nothing: the base sound. Every parameter either end's macro holds sits between its value
+ * at A and at B, written straight on the live value (as held macros do). xf.base is the real value meanwhile: saves
+ * take it (xf_save), knob turns move it (xf_knob), a loaded sound replaces it (xf_leave). Held macros win (they keep
+ * their own "what it was" in pm_h.bval). Not saved: a power-on starts with empty slots. */
+#define XF_CC_A 102u                                     /* value 1..8 = M1..M8, 0 = empty */
+#define XF_CC_B 103u
+#define XF_CC_POS 104u                                   /* 0 = full A, 127 = full B */
+#define XF_SLEW_MS 20u                                   /* the fader's smoothing (one pole) */
+#define XF_N (2u * PM_N)
+#define XF_ALL 0xFEu
+static struct {
+    volatile uint8_t a, b, pos;                          /* (written from MIDI's side) */
+    uint8_t n, trk[XF_N], id[XF_N];
+    int16_t base[XF_N], keep[XF_N];
+    int32_t u;                                           /* the smoothed position, 0 .. 1024 << 8 */
+    uint32_t t;
+} xf;
+/* a CC from any input: 1 = it was the crossfader's. Only notes the values: xf_poll does the work */
+static int xf_cc(uint32_t cc, uint32_t v)
+{
+    if (cc == XF_CC_POS)
+        xf.pos = (uint8_t)v;
+    else if (cc != XF_CC_A && cc != XF_CC_B)
+        return 0;
+    else if (v <= PM_NM) {
+        if (cc == XF_CC_A)
+            xf.a = (uint8_t)v;
+        else
+            xf.b = (uint8_t)v;
+    }
+    return 1;
+}
+static int xf_find(uint32_t tr, uint32_t id)
+{
+    uint32_t i;
+    for (i = 0; i < xf.n; i++)
+        if (xf.trk[i] == tr && xf.id[i] == id)
+            return (int)i;
+    return -1;
+}
+static int xf_vp(const int16_t *vp)                      /* the entry of this value, or -1 */
+{
+    uint32_t i;
+    for (i = 0; i < xf.n; i++)
+        if (pm_ptr(xf.trk[i], xf.id[i]) == vp)
+            return (int)i;
+    return -1;
+}
+static void xf_mbase(const int16_t *vp, int16_t v)       /* a lock's "put back" value must never be a faded one */
+{
+    uint32_t k, id, f = motion_guard();
+    for (k = 0; k < NTRK; k++)
+        for (id = 0; id < MOTION_N; id++)
+            if (motion_vp(&trk[k], id) == vp)
+                motion_base[k][id] = v;
+    motion_unguard(f);
+}
+static void xf_drop(uint32_t i)                          /* entry i lets go: its parameter back to the base */
+{
+    int16_t *vp = pm_ptr(xf.trk[i], xf.id[i]);
+    int b;
+    uint32_t j;
+    pm_rl_snap(xf.trk[i], xf.id[i]);
+    b = pm_bfind(xf.trk[i], xf.id[i]);
+    if (b >= 0)
+        pm_h.bval[b] = xf.base[i];                       /* (a held macro has it: back there when it lets go) */
+    else
+        *vp = xf.base[i];
+    xf_mbase(vp, xf.base[i]);
+    for (j = i; j + 1u < xf.n; j++) {
+        xf.trk[j] = xf.trk[j + 1u];
+        xf.id[j] = xf.id[j + 1u];
+        xf.base[j] = xf.base[j + 1u];
+    }
+    xf.n--;
+}
+/* before something replaces the values (a sound or kit load, a reset): back to the real ones; the next pass takes the
+ * new values as the base. tr: a track, or XF_ALL */
+static void xf_leave(uint32_t tr)
+{
+    uint32_t i;
+    for (i = xf.n; i > 0; i--)
+        if (tr == XF_ALL || xf.trk[i - 1u] == tr)
+            xf_drop(i - 1u);
+}
+/* around a save: the real values in place */
+static void xf_save(int begin)
+{
+    uint32_t i;
+    for (i = 0; i < xf.n; i++) {
+        int16_t *vp = pm_ptr(xf.trk[i], xf.id[i]);
+        if (begin) {
+            xf.keep[i] = *vp;
+            *vp = xf.base[i];
+            xf_mbase(vp, xf.base[i]);
+        } else {
+            *vp = xf.keep[i];
+        }
+    }
+}
+static int32_t xf_end(const perf_mac_t *m, uint32_t tr, uint32_t id, int32_t base)   /* a slot's value for a parameter */
+{
+    int i = m ? pm_find(m, tr, id) : -1;
+    return i >= 0 ? m->val[i] : base;
+}
+/* a knob turned a value the fader holds: it moves the base (the fader writes over the live value at once) */
+static void xf_knob(track_t *t, const int16_t *vp, int16_t old)
+{
+    int i = xf_vp(vp);
+    int32_t v;
+    (void)t;
+    if (i < 0 || *vp == old)
+        return;
+    v = xf.base[i] + (*vp - old);
+    if (xf.trk[i] == PM_G)
+        v = clamp(v, GP[xf.id[i]].min, GP[xf.id[i]].max);
+    else {
+        const param_desc_t *d = param_desc_of(eng_idx(trk[xf.trk[i]].eng_req), xf.id[i]);
+        if (d->max > d->min)
+            v = clamp(v, d->min, d->max);
+    }
+    xf.base[i] = (int16_t)v;
+}
+/* every input pass */
+static void xf_poll(void)
+{
+    uint32_t a = xf.a, b = xf.b, i, k, dt;
+    const perf_mac_t *ma = a ? &pm_mac[a - 1u] : 0, *mb = b ? &pm_mac[b - 1u] : 0;
+    int32_t tgt = (int32_t)xf.pos * (1024 << 8) / 127, st, u;
+    dt = fm1_ms - xf.t;
+    xf.t = fm1_ms;
+    if (dt > 100u)
+        dt = 100u;
+    if (dt) {
+        st = (tgt - xf.u) * (int32_t)dt / (int32_t)(dt + XF_SLEW_MS);
+        xf.u = st ? xf.u + st : tgt;
+    }
+    for (i = xf.n; i > 0; i--) {                         /* what neither slot holds any more goes back */
+        uint32_t tr = xf.trk[i - 1u], id = xf.id[i - 1u];
+        if (!(ma && pm_find(ma, tr, id) >= 0) && !(mb && pm_find(mb, tr, id) >= 0))
+            xf_drop(i - 1u);
+    }
+    for (k = 0; k < 2u; k++) {                           /* what they hold now joins, as it is */
+        const perf_mac_t *m = k ? mb : ma;
+        for (i = 0; m && i < m->n; i++) {
+            int bb;
+            if (xf_find(m->trk[i], m->id[i]) >= 0 || xf.n >= XF_N)
+                continue;
+            pm_rl_snap(m->trk[i], m->id[i]);
+            bb = pm_bfind(m->trk[i], m->id[i]);
+            xf.trk[xf.n] = m->trk[i];
+            xf.id[xf.n] = m->id[i];
+            xf.base[xf.n] = bb >= 0 ? pm_h.bval[bb] : *pm_ptr(m->trk[i], m->id[i]);
+            xf.n++;
+        }
+    }
+    u = xf.u >> 8;
+    for (i = 0; i < xf.n; i++) {
+        uint32_t tr = xf.trk[i], id = xf.id[i], g, gl = 0;
+        int32_t va, vb, v;
+        int16_t *vp = pm_ptr(tr, id);
+        if (pm_bfind(tr, id) >= 0)                       /* a held macro has it */
+            continue;
+        for (g = 0; g < pm_rl.n && !gl; g++)             /* .. or it is gliding back from one */
+            gl = pm_rl.trk[g] == tr && pm_rl.id[g] == id;
+        if (gl)
+            continue;
+        va = xf_end(ma, tr, id, xf.base[i]);
+        vb = xf_end(mb, tr, id, xf.base[i]);
+        v = va + (((vb - va) * u + 512) >> 10);
+        if (*vp != v)
+            *vp = (int16_t)v;
+    }
+}
 /* the globals a macro can hold: the tempo and swing, the delay and the reverb, the master DJ filter and comb, AMP and the
  * FX LFOs (not the clock mode, MIDI's routing) */
 static int pm_global_ok(uint32_t id)
@@ -947,6 +1127,8 @@ static void pm_record(track_t *t, int16_t *vp, int16_t old)
     perf_mac_t *m;
     uint32_t id, tr = (uint32_t)(t - trk);
     int i, b;
+    if (!pm_h.n && !lock_held() && !mom_down())
+        xf_knob(t, vp, old);
     if (pm_h.n != 1u || *vp == old)
         return;
     if (vp >= song.g && vp < song.g + G_COUNT) {         /* a global: only the tempo and the swing */
@@ -1392,6 +1574,7 @@ static int page_reset(void)
     const page_t *pg = cur_page();
     int16_t md[P_COUNT], *vp;
     uint32_t k, n = 0;
+    xf_leave(XF_ALL);
     if (ui.home || fxt_x(pg) || pg->scope == SC_TRK || pg->fam == FAM_TRK || pg->graph == GR_PERF)
         return 0;
     for (k = 0; k < P_COUNT; k++)
@@ -1415,6 +1598,7 @@ static int page_reset(void)
 static void machine_set(track_t *t, uint32_t mach)
 {
     const machine_t *m = &MACHINES[mach % NMACH];
+    xf_leave(trk_index(t));
     fm1_irq_off();                                    /* (the ISR sees the old engine or the new one, never a mix) */
     t->eng_req = m->engine;
     t->p[P_E7] = m->sub;
@@ -1426,6 +1610,7 @@ static void apply_preset_to(track_t *t, uint32_t pi)
 {
     const engine_t *e = ENGINES[t->eng_req % NENGINES];
     uint32_t i;
+    xf_leave(trk_index(t));
     load_begin(t, UNDO_SOUND);
     panic_req |= (uint8_t)(1u << trk_index(t));       /* MONO/POLY may change: release what sounds */
     t->user = 0;

@@ -20,6 +20,7 @@ typedef struct {
     int16_t bpm;
     uint8_t tm[NTRK];                         /* each track's machine */
     uint8_t mac_n[8], mac_held[8];
+    uint8_t xf_a, xf_b, xf_x;                /* PERF: the crossfader's slots (0 empty, 1..8) and where it is (0..60 px) */
     int16_t ratio[4];
     uint8_t alt[4];
     int16_t dj, cmix, ctune;                 /* PERF: the master DJ filter and comb */
@@ -412,6 +413,9 @@ static void gb_fill(gb_view_t *v)
             v->fill[pm_ui_c] = (uint8_t)f;
         }
         v->rpt = (uint8_t)(perf_held & 15u);
+        v->xf_a = xf.a;
+        v->xf_b = xf.b;
+        v->xf_x = (uint8_t)(xf.pos * 60u / 127u);
         return;
     }
     if (v->mixer) {                           /* the page's tracks' levels (VOLUME 1-4, 5-6) */
@@ -867,6 +871,17 @@ static void gb_scene(const gb_view_t *v, uint16_t bgc)
             for (q = 0; nn[q]; q++) fb[5u + q] = nn[q];
             fb[5u + q] = 0;
             cv_text_r(232, 193, &AF_M, fb, c, bgc);
+        }
+        if (v->xf_a || v->xf_b) {                         /* the crossfader: A's and B's macros, where it is */
+            for (k = 0; k < 2u; k++) {
+                uint32_t m = k ? v->xf_b : v->xf_a;
+                int32_t tx = 92 + (int32_t)k * 29;
+                char nb[3] = {(char)('A' + k), m ? (char)('0' + m) : '-', 0};
+                gb_pill(tx, 172, 27, 18, GB_W, m != 0u);
+                cv_text_in(tx, 175, 27, &AF_S, nb, m ? bgc : GB_W, m ? GB_W : bgc);
+            }
+            cv_rect(90, 200, 60, 2, GB_W);
+            cv_rect(90 + (int32_t)v->xf_x - 2, 195, 5, 12, GB_W);
         }
         return;
     }

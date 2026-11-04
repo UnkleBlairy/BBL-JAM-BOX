@@ -12,7 +12,10 @@ int main(int argc,char**argv){
   if(argc>1 && !strncmp(argv[1],"nor:",4)) { FILE *f=fopen(argv[1]+4,"rb"); if(f){ fread(nor,1,sizeof nor,f); fclose(f);} argv++; argc--; }   /* the flash of an earlier run */
   web_boot(); run(4000);
   for(int a=1;a<argc;a++){ char *s=argv[a];
-    if(!strncmp(s,"tap:",4)) tap((uint32_t)atoi(s+4));
+    if(!strncmp(s,"cc:",3)) { int c,v; sscanf(s+3,"%d,%d",&c,&v); web_midi(0xB0,c,v); run(5); }   /* a CC in, channel 1 */
+    else if(!strncmp(s,"mac:",4)) { int m,t,i,v; sscanf(s+4,"%d,%d,%d,%d",&m,&t,&i,&v); perf_mac_t *pm=&pm_mac[m]; pm->trk[pm->n]=(uint8_t)t; pm->id[pm->n]=(uint8_t)i; pm->val[pm->n]=(int16_t)v; pm->n++; }   /* macro m holds track t's id (t 255: a global) at v */
+    else if(!strncmp(s,"pv:",3)) { int t,i; sscanf(s+3,"%d,%d",&t,&i); printf("%d\n", t==255?song.g[i]:trk[t].p[i]); }   /* one value */
+    else if(!strncmp(s,"tap:",4)) tap((uint32_t)atoi(s+4));
     else if(!strncmp(s,"ms:",3)) run(atof(s+3));
     else if(!strncmp(s,"hold:",5)) { web_buttons(1u<<atoi(s+5)); run(80);} 
     else if(!strncmp(s,"both:",5)) { int a2,b2; sscanf(s+5,"%d,%d",&a2,&b2); web_buttons(1u<<a2); run(120); web_buttons((1u<<a2)|(1u<<b2)); run(100); web_buttons(1u<<a2); run(80); web_buttons(0); run(150);}

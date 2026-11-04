@@ -336,6 +336,7 @@ static volatile uint8_t *const mpc_io;
  * (realtime and clock are handled in events_block, SysEx never reaches here). With ROUT CH1-4 channels
  * 5..16 are ignored entirely (with CH5-8 .. CH13-16 every channel outside the block): notes, bend, CCs (CC1/11/64, RPN, and the CC120/121/123 panic and reset),
  * channel aftertouch, Program Change, so they stay free for other instruments. */
+static int xf_cc(uint32_t cc, uint32_t v);
 static void __attribute__((noinline)) midi_event(uint32_t st, uint32_t ch, uint32_t d1, uint32_t d2)
 {
     if (song.g[G_ROUTE] != 1 && !midi_in_block(ch))
@@ -346,6 +347,8 @@ static void __attribute__((noinline)) midi_event(uint32_t st, uint32_t ch, uint3
         midi_channel(ch)->bend = (int16_t)((int32_t)(d1 | (d2 << 7)) - 8192);
         midi_expression_channel(ch);
     } else if (st == 0xB0u) {
+        if (xf_cc(d1, d2))                              /* (the crossfader's three: ui.c) */
+            return;
         mod_midi(midi_track(ch), st, d1, d2);
         midi_control(ch, d1, d2);
     } else if (st == 0xD0u)
