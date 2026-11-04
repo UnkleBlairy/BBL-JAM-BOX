@@ -254,7 +254,8 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   CYCLE = the order the keys were pressed; PATRN = a random order picked when a
   note is added, then repeated. Keys (KEY and PARAM mode) and the sequencer's
   notes both go through it: in the sequencer a step ratchets at RATE for the
-  whole step (a chord step arps). Recording stores the key's note, not each
+  whole step (a chord step arps), and each step goes on to the arp's next note, from its first at PLAY (seq.c arp_walk), so
+  a run of 1/16 chord steps walks the arp. With the ARP on, a one-voice track (MONO) records chords too. Recording stores the key's note, not each
   arp note. Stored in the old arp ids (ARP = P_AHOLD, FADE = P_ASWING); no
   latch, swing or arp chance in this build.
 - FX track = the FX lane (seq.c fxl, not a 7th track): in SEQ mode black key 7

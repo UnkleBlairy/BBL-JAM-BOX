@@ -178,6 +178,7 @@ static uint32_t kb_map(const track_t *t, uint32_t k)
 static uint32_t arp_am(const track_t *t);        /* the AM_* playing (AM_OFF: none) */
 static uint16_t arp_lv[NTRK];                    /* FADE: the next note's velocity, Q8 */
 static uint32_t arp_seed[NTRK];                  /* PATRN: its order */
+static uint8_t arp_walk[NTRK];                   /* SIMPLE: the sequencer's arp has started: each step goes on to the next note (seq_note_on) */
 static uint32_t arp_latch(const track_t *t) { return FELUCCA_SIMPLE ? 0u : (uint32_t)t->p[P_AHOLD]; }
 static void arp_add(track_t *t, uint32_t note)
 {
@@ -538,7 +539,7 @@ static void rec_note(track_t *t, uint32_t note, uint32_t vel)
     /* the step's notes play later in this pass (it is the next one, not played early yet, or the one playing whose
      * nudge has not come yet): what sounds now must not play again there (rskip) */
     sounds = next ? t->nd_fired != idx + 1u : t->nd_late != ND_NONE;
-    if (s->time != ST_NOTE || !s->n || trk_vmode(t) != V_POLY) {
+    if (s->time != ST_NOTE || !s->n || (trk_vmode(t) != V_POLY && !(FELUCCA_SIMPLE && arp_am(t)))) {   /* (ARP on: a chord for it) */
         s->n = 0;                                   /* a fresh step */
         s->flags = 0;
         s->vel = 0;
@@ -1127,10 +1128,17 @@ static void seq_start(void)
 /* SIMPLE: a step's note on / off, through the ARP when it is on (a ratchet at its RATE for the step's gate) */
 static void seq_note_on(track_t *t, uint32_t note, uint32_t vel)
 {
-    if (FELUCCA_SIMPLE && arp_am(t))
+    if (FELUCCA_SIMPLE && arp_am(t)) {              /* a step is no new press: the arp walks on through the steps, from its first note at PLAY */
+        uint32_t ti = trk_index(t) % NTRK, idx = t->arp_idx, sd = arp_seed[ti];
         arp_add(t, note);
-    else
+        if (arp_walk[ti]) {
+            t->arp_idx = idx;
+            arp_seed[ti] = sd;
+        }
+        arp_walk[ti] = 1;
+    } else {
         trk_note_on(t, note, vel);
+    }
 }
 static void seq_note_off(track_t *t, uint32_t note)
 {
@@ -1730,6 +1738,7 @@ static void click_tick(uint32_t adv)
         clk_pos = 0;
         clk_step = 0;
         mst_step = 0;
+        memset(arp_walk, 0, sizeof arp_walk);       /* (PLAY: the sequencer's arps from their first note) */
         beat = 2;
         fxl_pos = 0;
         fxl_step(0);
