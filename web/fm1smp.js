@@ -49,7 +49,10 @@ export async function uploadSamples(img, say) {
     const b = await ask(link, BEGIN, []);
     if (!b) throw new Error("The FM-1 did not answer. Install the groovebox firmware first (the Install page), then try again.");
     if (b[0]) throw new Error("The FM-1 refused the upload (" + b[0] + ").");
-    const n = Math.ceil(img.length / SECTOR), order = [];
+    // what this firmware holds (BEGIN's cap): a page newer or older than it must not ask past its end
+    const cap = rd32(b, 1), used = new DataView(img.buffer, img.byteOffset).getUint32(8, true);
+    if (used > cap) throw new Error("Those samples don't fit this firmware's memory (" + cap + " bytes). Remove some, or update the FM-1 first.");
+    const n = Math.min(Math.ceil(img.length / SECTOR), Math.floor((SMP_TABLE + cap) / SECTOR)), order = [];
     for (let s = SMP_TABLE / SECTOR; s < n; s++) order.push(s);
     order.push(0);                                    // the table last
     let done = 0, sent = 0;

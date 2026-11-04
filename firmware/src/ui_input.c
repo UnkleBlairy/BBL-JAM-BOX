@@ -158,16 +158,25 @@ static void cla_clear(int all)
     lastc[song.sel % NTRK] = 0;                         /* (new steps: middle C again, till a key is played) */
     ui_message("TRACK CLEARED");
 }
+#define CLR2_MS 800u                                    /* OCT- again this soon: the clear (one press can't lose a pattern) */
 static void cla_poll(uint32_t pressed)
 {
-    static uint32_t t0;
-    uint32_t dn = panel.btn[B_OCTDN];
+    static uint32_t t0, t1;
+    static uint8_t t1_on;                               /* (t1: the first press, for this track / the FX track) */
+    uint32_t dn = panel.btn[B_OCTDN], on = fxl_on() ? NTRK : song.sel;
     if ((pressed >> dn) & 1u)
         t0 = fm1_ms | 1u;
     if (!((fm1_in.buttons >> dn) & 1u)) {
-        if (cla_st == 1u)
-            cla_clear(0);
-        else if (cla_st == 2u) {
+        if (cla_st == 1u) {
+            if (t1 && t1_on == on && (int32_t)(fm1_ms - t1) < (int32_t)CLR2_MS) {
+                cla_clear(0);
+                t1 = 0;
+            } else {
+                t1 = fm1_ms | 1u;
+                t1_on = (uint8_t)on;
+                ui_message("OCT- AGAIN TO CLEAR");
+            }
+        } else if (cla_st == 2u) {
             ui_message("CANCELLED");
             ui.force = 1;
         }
@@ -883,8 +892,6 @@ static void gbsv_keys(uint32_t pressed)
             continue;
         if (!key_black(k) && p < 16u) {
             if (gbsv == 1u ? gbs_save_sound(p) : gbs_load_sound(p)) {
-                if (gbsv == 2u)
-                    lastc[song.sel % NTRK] = 0;         /* (new steps: middle C again, till a key is played) */
                 char nm[10];                            /* "KICK 3": the pool's name */
                 str_cpy(nm, GB_POOL_NAME[gb_pool(trk_mach(TSEL))], sizeof nm - 1u);
                 str_cpy(nm + str_len(nm), " ", sizeof nm - str_len(nm));

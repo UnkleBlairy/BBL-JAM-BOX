@@ -585,6 +585,43 @@ static const uint16_t ENG_VCOST[NENGINES] = {181, 181, 181, 181, 181};
 
 /* one synth part into the dry mix and the sends of sm (mx[0]; mx[1] on the second core); a part with no voice sounding costs
  * the LFO tick and a cleared buffer only (after the DIST tail has run out) */
+/* SIMPLE: the gains a track's block ended on: LEVEL, pan L R, sends. An LFO / lock moves them block by block, so without a
+ * glide the steps make a buzz at the block rate (crunchy overtones on LFO > VOL, PAN, DLY, REV); while they move, the
+ * block glides (mix_glide), still the plain loop below */
+static int32_t mix_was[NTRK][5];
+static __attribute__((noinline)) void mix_glide(track_t *t, const int32_t *b, uint32_t n, const int32_t *to SM_DECL)
+{
+    int32_t *w = mix_was[(uint32_t)(t - trk) % NTRK], c[5], st[5], pk = t->peak, sm0, xm;
+    uint32_t i, k;
+    sm0 = w[3] > w[4] ? w[3] : w[4];                    /* the sends' clamp, over the block (as mix_part) */
+    sm0 = to[3] > sm0 ? to[3] : sm0;
+    sm0 = to[4] > sm0 ? to[4] : sm0;
+    xm = 0x7FFFFFFF / (sm0 | 1);
+    for (k = 0; k < 5u; k++) {
+        c[k] = w[k] << 8;                               /* (LEVEL, pan: up to 4096 or so; sends 127 x 258: fit) */
+        st[k] = ((to[k] - w[k]) << 8) / (int32_t)n;
+        w[k] = to[k];
+    }
+    for (i = 0; i < n; i++) {
+        int32_t x, a, xs, dv, rv;
+        for (k = 0; k < 5u; k++)
+            c[k] += st[k];
+        dv = c[3] >> 8;
+        rv = c[4] >> 8;
+        x = ((b[i] >> 2) * (c[0] >> 8)) >> 10;
+        a = x < 0 ? -x : x;
+        xs = clamp(x, -xm, xm);
+        if (a > pk)
+            pk = a;
+        if (dv)
+            SM(d)[i] += mulq15(xs, dv);
+        if (rv)
+            SM(v)[i] += mulq15(xs, rv);
+        SM(l)[i] += (x * (c[1] >> 8)) >> 12;
+        SM(r)[i] += (x * (c[2] >> 8)) >> 12;
+    }
+    t->peak = pk;
+}
 static void mix_part(track_t *t, uint32_t n SM_DECL)
 {
     int32_t *b = SM(b);
@@ -603,6 +640,12 @@ static void mix_part(track_t *t, uint32_t n SM_DECL)
 #endif
         ;
     else {                                              /* no voice sounding: nothing to mix */
+        int32_t lv = LEVEL_Q12[t->p[P_LEVEL] & 127], pa = t->p[P_PAN], *w = mix_was[(uint32_t)(t - trk) % NTRK];
+        w[0] = lv;                                      /* (the next hit starts on them, no glide in) */
+        w[1] = 4096 - (pa > 0 ? pa * 64 : 0);
+        w[2] = 4096 + (pa < 0 ? pa * 64 : 0);
+        w[3] = t->p[P_DLY] * 258;
+        w[4] = t->p[P_REV] * 258;
         if (MOD(t).on)
             mod_end(t);
         return;
@@ -617,7 +660,19 @@ static void mix_part(track_t *t, uint32_t n SM_DECL)
         int32_t gl = 4096 - (pan > 0 ? pan * 64 : 0), gr = 4096 + (pan < 0 ? pan * 64 : 0);
         int32_t d = t->p[P_DLY] * 258, r = t->p[P_REV] * 258, pk = t->peak;
         int32_t xmax = d;
+        const int32_t *was = mix_was[(uint32_t)(t - trk) % NTRK];
         xmax = 0x7FFFFFFF / ((xmax > r ? xmax : r) | 1);   /* sends: loud chords at a high LEVEL */
+        if (was[0] != lvl || was[1] != gl || was[2] != gr || was[3] != d || was[4] != r) {   /* (moving: glide) */
+            int32_t to[5];
+            to[0] = lvl;
+            to[1] = gl;
+            to[2] = gr;
+            to[3] = d;
+            to[4] = r;
+            mix_glide(t, b, n, to SM_ARG(sm));
+            pk = t->peak;
+            n = 0;                                      /* (done: the plain loop below has nothing to do) */
+        }
         for (i = 0; i < n; i++) {
             int32_t x = ((b[i] >> 2) * lvl) >> 10, a = x < 0 ? -x : x;   /* pre-shift: 8 loud voices */
             int32_t xs = clamp(x, -xmax, xmax);         /* sends: mulq15 would overflow */

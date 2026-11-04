@@ -221,6 +221,7 @@ static void gb_store_poll(void)
 #endif
 }
 
+#define GB_SN_MARK 0x5A
 static void gb_snd_take(gb_snd_t *s, const track_t *t)
 {
     uint32_t i;
@@ -228,6 +229,15 @@ static void gb_snd_take(gb_snd_t *s, const track_t *t)
     s->np = (uint8_t)P_COUNT;
     for (i = 0; i < P_COUNT; i++)
         s->p[i] = (int8_t)(clamp(motion_base_value(t, i), -64, 127) - 64);   /* (the sound's own, not a lock playing) */
+    /* the track's step note / chord (seq.c lastc, lastn), in bytes a sound doesn't use (gb_sound_id). MUTE's byte marks it:
+     * a sound saved before holds -64 or -63 there */
+    i = (uint32_t)(t - trk) % NTRK;
+    s->p[P_MUTE] = GB_SN_MARK;
+    s->p[P_SLEN] = (int8_t)(lastc[i] > 4u ? 4u : lastc[i]);
+    s->p[P_SDIV] = (int8_t)lastn[i][0];
+    s->p[P_SSWING] = (int8_t)lastn[i][1];
+    s->p[P_SGATE] = (int8_t)lastn[i][2];
+    s->p[P_SQNT] = (int8_t)lastn[i][3];
 }
 /* a sound into track t: its own values; its sequencer and mixer settings stay */
 static void gb_snd_put(const gb_snd_t *s, track_t *t)
@@ -281,6 +291,17 @@ static int gbs_load_sound(uint32_t slot)
         return 0;
     }
     gb_snd_put(s, TSEL);
+    {                                                    /* its step note / chord; a sound from before: middle C */
+        uint32_t i = song.sel % NTRK;
+        int has = P_MUTE < s->np && s->p[P_MUTE] == GB_SN_MARK && s->p[P_SLEN] >= 0 && s->p[P_SLEN] <= 4;
+        lastc[i] = (uint8_t)(has ? s->p[P_SLEN] : 0);
+        if (has) {
+            lastn[i][0] = (uint8_t)s->p[P_SDIV];
+            lastn[i][1] = (uint8_t)s->p[P_SSWING];
+            lastn[i][2] = (uint8_t)s->p[P_SGATE];
+            lastn[i][3] = (uint8_t)s->p[P_SQNT];
+        }
+    }
     ui.force = 1;
     return 1;
 }

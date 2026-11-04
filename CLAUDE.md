@@ -105,7 +105,8 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
 - A lock stays until the track's next trig (Elektron-style), not just one
   step: only a step that plays a note puts the earlier locks back. Trigless
   lock steps add theirs on top. Stopping puts everything back.
-- OCT- clear (SEQ mode, on release) wipes the track's locks and automation too.
+- Clearing needs OCT- pressed twice within 0.8 s (SEQ mode, ACID, the FX lane; on release; ui_input.c cla_poll, CLR2_MS). The first press
+  says "OCT- AGAIN TO CLEAR". The track's clear wipes its locks and automation too.
 - SEQ mode: hold a track key (black 1-6) + OCT- = that track's sound back to its machine's starting sound
   ("SOUND RESET"; steps, mix, SEQ and ARP settings stay; ui_input.c, apply_preset_to + machine_defaults).
 - CLEAR ALL: hold OCT- 1 s alone (any mode) = "CLEAR ALL? / PRESS OCT+"; OCT+ = a fresh start: every track's
@@ -191,8 +192,9 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   A held macro key is never a step key (knob turns go into the macro, not locks).
 - A new step plays the last note or chord played on that track's keys (drums too);
   before any, the machine's own note: middle C (60) for FM SYN, MONO, the 808s and the sampler; the FM drums keep
-  their tuned notes (36 50 84 72 48: at 60 a kick would jump two octaves). A sound / kit load, a track clear, SOUND
+  their tuned notes (36 50 84 72 48: at 60 a kick would jump two octaves). A track clear, SOUND
   RESET and CLEAR ALL forget the keys' note (seq.c lastc), so new steps are back on that note until a key is played.
+  A saved SOUND keeps the step note / chord (gb_store.c GB_SN_MARK, in bytes a sound doesn't use; sounds saved before: middle C).
   A KIT keeps each track's step note / chord (the last 32 bytes of its LOCKS-keys area, gb_store.c GB_KLK_LK, marked
   5A A5; kits saved before have none = middle C); loading it puts them back. The last jam keeps them too. The key that
   loads a sound / kit makes no note (seq.c kb_eat).
