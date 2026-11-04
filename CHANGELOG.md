@@ -6,7 +6,7 @@ Bug fixes from your reports, saves on newer FM-1s, and a better Samples page.
 
 ### Fixes
 - **Newer FM-1s can now save.** Some newer units have a different memory chip, and sounds, kits, the last jam and
-  samples didn't work on them. They do now.
+  samples didn't work on them. They should now: this one hasn't been tested on a newer unit yet, so please tell me.
 - **LFOs on VOL, PAN and the sends no longer add crunch or buzz**: those levels now glide.
 - **A saved sound keeps its step note / chord**, so it sounds the same from the track key after loading. Sounds saved
   before this version start on middle C, as they did.
