@@ -19,8 +19,9 @@
  * backwards = reversed, still = silent. The note scales that (a tape of the same length read at another pitch): two Hann
  * grains read at speed x note, each restarted at the head, so at middle C they ARE the tape. Moving the knob starts SCRUB's
  * voice by itself (sampler_block), at the last note played; it ends when the head has been still a moment. A key or trig
- * always plays the sample as normal, from its start: the knob moving takes over from it, the next trig snaps back. So a
- * step's SCRUB lock only parks the head; a trigless lock moves the tape. */
+ * always plays the sample as normal, from its start, at once. The knob moving then takes over with no jump: the head
+ * starts where the sound has got to, at its speed, and travels to the knob (smp_scrub_catch); where they meet the knob
+ * has it. So a step's SCRUB lock only parks the head; a trigless lock moves the tape. */
 #ifndef SMP_XIP                                     /* the emulator and the host tests: a RAM image of the flash */
 #include "../hal/fm1_xip.h"
 #define SMP_XIP(off) fm1_xip_ptr(off)
@@ -38,6 +39,7 @@
 #define SMP_ST_MIN 882                              /* SCRUB's weight, samples: 20 ms at the least (a fast hand) .. */
 #define SMP_ST_MAX 11025                            /* .. 250 ms (a slow sweep: smooths the 127 knob steps into a glide) */
 #define SMP_SR_MAX (8 << 12)                        /* the tape's fastest: 8 samples of the chunk a sample out */
+#define SMP_SC_TAU 1764                              /* the catch-up's weight: 40 ms; at most ~1/2 s (at twice the chunk's own speed or more) */
 #define SMP_SG_SLEW 186                             /* its gain's fastest move, a sample (~4 ms end to end) */
 #define GB_WAVE 224                                 /* the screen's waveform: columns (gb_store.c smp_peaks) */
 
@@ -128,6 +130,8 @@ static smp_v_t smp_v[NPART];
 typedef struct {                 /* a track's tape head: outlives the voices, so a new note doesn't move it */
     uint8_t on, want, note;      /* on: the head is valid; want: this note is SCRUB's own; note: the last played (0: none) */
     uint8_t pv, sv;              /* the value seen last (sampler_block, smp_scrub_block) */
+    uint8_t catch, fresh;        /* catch: the head is on its way to the knob; fresh: the note taking over is yet to start */
+    int32_t cv;                  /* the catch-up's speed, Q12 samples a sample */
     uint32_t off;                /* the chunk the head is on */
     int32_t s1, s2, head;        /* the chase's two stages and the head, Q12 samples */
     int32_t vel, rate;           /* the head's speed; the reading speed (with the note), Q12 samples a sample */
@@ -247,7 +251,17 @@ static void smp_scrub_block(smp_v_t *h, smp_s_t *s, int32_t val, uint32_t n, uin
     }
     if (s->since <= SMP_ST_MAX)
         s->since += n;
-    if (val) {
+    if (val && s->catch) {                            /* on its way to the knob: at a steady speed, with weight */
+        int32_t d = tg - s->s1, st = s->cv * (int32_t)n;
+        a = (int32_t)((n << 15) / SMP_SC_TAU);
+        if (d <= st && d >= -st) {
+            s->s1 = tg;
+            s->catch = 0;                             /* they've met: the knob has it */
+            s->tau = SMP_SC_TAU;
+        } else
+            s->s1 += d > 0 ? st : -st;
+        s->s2 += (int32_t)(((int64_t)(s->s1 - s->s2) * a) >> 15);
+    } else if (val) {
         a = (int32_t)((n << 15) / s->tau);
         s->s1 += (int32_t)(((int64_t)(tg - s->s1) * a) >> 15);
         s->s2 += (int32_t)(((int64_t)(s->s1 - s->s2) * a) >> 15);
@@ -267,6 +281,39 @@ static void smp_scrub_block(smp_v_t *h, smp_s_t *s, int32_t val, uint32_t n, uin
         h->done = 1;                                  /* still for a moment: the voice ends (a knob move starts another) */
     if (!val && !s->gain)
         h->done = 1;
+}
+/* a sample playing normally, the knob moved: the head takes over where the sound has got to, at its speed, bound for
+ * the knob. Called before the takeover's note */
+static void smp_scrub_catch(const smp_v_t *h, smp_s_t *s, int32_t val)
+{
+    const smp_g_t *g = &h->g[0];
+    int32_t i = (h->cin >> 8) + (int32_t)(h->gpos >> 16), pos, v0, dist;
+    int32_t tg = (int32_t)((uint32_t)(val - 1) * (h->n - 1u) / 126u) << 12, least = (int32_t)(h->srq >> 3);
+    i = i < 0 ? 0 : i;
+    if (h->mode == SM_LOOP) {
+        while (i >= (int32_t)g->Lp)
+            i -= (int32_t)g->Lp;
+    } else if (h->mode == SM_PING) {
+        while (i >= (int32_t)g->per)
+            i -= (int32_t)g->per;
+        i = i < (int32_t)g->Lp ? i : (int32_t)g->per - 1 - i;
+    }
+    pos = clamp((int32_t)(h->d - h->base) + i * h->dir, 0, (int32_t)h->n - 1);
+    v0 = h->dir * (int32_t)(h->srq >> 4);             /* Q16 to Q12: the chunk's own speed */
+    s->on = 1;
+    s->off = h->off;
+    s->head = s->s2 = s->ra = s->rb = pos << 12;
+    s->s1 = s->head + v0 * SMP_SC_TAU;                /* (the second stage then runs at that speed) */
+    s->vel = v0;
+    s->gain = s->gt = 32767;
+    s->ph = 0;
+    s->sv = (uint8_t)val;
+    s->since = 0;
+    s->tau = SMP_SC_TAU;
+    dist = tg - s->head;
+    dist = (dist < 0 ? -dist : dist) / (int32_t)(FS / 2u);
+    s->cv = clamp(dist, least, SMP_SR_MAX);
+    s->catch = s->fresh = 1;
 }
 /* SCRUB's sample */
 static inline int32_t smp_scrub(smp_v_t *h, smp_s_t *s, uint32_t near, uint32_t hold, uint32_t sh)
@@ -358,6 +405,7 @@ static void sampler_note_on(track_t *t, voice_t *v)
     if (val || scr) {                                 /* a normal note parks the head at the knob; SCRUB's own keeps it */
         if (!scr || !s->on || s->off != c->off) {     /* (.. unless it's not on this chunk) */
             val = val ? val : 1;
+            s->catch = 0;
             s->vel = s->rate = s->gain = s->gt = 0;
             s->ph = 0;
             s->s1 = s->s2 = s->head = s->ra = s->rb = (int32_t)((uint32_t)(val - 1) * (n - 1u) / 126u) << 12;
@@ -368,6 +416,11 @@ static void sampler_note_on(track_t *t, voice_t *v)
             s->since = SMP_ST_MAX + 1u;
         }
         s->idle = 0;
+        if (s->fresh) {                               /* taking over a sample: only the difference fades */
+            h->dc = dc - smp_tap(h, s->head, 0);
+            h->dcn = SMP_DECLICK;
+            s->fresh = 0;
+        }
     }
 }
 
@@ -528,6 +581,9 @@ static void sampler_block(track_t *t)
     }
     if (!(h->scr && !h->done && h->gen == smp_gen && h->owner && h->owner <= NVOICE && t->v[h->owner - 1u].active &&
           t->v[h->owner - 1u].stage != 4u)) {
+        if (!h->scr && !h->done && h->gen == smp_gen && h->owner && h->owner <= NVOICE && t->v[h->owner - 1u].active &&
+            t->v[h->owner - 1u].stage != 4u)
+            smp_scrub_catch(h, s, val);               /* a sample playing: the head picks it up where it is */
         s->want = 1;
         trk_note_on(t, s->note ? s->note : SMP_NOTE, 100);
         s->want = 0;
