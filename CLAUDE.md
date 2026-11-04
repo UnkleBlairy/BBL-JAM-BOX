@@ -160,6 +160,8 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   (ui_input.c hint_poll, 250 ms): SEQ "KNOB = PARAM  WHITE KEY = LOCKS" (its
   release is then no tap), OCT+ "TEMP CHANGE / TURN A KNOB TO TRY IT", then
   "RELEASE TO REVERT". The big centred pop-up (touch mod) is white too.
+- Black background on every track (Blair kept it, 2026-11-04): the track's colour only as a strip behind the header
+  (ui_gb.c).
 - Layout: 5 px loop border, dials up (labels y 48, centre 94), bottom line at
   y 182 (key mode in the large font when it fits), squares at y 214.
 - PARAM mode keeps its knob when you change pages; the bottom says "PARAM CUT".
@@ -260,7 +262,7 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   locks lay over those knobs until the lane's next trig (mod.c mg_ov; the knob
   keeps its own value, LFOs wobble on top). Hold step + OCT- clears its locks,
   OCT- clears the lane (LEN stays). No SPEED/CHANCE of its own.
-- FX TRACK (fxl_sel; black key 7 in SEQ mode, or ALGO turned past 6; ui.c fxt_set): its own pages; no X
+- FX TRACK (fxl_sel; black key 7 in SEQ mode, or ALGO turned past 6, ALGO back = the track it came from; ui.c fxt_set): its own pages; no X
   screens: a button with no page on this side switches sides (GLO on a track = the FX track's PERF; OSC/ARP
   on the FX track = back to the track; ui.c fxt_set, side_page). SEQ tapped on PERF = back to the track's
   page with the steps on. GLO (PERF COMB DJ AMP) is the FX track's only. FX button = DELAY (TIME FDBK TONE) / VERB (TIME DAMP GRIT), only here;

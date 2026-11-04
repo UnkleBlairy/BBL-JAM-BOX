@@ -2370,7 +2370,8 @@ static void ui_input(void)
     }
     if ((s = panel_enc(EN_ALGO)) != 0 && FELUCCA_SIMPLE) {   /* SIMPLE: ALGORITHM picks the track (1..6) */
         gbs_off = gbs_kept = 0;                         /* (as a track key: the steps held were the other track's) */
-        int32_t to = clamp((fxl_sel ? (int32_t)NTRK : (int32_t)song.sel) + (s > 0 ? 1 : -1), 0, NTRK);
+        /* (back from the FX track: the track it came from; black key 7 and FX double tap can come from any) */
+        int32_t to = fxl_sel ? (s > 0 ? (int32_t)NTRK : (int32_t)song.sel) : clamp((int32_t)song.sel + (s > 0 ? 1 : -1), 0, NTRK);
         fxt_set(to == NTRK);                            /* (past 6: the FX track) */
         if (to < NTRK)
             track_select((uint32_t)to);
