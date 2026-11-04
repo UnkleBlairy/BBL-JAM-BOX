@@ -351,6 +351,26 @@ static int32_t mdst_rank(int32_t v)               /* v's place in MDST_ORDER (on
             return r;
     return 0;
 }
+/* does this DEST (a stored value, N_MDST's order) do anything on track t's machine? The knob skips the ones that don't;
+ * a saved sound holding one keeps it. Dead: a knob the machine hasn't ("-"), FM SYN's C.ATK .. DTUN off FM SYN, and on an
+ * 808 (ownenv, no filter) CUT RES F.* ATK DEC SUS REL */
+static int mdst_live(const track_t *t, int32_t v)
+{
+    uint32_t e = eng_idx(t->eng_req);
+    if (v >= 12 && v <= 18)                         /* E1..E7 */
+        return track_desc(t, P_E0 + (uint32_t)v - 12u)->label[0] != '-';
+    if (v >= 51 && v <= 53)                         /* LEVEL / SAT, AGE / TYPE, GATE */
+        return track_desc(t, P_LN0 + (uint32_t)v - 51u)->label[0] != '-';
+    if (v >= 62 && v <= 67)
+        return e == ENGI_DIGITAL && t->p[P_E7] % 6 == 0;
+    if (v == 2 || (v >= 23 && v <= 26) || (v >= 40 && v <= 45)) {
+        if (e == ENGI_ANALOG)
+            return 0;
+        if (v == 25 || v == 26)                     /* a drum's ENV: attack and decay only */
+            return track_desc(t, v == 25 ? P_SUS : P_REL)->label[0] != '-';
+    }
+    return 1;
+}
 static const uint8_t *enum_order(const param_desc_t *d)
 {
     return d->names == N_DIV ? DIV_ORDER : d->names == N_SLDIV ? SLDIV_ORDER : d->names == N_DTIME ? DTIME_ORDER : 0;
@@ -360,7 +380,15 @@ static int32_t enum_rank(const param_desc_t *d, int32_t v)   /* v's place in the
     const uint8_t *o = enum_order(d);
     int32_t r;
     if (FELUCCA_SIMPLE && d->names == N_MDST)       /* (the gauge over the shown order) */
-        return d->min + mdst_rank(v) * (d->max - d->min) / ((int32_t)sizeof MDST_ORDER - 1);
+    {
+        int32_t k, r = mdst_rank(v), below = 0, all = 0;
+        for (k = 1; k < (int32_t)sizeof MDST_ORDER; k++)
+            if (mdst_live(TSEL, MDST_ORDER[k])) {
+                all++;
+                below += k <= r;
+            }
+        return d->min + below * (d->max - d->min) / (all ? all : 1);
+    }
     for (r = 0; o && r < d->max - d->min; r++)
         if (o[r] == v - d->min)
             break;
@@ -371,7 +399,15 @@ static int32_t param_turn(const param_desc_t *d, int32_t v, int32_t steps)
 {
     const uint8_t *o = enum_order(d);
     if (FELUCCA_SIMPLE && d->names == N_MDST)
-        return MDST_ORDER[clamp(mdst_rank(v) + steps, 0, (int32_t)sizeof MDST_ORDER - 1)];
+    {
+        int32_t r = mdst_rank(v), dir = steps < 0 ? -1 : 1, left = steps < 0 ? -steps : steps, k;
+        for (k = r + dir; left && k >= 0 && k < (int32_t)sizeof MDST_ORDER; k += dir)
+            if (MDST_ORDER[k] == 0 || mdst_live(TSEL, MDST_ORDER[k])) {
+                r = k;
+                left--;
+            }
+        return MDST_ORDER[r];
+    }
     if (o)
         return o[clamp(enum_rank(d, v) - d->min + steps, 0, d->max - d->min)] + d->min;
     if (d->names == ESYNC_NAMES) {                    /* ENV SYNC: a note value a step (the first value showing it) */

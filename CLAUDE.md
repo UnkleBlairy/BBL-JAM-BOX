@@ -426,6 +426,8 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
 - REC armed: a red "REC" pill left of the BPM; playing, it breathes twice a bar.
   It records EVERY track you play (seq.c rec_armed), so finger drumming on the
   black track keys in SEQ mode records each hit on its own track.
+- The DEST knobs skip what does nothing on the track's machine (params.c mdst_live): knobs it hasn't, FM SYN's C.ATK..DTUN
+  elsewhere, an FM drum's SUS REL, an 808's CUT RES F.* ATK DEC SUS REL. A saved sound holding one keeps it.
 - LFO DEST order = the knobs as their pages show them, left to right (params.c
   MDST_ORDER), then PITCH AMP. PAN SHP DEPTH VEL TIME E8 are left out. VIB is
   called L.PIT.
