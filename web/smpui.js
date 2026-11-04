@@ -66,7 +66,7 @@ export function mountUploader(opts) {
   }
   function drawWave() {
     const c = $("swave"), g = c.getContext("2d"), W = c.width, H = c.height;
-    g.fillStyle = "#141415"; g.fillRect(0, 0, W, H);
+    g.fillStyle = "#000"; g.fillRect(0, 0, W, H);
     if (!src) return;
     const [a, b] = secs(), xa = a / src.dur * W, xb = b / src.dur * W, n = src.mono.length;
     if (!src.peaks) {                                   // (once a file: this draws every frame while it plays)
@@ -79,11 +79,12 @@ export function mountUploader(opts) {
     }
     for (let x = 0; x < W; x++) {
       const m = src.peaks[x];
-      g.fillStyle = x >= xa && x <= xb ? "#fff" : "#555";
+      g.fillStyle = x >= xa && x <= xb ? "#2ec4ff" : "#444";
       g.fillRect(x, H / 2 - m * H / 2, 1, Math.max(1, m * H));
     }
-    g.fillStyle = "#5fe08a"; g.fillRect(xa, 0, 2, H); g.fillRect(xb - 2, 0, 2, H);
-    if (head >= 0) { g.fillStyle = "#ff5a36"; g.fillRect(head / src.dur * W - 1, 0, 3, H); }
+    const px = Math.max(3, Math.round(2 * W / (c.clientWidth || W)));   // (2 px wide on screen, a phone too)
+    g.fillStyle = "#ffd60a"; g.fillRect(xa, 0, px, H); g.fillRect(xb - px, 0, px, H);
+    if (head >= 0) { g.fillStyle = "#ff5a36"; g.fillRect(head / src.dur * W - px / 2, 0, px, H); }
   }
   function render() {
     const used = usedBytes(list);

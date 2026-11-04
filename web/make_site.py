@@ -15,6 +15,7 @@ The package must be one made by tools/fm1pkg_make.py (Felucca's own loader, no v
 Its identity (FM-1_9xx) is read from the package; the device must report it after
 the install.
 """
+import base64
 import json
 import re
 import shutil
@@ -65,6 +66,10 @@ def main(pkg, version, out):
         raise SystemExit("samples.html must contain /*LIB*/ once; update make_site.py")
     smp = smp.replace("/*LIB*/", "\n".join(strip_module((HERE / f).read_text(encoding="utf-8"))
                                            for f in ("smpimg.js", "fm1ota.js", "fm1smp.js", "smpui.js")))
+    for mark, f, kind in (("/*FONT*/", "fonts/BLBPixel7-Chunky.ttf", "font/ttf"), ("/*LOGO*/", "logo/MEE.jpg", "image/jpeg")):
+        if smp.count(mark) != 1:
+            raise SystemExit(f"samples.html must contain {mark} once; update make_site.py")
+        smp = smp.replace(mark, f"data:{kind};base64," + base64.b64encode((HERE.parent / "assets" / f).read_bytes()).decode())
     (out / "webapp" / "samples").mkdir(parents=True, exist_ok=True)
     (out / "webapp" / "samples" / "index.html").write_text(smp, encoding="utf-8")
     (out / "webapp" / "mirror").mkdir(parents=True, exist_ok=True)   # the screen mirror (test; no LIB)
