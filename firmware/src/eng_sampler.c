@@ -41,6 +41,8 @@
 #define SMP_ST_MAX 11025                            /* .. 250 ms (a slow sweep: smooths the 127 knob steps into a glide) */
 #define SMP_SR_MAX (8 << 12)                        /* the tape's fastest: 8 samples of the chunk a sample out */
 #define SMP_SC_TAU 1764                              /* the catch-up's weight: 40 ms; at most ~1/2 s (at twice the chunk's own speed or more) */
+#define SMP_TR_HOLD 3528                             /* a trig always sounds: for 80 ms the knob can't take over (1/16 at 120 = 125 ms) */
+#define SMP_TR_MOVE 3                               /* .. and after that it takes a real move, this many steps (a fader's jitter doesn't) */
 #define SMP_SG_SLEW 186                             /* its gain's fastest move, a sample (~4 ms end to end) */
 #define GB_WAVE 224                                 /* the screen's waveform: columns (gb_store.c smp_peaks) */
 
@@ -134,6 +136,7 @@ typedef struct {                 /* a track's tape head: outlives the voices, so
     uint8_t catch, fresh;        /* catch: the head is on its way to the knob; fresh: the note taking over is yet to start */
     int32_t cv;                  /* the catch-up's speed, Q12 samples a sample */
     int32_t wa, wb;              /* START / LEN's window, Q12: the tape there is */
+    uint32_t hold;               /* samples left of a trig's protection (SMP_TR_HOLD) */
     uint32_t off;                /* the chunk the head is on */
     int32_t s1, s2, head;        /* the chase's two stages and the head, Q12 samples */
     int32_t vel, rate;           /* the head's speed; the reading speed (with the note), Q12 samples a sample */
@@ -370,6 +373,7 @@ static void sampler_note_on(track_t *t, voice_t *v)
     if (!scr) {
         s->note = v->note;                            /* (the last played: SCRUB's pitch when it starts by itself) */
         s->pv = (uint8_t)val;                         /* (a value this note brought, its lock: no tape move) */
+        s->hold = SMP_TR_HOLD;
     }
     if (h->owner && !h->done && h->owner <= NVOICE && t->v[h->owner - 1u].active) {
         dc = h->last + ((h->dc * h->dcn) / SMP_DECLICK);   /* a takeover: the old sound fades out */
@@ -584,9 +588,15 @@ static void sampler_block(track_t *t)
     uint32_t k = (uint32_t)(t - trk) % NPART;
     smp_v_t *h = &smp_v[k];
     smp_s_t *s = &smp_s[k];
-    int32_t val = clamp(t->p[P_DIST], 0, 127);
-    if (val == s->pv)
+    int32_t val = clamp(t->p[P_DIST], 0, 127), d = val - s->pv;
+    uint32_t play = !h->scr && !h->done && h->gen == smp_gen && h->owner && h->owner <= NVOICE &&
+                    t->v[h->owner - 1u].active && t->v[h->owner - 1u].stage != 4u;
+    if (s->hold) {                                    /* a trig just played: it sounds whatever the knob is doing */
+        s->hold = s->hold > CTL ? s->hold - CTL : 0u;
         return;
+    }
+    if (!d || (val && play && d > -SMP_TR_MOVE && d < SMP_TR_MOVE))
+        return;                                       /* (a sample playing: only a real move takes it over) */
     s->pv = (uint8_t)val;
     if (!val) {
         s->on = 0;                                    /* (the voice fades, smp_scrub_block; next time from the knob) */
@@ -594,8 +604,7 @@ static void sampler_block(track_t *t)
     }
     if (!(h->scr && !h->done && h->gen == smp_gen && h->owner && h->owner <= NVOICE && t->v[h->owner - 1u].active &&
           t->v[h->owner - 1u].stage != 4u)) {
-        if (!h->scr && !h->done && h->gen == smp_gen && h->owner && h->owner <= NVOICE && t->v[h->owner - 1u].active &&
-            t->v[h->owner - 1u].stage != 4u)
+        if (play)
             smp_scrub_catch(h, s, t->p, val);               /* a sample playing: the head picks it up where it is */
         s->want = 1;
         trk_note_on(t, s->note ? s->note : SMP_NOTE, 100);
