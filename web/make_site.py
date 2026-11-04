@@ -36,6 +36,15 @@ def product_of(raw):
     return "".join(chr((m - i - 1) & 0xFF) for i in range(BLOCKS) if (m := raw[i * BLK + KEEP]) != 0x7D)
 
 
+def inline_look(page, name):
+    """Puts the font and the logo in a page, so it stays one file."""
+    for mark, f, kind in (("/*FONT*/", "fonts/BLBPixel7-Chunky.ttf", "font/ttf"), ("/*LOGO*/", "logo/MEE.jpg", "image/jpeg")):
+        if page.count(mark) != 1:
+            raise SystemExit(f"{name} must contain {mark} once; update make_site.py")
+        page = page.replace(mark, f"data:{kind};base64," + base64.b64encode((HERE.parent / "assets" / f).read_bytes()).decode())
+    return page
+
+
 def main(pkg, version, out):
     pkg, out = Path(pkg), Path(out)
     raw = pkg.read_bytes()
@@ -45,7 +54,7 @@ def main(pkg, version, out):
     if b"FELUCCA-LOADER-1" not in raw:              # Felucca loader marker: never publish a package with vendor files
         raise SystemExit(f"{pkg}: no Felucca loader in it; the site ships only fm1pkg_make.py packages "
                          "(a package patched from an official one carries vendor files)")
-    html = (HERE / "index_pkg.html").read_text(encoding="utf-8")
+    html = inline_look((HERE / "index_pkg.html").read_text(encoding="utf-8"), "index_pkg.html")
     lib = strip_module((HERE / "fm1pkg.js").read_text(encoding="utf-8")) + "\n" + \
         strip_module((HERE / "fm1ota.js").read_text(encoding="utf-8")) + "\n" + \
         strip_module((HERE / "fm1backup.js").read_text(encoding="utf-8"))
@@ -66,10 +75,7 @@ def main(pkg, version, out):
         raise SystemExit("samples.html must contain /*LIB*/ once; update make_site.py")
     smp = smp.replace("/*LIB*/", "\n".join(strip_module((HERE / f).read_text(encoding="utf-8"))
                                            for f in ("smpimg.js", "fm1ota.js", "fm1smp.js", "smpui.js")))
-    for mark, f, kind in (("/*FONT*/", "fonts/BLBPixel7-Chunky.ttf", "font/ttf"), ("/*LOGO*/", "logo/MEE.jpg", "image/jpeg")):
-        if smp.count(mark) != 1:
-            raise SystemExit(f"samples.html must contain {mark} once; update make_site.py")
-        smp = smp.replace(mark, f"data:{kind};base64," + base64.b64encode((HERE.parent / "assets" / f).read_bytes()).decode())
+    smp = inline_look(smp, "samples.html")
     (out / "webapp" / "samples").mkdir(parents=True, exist_ok=True)
     (out / "webapp" / "samples" / "index.html").write_text(smp, encoding="utf-8")
     (out / "webapp" / "mirror").mkdir(parents=True, exist_ok=True)   # the screen mirror (test; no LIB)

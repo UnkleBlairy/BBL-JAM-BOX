@@ -398,7 +398,7 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
 - Sample memory: flash 0xA0000..0xD9FFF (232 KB; the last 8 KB went to the last jam),
   survives power-off and firmware updates. 8-bit mu-law (the user chose twice the time
   over 16 bits): ~10.6 s at 22 kHz in all. Table "FSM2" + CRCs; a bad table = no samples.
-- Samples page (web/samples.html): the firmware's look, as the emulator page; make_site.py inlines the font and logo, so it stays one file.
+- Samples and install pages (web/samples.html, web/index_pkg.html): the firmware's look, as the emulator page; make_site.py inlines the font and logo (inline_look), so each stays one file. The install page's progress and status stay below its sections, as Install and Return to V15 share them.
 - Uploader preview (web/smpui.js): Play shows a playhead on the waveform; Loop plays the part round and round, Start / End move it live
   (sliders 100000 steps, arrow keys for tiny moves). The page asks the FM-1 its memory size (fm1smp.js, BEGIN's cap).
 - The uploader replaces the whole sample memory each Upload (up to 32 chunks).
