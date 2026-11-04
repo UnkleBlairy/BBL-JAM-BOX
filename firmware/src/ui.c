@@ -1369,7 +1369,7 @@ static void machine_defaults_p(const track_t *t, int16_t *p)   /* (into p: t's v
     p[P_REL] = pr->env[3];
     if (m->engine == ENGI_ANALOG) {                   /* an 808: its LEVEL (the eighth knob), AGE */
         p[P_LN0] = AN_DEF[m->sub % AN_N][7];
-        p[P_LN1] = 0;                                 /* AGE: clean at the start (the user's choice) */
+        p[P_LN1] = 0;                                 /* CRUSH: clean at the start */
     } else if (m->engine == ENGI_SAMPLER) {           /* the sampler: LEVEL, GATE, track n's slot n */
         p[P_LN0] = 100;
         p[P_LN2] = TP[P_LN2].def;

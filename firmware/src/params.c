@@ -86,7 +86,7 @@ static const char *const N_MDST[] = {"OFF", "PITCH", "CUT", "SHP", "AMP", "PAN",
                                      "ATK", "DEC", "SUS", "REL", "E.FLT", "E.PIT", "E.SHP", "E.R2", "L.FLT", "L.SHP", "L.AMP",
                                      "DTIME", "DFDBK", "DTONE", "RTIME", "RDAMP", "GRIT", "RES", "F.AMT", "F.ATK",
                                      "F.DEC", "F.SUS", "F.REL", "C.MIX", "CTUNE", "CFDBK", "CDAMP", "DJ",
-                                     "LEVEL", "AGE", "GATE",   /* (5 letters fit) (ANALOG's LEVEL and AGE, SAMPLER's GATE) */
+                                     "LEVEL", "CRUSH", "GATE",   /* (5 letters fit) (ANALOG's LEVEL and CRUSH, SAMPLER's GATE) */
                                      "TYPE", "WAVE", "PHASE", "L.FAD", "SYNC", "L.TRG", "POL", "VOL",   /* (they step) */
                                      "C.ATK", "C.DEC", "D.ATK", "D.DEC", "FB", "DTUN"};   /* (FM SYN's) */
 static const char *const N_ENGNAME[] = {"ANALOG", FELUCCA_FM4 ? "DIGITAL" : "-", "PHASE", "LOFI", "SAMPLE", "VOICE", "TRIO", "WHEEL", "GRAIN", "PHYS",
@@ -197,7 +197,7 @@ static const param_desc_t TP[P_COUNT] = {
     LANE(3, "HATCL"), LANE(4, "HATOP"), LANE(5, "TOM"), LANE(6, "RIM"), LANE(7, "BELL"),
 #undef LANE
     /* SIMPLE: lanes 1 and 2 are ANALOG's (eng_analog.c): an 808 machine's LEVEL (its eighth knob) and AGE */
-    [P_LN0] = PD("LEVEL", F_INT, 0, 127, 100), [P_LN1] = PD("AGE", F_INT, 0, 127, 0),
+    [P_LN0] = PD("LEVEL", F_INT, 0, 127, 100), [P_LN1] = PD("CRUSH", F_INT, 0, 127, 0),
     /* .. lane 3 SAMPLER's GATE (eng_sampler.c): 0 the key's length, 1..16 steps (loops) */
     [P_LN2] = PD("GATE", F_INT, 0, 16, 2),
     [P_LSYNC] = PE("SYNC", N_LSYNC, 0),
@@ -570,7 +570,7 @@ static const page_t PAGES[] = {
     {"LFO 3", FAM_LFO, SC_GLOBAL, GR_NONE, {G_F3RATE, G_F3WAVE, G_F3DEST, G_F3AMT}, 1},
     {"OSC 1", FAM_EDIT, SC_ENGINE, GR_NONE, {P_E0, P_E1, P_E2, P_E3}},   /* the machine's first four (the PRESETS knob: MACH) */
     {"OSC 2", FAM_EDIT, SC_ENGINE, GR_NONE, {P_E4, P_E5, P_E6, P_LN0}},  /* the rest (ANALOG: .. DRIVE LEVEL) */
-    {"AGE", FAM_EDIT, SC_ENGINE, GR_NONE, {P_LN1, 0xFF, 0xFF, 0xFF}},   /* ANALOG's AGE, SAMPLER's GATE (page_id_an; ui.c page_visible) */
+    {"CRUSH", FAM_EDIT, SC_ENGINE, GR_NONE, {P_LN1, 0xFF, 0xFF, 0xFF}},   /* ANALOG's CRUSH, SAMPLER's GATE (page_id_an; ui.c page_visible) */
     {"MOD C", FAM_EDIT, SC_ENGINE, GR_NONE, {P_FM3_ATK, P_FM3_DEC, P_E4, P_E6}},       /* FM SYN's (its OSC 2 is hidden): */
     {"MOD D", FAM_EDIT, SC_ENGINE, GR_NONE, {P_FM4_ATK, P_FM4_DEC, P_E5, P_FM3_LEVEL}}, /* ATK DEC AMT MIX / .. FB */
     {"TUNE", FAM_EDIT, SC_ENGINE, GR_NONE, {P_FM4_LEVEL, P_TRANS, 0xFF, 0xFF}},       /* DTUN PITCH */

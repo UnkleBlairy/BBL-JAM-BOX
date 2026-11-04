@@ -10,7 +10,7 @@ Not made or supported by M-VAVE. Installing it is at your own risk.
 
 - 6 tracks, a 16-step sequencer per track with parameter locks, chance and trig conditions
 - **DIGITAL**: a 4-operator FM engine (SYN, BD, SD, HH, CYM, PERC)
-- **ANALOG**: 808-style drums (KICK SNARE TOM RIM CLAP COWBELL HAT CYMBAL) with an AGE knob
+- **ANALOG**: 808-style drums (KICK SNARE TOM RIM CLAP COWBELL HAT CYMBAL) with a CRUSH knob
 - **SAMPLER**: your own sounds, uploaded from the browser (up to 32, about 11 s in all)
 - Master DJ filter and comb, delay, a plate reverb, beat repeats, an arpeggiator, sound and kit saves
 

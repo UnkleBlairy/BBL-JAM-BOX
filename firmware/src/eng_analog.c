@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Blair (blairysbeatlab), BBL JAM BOX */
-/* ANALOG: the 808 machines, KICK SNARE TOM RIM CLAP COWBELL HAT CYMBAL (E7 = MACH), and AGE. The spec is
+/* ANALOG: the 808 machines, KICK SNARE TOM RIM CLAP COWBELL HAT CYMBAL (E7 = MACH), and CRUSH. The spec is
  * docs/808lab.html: each machine is its WebAudio graph for one hit (the v* voices there), here in fixed point with
  * the same ranges and curves:
  *   - oscillators are phase accumulators (sines from the table, squares from the phase's top bit: not band-limited),
@@ -8,18 +8,16 @@
  *     coefficients made once at the hit,
  *   - an envelope is the prototype's env(): from 0.0001 a straight line to its peak, then exponential to 0.0001
  *     (a factor every sample, from the decay time at the hit); a pitch sweep is an exponential ramp the same way.
- * Then the track chain of the prototype (applyFx): the hit's level, LEVEL x 1.1, a tanh shaper (DRIVE, GRIT), GRIT's
- * bits and low-pass. Each hit draws its AGE variations (hit(): DRIFT's pitch, decay and level, a late start, HISS's
- * noise through the hit's own decay). All the maths of a hit's setup is done at the note (64-bit, no floats); the
+ * Then the track chain of the prototype (applyFx): LEVEL x 1.1, a tanh shaper (DRIVE), then CRUSH (not the prototype's
+ * AGE, which is gone). All the maths of a hit's setup is done at the note (64-bit, no floats); the
  * samples need no divide. A track plays one hit at a time (voice.c trk_note_on: a drum), a restart in place fades the
  * old one's last value out over AN_DECLICK samples.
- * Knobs: E0..E6 the machine's first seven, P_LN0 its LEVEL (the eighth), P_LN1 AGE (params.c, engines.c). */
+ * Knobs: E0..E6 the machine's first seven, P_LN0 its LEVEL (the eighth), P_LN1 CRUSH (params.c, engines.c). */
 
-/* AGE's three parts: their weights, as the prototype's sliders (0..127, 64 = 1.0). One knob, AGE, sets how much of
- * all three; these say how much of each. (The final numbers come later: change them here) */
-#define AGE_DRIFT 64                  /* per-hit pitch (and a slow walk), decay and level, a late start up to 8 ms */
-#define AGE_HISS 64                   /* a burst of high-passed noise with each hit, through the hit's decay */
-#define AGE_GRIT 64                   /* the shaper driven harder, down to ~7 bits, a low-pass falling to ~3.6 kHz */
+/* CRUSH, one knob, Octatrack-style: sample-rate and bit reduction together, hard: a held sample with no smoothing, so
+ * the aliasing stays. At the top: 2^(CRUSH_RATE / 10) = ~40 x fewer samples, a step of 2^CRUSH_BITS (~5 bits). Tune here */
+#define CRUSH_RATE 53
+#define CRUSH_BITS 11
 
 enum { AN_KICK, AN_SNARE, AN_TOM, AN_RIM, AN_CLAP, AN_COW, AN_HAT, AN_CYM, AN_N };
 static const char *const N_AMACH[AN_N] = {"KICK", "SNARE", "TOM", "RIM", "CLAP", "COWB", "HAT", "CYM"};
@@ -39,14 +37,13 @@ static const uint8_t AN_DEF[AN_N][8] = {
     {64, 40, 70, 50, 64, 60, 15, 100}, {64, 60, 50, 50, 64, 40, 15, 100}, {64, 50, 64, 40, 46, 50, 10, 95},
     {64, 25, 64, 80, 60, 50, 10, 90}, {64, 80, 70, 80, 80, 40, 10, 85},
 };
-#define AN_AGE_DEF 40                 /* AGE at a machine's start (the prototype's) */
 /* each machine's level out, after its sound (Q12, 4096 = as the prototype): the prototype's hats, cymbal and clap are
  * 10..19 dB under its kick, its master compressor evens that out; these put each at about its FM machine's level.
- * Only the level: the sound (its drive, GRIT) is the prototype's. 4096 for all = the prototype's own balance */
+ * Only the level: the sound (its drive) is the prototype's. 4096 for all = the prototype's own balance */
 static const uint16_t AN_TRIM[AN_N] = {4096, 4096, 4096, 5120, 12800, 5120, 36000, 18400};
 #define AN_NOTE 60                    /* the note a machine sounds at its TUNE; the keys play it up and down */
 
-static const preset_t ANALOG_PRESETS[AN_N] = {             /* AN_DEF's first seven, MACH (LEVEL, AGE: machine_defaults) */
+static const preset_t ANALOG_PRESETS[AN_N] = {             /* AN_DEF's first seven, MACH (LEVEL, CRUSH: machine_defaults) */
 #define AP(n, a, b, c, d, e, f, g, m) {n, {a, b, c, d, e, f, g, m}, {0, 100, 0, 40}, 0, 0, FX(0, 0, 0, 0), PAT(0)}
     AP("KICK", 55, 70, 45, 80, 50, 40, 15, 0), AP("SNARE", 64, 70, 80, 60, 80, 60, 20, 1),
     AP("TOM", 50, 64, 20, 30, 90, 20, 10, 2), AP("RIM", 64, 40, 70, 50, 64, 60, 15, 3),
@@ -263,7 +260,7 @@ static inline int32_t an_bp(an_svf_t *f, int32_t x)                 /* 0 dB at t
     return an_bq(f, f->bb, xs);
 }
 
-/* tanh(i / 8), i = 0..64, Q15: the shaper (DRIVE, GRIT) */
+/* tanh(i / 8), i = 0..64, Q15: the shaper (DRIVE) */
 static const int16_t AN_TANH[65] = {
     0, 4075, 8025, 11742, 15142, 18173, 20812, 23065, 24955, 26518, 27796, 28829, 29659, 30321, 30846, 31261, 31588,
     31845, 32047, 32205, 32328, 32425, 32500, 32559, 32605, 32641, 32669, 32690, 32707, 32720, 32731, 32739, 32745,
@@ -279,27 +276,25 @@ static inline int32_t an_tanh(int32_t u)                 /* tanh(u / 32768) * 32
 /* ---------------------------------------------------------------- a hit --- */
 typedef struct {
     uint8_t mach, owner, nb, b;  /* the machine; the voice it is (index + 1, 0 free); CLAP's bursts, the one playing */
-    uint32_t wait;               /* DRIFT: samples before the hit starts */
-    int32_t seed, hseed;         /* the noise, HISS's noise */
+    int32_t seed;                /* the noise */
     int32_t dc, dcn;             /* the old hit's last value, fading out (a restart in place) */
     int32_t last;                /* the last value out (for that) */
-    int32_t lf;                  /* DRIFT: the hit's level (Q16) */
     int32_t pitch16;             /* the note's pitch at the hit (the keys and the LFO move the oscillators from it) */
     uint32_t ph[6], inc[6];      /* the oscillators: phases, increments at the hit */
     int32_t g0, g1;              /* RIM: its squares' levels (Q15) */
     uint32_t bn, bc, bd, btail;  /* CLAP: samples a burst, into this one, the bursts' and the tail's decay */
-    an_env_t e[4];               /* 0 the body, 1 2 the other parts (click, snap, noise, room), 3 HISS */
+    an_env_t e[3];               /* 0 the body, 1 2 the other parts (click, snap, noise, room) */
     an_swp_t sw;                 /* the pitch sweep */
-    an_svf_t f[4], hf, gl;       /* the machine's filters, HISS's high-pass, GRIT's low-pass */
-    int32_t gk;                  /* GRIT: the g gl, gq, gqi are for (-1: none yet) */
-    uint32_t gq, gqi;            /* .. its step (Q16) and 2^32 / step */
+    an_svf_t f[4];               /* the machine's filters */
+    int32_t gk;                  /* CRUSH: the knob value gq, gqi, gi are for (-1: none yet) */
+    uint32_t gq, gqi, gi;        /* .. its step (Q16), 2^32 / step, how far the hold moves a sample (Q16) */
+    uint32_t cp;                 /* .. the hold's place (at 65536: take a new sample) */
+    int32_t ch;                  /* .. the sample held */
 } an_v_t;
 static an_v_t an_v[NTRK][2] __attribute__((section(".pool")));   /* (a track plays one, the other fading out) */
-static struct { int32_t walk, rng; } an_t[NTRK];
+static struct { int32_t rng; } an_t[NTRK];
 
 static inline int32_t an_noise(int32_t *s) { return (int32_t)noise32(s) >> 16; }   /* -1..1, Q15 */
-static int64_t an_rnd(int32_t *s) { return (int64_t)(noise32(s) >> 16); }          /* 0..1, Q16 */
-static int64_t an_bip(int32_t *s) { return an_rnd(s) * 2 - 65536; }               /* -1..1, Q16 */
 
 static an_v_t *an_of(track_t *t, voice_t *v)
 {
@@ -307,7 +302,7 @@ static an_v_t *an_of(track_t *t, voice_t *v)
     return an_v[tr][0].owner == vi ? &an_v[tr][0] : an_v[tr][1].owner == vi ? &an_v[tr][1] : 0;
 }
 
-/* the voices: P the knobs (0..1, Q16), pf df DRIFT's pitch and decay factors; return the hit's length (s, Q16) */
+/* the voices: P the knobs (0..1, Q16), pf the pitch factor, df the decay's (1.0); return the hit's length (s, Q16) */
 static int64_t an_kick(an_v_t *h, const int64_t *P, int64_t pf, int64_t df)
 {
     int64_t base = an_mul(an_mul(AQ(20.0), an_pow(AQ(16.0), P[0])), pf), d;
@@ -452,7 +447,7 @@ static void analog_note_on(track_t *t, voice_t *v)
     uint32_t tr = (uint32_t)(t - trk) % NTRK, vi = (uint32_t)(v - t->v) + 1u, i;
     an_v_t *h = an_of(t, v);
     int32_t *rs = &an_t[tr].rng, dc = 0;
-    int64_t P[8], a, w, hl, pf, df, lf, dd;
+    int64_t P[8], pf;
     if (h) {                                          /* a restart in place: the old hit's last value fades out */
         dc = h->last + ((h->dc * h->dcn) >> 6);
     } else {                                          /* a slot no sounding voice of the track has */
@@ -468,34 +463,20 @@ static void analog_note_on(track_t *t, voice_t *v)
     if (!*rs)
         *rs = (int32_t)(0x9E3779B9u * (tr + 1u));
     h->seed = (int32_t)(0x2545F491u ^ (vi * 0x9E3779B9u) ^ (uint32_t)noise32(rs));
-    h->hseed = (int32_t)noise32(rs) | 1;
+    h->cp = 65536u;
     for (i = 0; i < 7u; i++)
         P[i] = an_x(t->p[P_E0 + i]);
     P[7] = an_x(t->p[P_LN0]);
-    /* hit(): AGE's DRIFT and HISS for this hit */
-    a = an_x(t->p[P_LN1]);
-    w = (int32_t)a * AGE_DRIFT * 2 / 127;                              /* a x DRIFT / 63.5 */
-    hl = clamp((int32_t)a * AGE_HISS * 2 / 127, 0, (int32_t)AQ(1.5));
-    an_t[tr].walk = clamp(an_t[tr].walk + (int32_t)an_mul(an_bip(rs), AQ(0.4)), -65536, 65536);
-    pf = AQ(1.0) + an_mul(an_mul(an_t[tr].walk, AQ(0.025)) + an_mul(an_bip(rs), AQ(0.015)), w);
-    df = clamp((int32_t)(AQ(1.0) + an_mul(an_mul(an_bip(rs), AQ(0.25)), w)), (int32_t)AQ(0.5), (int32_t)AQ(1.6));
-    lf = clamp((int32_t)(AQ(1.0) + an_mul(an_mul(an_bip(rs), AQ(0.25)), w)), (int32_t)AQ(0.5), (int32_t)AQ(1.5));
-    h->wait = (uint32_t)((an_mul(an_mul(an_rnd(rs), AQ(0.008)), w) * FS) >> 16);
-    h->lf = (int32_t)lf;
     h->pitch16 = v->pitch16;
-    pf = an_mul(pf, an_exp2(((v->pitch16 - AN_NOTE * 16) << 16) / 192));   /* the key played */
-    dd = AN_VOICE[h->mach](h, P, pf, df);
-    if (hl > AQ(0.01)) {
-        an_svf_set(&h->hf, AQ(2500.0), AN_QDB07);
-        an_env(&h->e[3], an_mul(hl, AQ(0.4)), dd, AQ(0.001));
-    }
+    pf = an_exp2(((v->pitch16 - AN_NOTE * 16) << 16) / 192);   /* the key played */
+    AN_VOICE[h->mach](h, P, pf, AQ(1.0));
     v->s[0] = (int32_t)vi;
 }
 
 static int analog_done(track_t *t, voice_t *v)
 {
     const an_v_t *h = an_of(t, v);
-    return !h || (!h->wait && !h->e[0].v && !h->e[1].v && !h->e[2].v && !h->e[3].v && !h->dcn);
+    return !h || (!h->e[0].v && !h->e[1].v && !h->e[2].v && !h->dcn);
 }
 
 /* the prototype's CLAP envelope: each burst 1 -> 0.05 over 80 % of it, held, then 1 again; the last to 0.0001 */
@@ -527,38 +508,36 @@ static void analog_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, cons
 {
     an_v_t *hp = an_of(t, v), hv, *h = &hv;           /* (the block on a copy: out[] can't alias it, it stays in registers) */
     const int16_t *p = t->p;
-    uint32_t i, k, inc[6], q, qi, gr;
-    int32_t gain, kk, ninv, velg = v->vel * 258, trim = (VOICE_FS * AN_TRIM[h->mach % AN_N]) >> 12;
-    int64_t a, g, dr, pr;
+    uint32_t i, k, inc[6], q, qi, ci, cr;
+    int32_t gain, kk, ninv, velg = v->vel * 258, trim;
+    int64_t g, dr, pr;
     if (!hp)
         return;
     hv = *hp;
-    /* the track chain for this block (applyFx): AGE's GRIT, DRIVE, LEVEL */
-    a = an_x(p[P_LN1]);
-    g = clamp((int32_t)a * AGE_GRIT * 2 / 127, 0, 65536);
+    trim = (VOICE_FS * AN_TRIM[h->mach % AN_N]) >> 12;  /* (after the copy: before it, h is the last hit rendered) */
+    /* the track chain for this block (applyFx): CRUSH, DRIVE, LEVEL */
+    g = an_x(p[P_LN1]);
     dr = an_x(p[P_E6]);
-    kk = (int32_t)((AQ(1.0) + dr * 3 + g * 4) >> 4);                /* the shaper's drive, Q12 (1 .. 8) */
+    kk = (int32_t)((AQ(1.0) + dr * 3) >> 4);                        /* the shaper's drive, Q12 (1 .. 4) */
     ninv = (int32_t)((32767u << 14) / (uint32_t)an_tanh(kk << 3));    /* 1 / tanh(k), Q14 */
-    gain = (int32_t)((((int64_t)h->lf * an_x(p[P_LN0])) >> 16) * AQ(1.1) >> 17);   /* lf x LEVEL x 1.1, Q15 */
-    gr = g > AQ(0.02);
-    if (gr && h->gk != (int32_t)g) {                  /* bits 16 - 9 g: a step of 2^(9 g) in Q15; the low-pass (when AGE moved) */
-        int64_t st = an_exp2(g * 9);
+    gain = (int32_t)((an_x(p[P_LN0]) * AQ(1.1)) >> 17);               /* LEVEL x 1.1, Q15 */
+    cr = g > 0;
+    if (cr && h->gk != (int32_t)g) {                  /* (when it moved) the step is for after AN_TRIM, so quiet machines crush alike */
+        uint32_t st = ((uint32_t)an_exp2(g * CRUSH_BITS) / AN_TRIM[h->mach % AN_N]) << 12;   /* (32-bit: no 64-bit divide here) */
         h->gk = (int32_t)g;
-        h->gq = (uint32_t)st;
-        h->gqi = 0xFFFFFFFFu / (uint32_t)st;
-        an_svf_set(&h->gl, an_mul(AQ(20000.0), an_pow(AQ(0.18), g)), AN_QDB05);
+        h->gq = st < 65536u ? 65536u : st;
+        h->gqi = 0xFFFFFFFFu / h->gq;
+        h->gi = (uint32_t)an_exp2(-((int32_t)g * CRUSH_RATE) / 10);
     }
     q = h->gq;
     qi = h->gqi;
+    ci = h->gi;
     pr = an_exp2(((m->pitch16 - h->pitch16) << 16) / 192);    /* the pitch moved since the hit (LFO, bend) */
     for (k = 0; k < 6u; k++)
         inc[k] = (uint32_t)(((uint64_t)h->inc[k] * (uint64_t)pr) >> 16);
     for (i = 0; i < n; i++) {
         int32_t s = 0, x, y;
-        if (h->wait) {
-            h->wait--;
-            s = 0;
-        } else {
+        {
             switch (h->mach) {
             case AN_KICK: {
                 uint32_t f = an_sweep_tick(&h->sw);
@@ -628,15 +607,19 @@ static void analog_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, cons
                 break;
             }
             }
-            if (h->e[3].v)                            /* HISS */
-                s += an_g(an_hp(&h->hf, an_noise(&h->hseed)), an_env_tick(&h->e[3]));
         }
-        /* the track chain: the hit's level x LEVEL x 1.1, the shaper's input (-1..1), tanh(k x) / tanh(k), GRIT */
+        /* the track chain: LEVEL x 1.1, the shaper's input (-1..1), tanh(k x) / tanh(k), CRUSH */
         x = clamp((int32_t)(((int64_t)s * gain) >> 15), -32767, 32767);
         y = (int32_t)(((int64_t)an_tanh((x * kk) >> 12) * ninv) >> 14);
-        if (gr) {
-            y = (int32_t)(((((int64_t)y * qi + 32768) >> 16) * q) >> 16);
-            y = an_lp(&h->gl, y);
+        if (cr) {                                     /* hold a sample, on a coarse grid (to the nearest: tails die to 0) */
+            h->cp += ci;
+            if (h->cp >= 65536u) {
+                h->cp -= 65536u;
+                h->ch = (int32_t)(((((int64_t)y * qi + 32768) >> 16) * q) >> 16);
+            }
+            y = h->ch;
+        } else {
+            h->cp = 65536u;                           /* (turned on: takes a sample at once) */
         }
         y = mulq15(y, velg);
         h->last = y;

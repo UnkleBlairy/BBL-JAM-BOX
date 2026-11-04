@@ -113,7 +113,7 @@ static uint32_t gb_page_icon(const page_t *pg, uint32_t mach)
         return IC_COMB;
     if (str_eq(pg->title, "DJ"))
         return IC_DJ;
-    if (str_eq(pg->title, "AGE"))                       /* (SAMPLER's GATE: the machine's) */
+    if (str_eq(pg->title, "CRUSH"))                     /* (SAMPLER's GATE: the machine's) */
         return eng_idx(t->eng_req) == ENGI_SAMPLER ? MACHINES[mach % NMACH].icon : IC_AGE;
     if (str_eq(pg->title, "DELAY"))
         return IC_DELAY;
@@ -551,7 +551,7 @@ static void gb_fill(gb_view_t *v)
     }
     lk = lock_held();
     smp = !v->fx && eng_idx(TSEL->eng_req) == ENGI_SAMPLER && pg->scope == SC_ENGINE;
-    if (smp && str_eq(pg->title, "AGE"))
+    if (smp && str_eq(pg->title, "CRUSH"))
         str_cpy(v->title, "GATE", sizeof v->title);
     else if (smp) {                                   /* the chunk's waveform, START .. START + LEN bright */
         const track_t *t = TSEL;

@@ -21,7 +21,7 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
 - `firmware/src/mfx.c` — master DJ filter and comb
 - `firmware/src/ui.c` — macro system (PERF page), `pm_*` functions
 - `firmware/src/eng_digital.c` — the FM engine (its presets and filter too)
-- `firmware/src/eng_analog.c` — the 808 engine (AGE weights, level trims)
+- `firmware/src/eng_analog.c` — the 808 engine (CRUSH amounts, level trims)
 - `firmware/src/eng_sampler.c` — the sampler (sample memory layout at the top);
   `gb_store.c` smp_scan / smp_peaks read the table and the waveform
 - `web/smpimg.js` — builds the sample memory image; `web/smpui.js` the uploader
@@ -368,11 +368,12 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   The selected track's machine picks the pool (SAVE screen top right, "KICK 3 SAVED"); a
   sound keeps its machine, so loading switches the track's. The per-track saves moved into
   the pools once (gb_store.c gb_pool_move, magic GBS3).
-- 808 pages: OSC 1 (4 knobs), OSC 2 (3 knobs + LEVEL), AGE (one knob). LEVEL
-  lives in P_LN0, AGE in P_LN1 (old drum-lane ids, so saved, lockable,
-  macroable, LFO-able). FM tracks skip the AGE page and hide LEVEL.
-- AGE = DRIFT/HISS/GRIT, weights in one block at the top of eng_analog.c
-  (all 64 until the user sends the final ones).
+- 808 pages: OSC 1 (4 knobs), OSC 2 (3 knobs + LEVEL), CRUSH (one knob). LEVEL
+  lives in P_LN0, CRUSH in P_LN1 (old drum-lane ids, so saved, lockable,
+  macroable, LFO-able). FM tracks skip the CRUSH page and hide LEVEL.
+- CRUSH replaced AGE (Blair, Octatrack-style): one knob, sample-rate and bit reduction together, a held sample with no
+  smoothing, so the aliasing stays. 0 = clean; top = ~40 x fewer samples, ~5 bits (CRUSH_RATE, CRUSH_BITS, top of
+  eng_analog.c). Measured after AN_TRIM, so quiet machines crush alike. An old sound's AGE value loads as CRUSH.
 - 808s run their own envelopes and filters: the ENV and FILTER pages do
   nothing on an 808 track.
 - 808 HAT/CLAP/CYMBAL/RIM/COW get a level trim (eng_analog.c AN_TRIM) so they
@@ -409,7 +410,7 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   the browser. The panel itself is web/smpui.js (emulator and page share it).
 - Machine names and order (engines.c MACHINES, by type, 808 then FM): 8BD FMBD
   8SD FMSD 8TOM 8RIM 8CLP 8COW 8HH FMHH 8CYM FMCYM FMPRC FMSYN MONO SMPL.
-- 808s start with AGE 0 (clean).
+- 808s start with CRUSH 0 (clean).
 - FM SYN (eng_digital.c syn_render / SYN_D, Digitone-style): A and B are heard (MIX between them), C and D only
   modulate. Pages: OSC 1 = ALG (8: 1 C>A D>B, 2 C>A D>A, 3 C>A D>A+B, 4 C>A+B D>B, 5 C+D>A+B, 6 D>C>A, 7 D>C>A+B,
   8 D>C>A D>B), A:B (one knob through every pair of .5 1 2..8, A <= B, rising), C, D (ratios .25..16);
