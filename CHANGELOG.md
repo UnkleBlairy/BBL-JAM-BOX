@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.6 beta (2026-11-05): members' preview
+
+SCRUB, a tape head for the sampler; a crossfader between two macros; CRUSH on the 808s; and a stack of fixes.
+
+### New
+- **SCRUB** (sampler, page 3, knob 2): move the knob and a tape head travels over your sample, so you can scratch and
+  do hand tape stops. The whole knob covers the part set by START and LEN, however tiny. The note you last played sets
+  the pitch along with your hand speed, so a low note and a high note give different textures. A key or trig always
+  plays the sample as normal from its start; move SCRUB after that and the head travels from where the sound has got
+  to until it meets the knob. It can be put on a macro, the crossfader, an LFO or a lock. 0 = off.
+- **Crossfader**, in the style of the Octatrack: fade between two macros. Send MIDI CCs on the channels the FM-1
+  already listens to: 102 = the A slot, 103 = the B slot (1-8 = M1-M8, 0 = empty), 104 = the fader. PERF shows it.
+  Slots aren't saved, and saves keep your real values. Any controller that sends CCs can drive it.
+- **CRUSH replaces AGE on the 808s**: one knob, sample rate and bits down together, Octatrack-style. A sound saved
+  with AGE loads with that value as CRUSH, so it will sound different.
+- **Phone fader (experimental)**: see the phone-fader folder. It needs a computer in the middle for now.
+
+### Fixes
+- **Only MONO plays one note at a time now.** Turning PRESETS past MONO left the next machines stuck on it: FM SYN
+  played one note of a chord, and the sampler could miss a key press. Saved sounds and last jams that caught this are
+  put right on their own.
+- **The ARP in the sequencer walks on through the steps** (it restarted on its first note every step), so a run of
+  chord steps now climbs the arp. With the ARP on, MONO records chords too.
+- **808 levels**: a hit no longer takes the level trim of the last hit, which made the kick louder on steps with a hat.
+- **Leaving ACID**: tapping SEQ from ACID mode to KEY puts the track back on its steps. To leave an ACID line running
+  while you play another track, pick that track first.
+
+### Still not tested
+- **Newer FM-1s** (the memory chip change in 0.5): I still haven't had a report from one of those units, so please
+  tell me if yours saves.
+
 ## 0.5 beta (2026-11-04): members' preview
 
 Bug fixes from your reports, saves on newer FM-1s, and a better Samples page.
