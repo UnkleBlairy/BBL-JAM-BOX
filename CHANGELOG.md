@@ -15,7 +15,9 @@ SCRUB, a tape head for the sampler; a crossfader between two macros; CRUSH on th
   Slots aren't saved, and saves keep your real values. Any controller that sends CCs can drive it.
 - **CRUSH replaces AGE on the 808s**: one knob, sample rate and bits down together, Octatrack-style. A sound saved
   with AGE loads with that value as CRUSH, so it will sound different.
-- **Phone fader (experimental)**: see the phone-fader folder. It needs a computer in the middle for now.
+- **BBL Fader, a phone fader app (experimental, Windows)**: one double-click, scan the QR code and your phone is the
+  crossfader, with no install. Your PC stays in the middle for now. See phone-fader/QUICK_START.txt. Mac and Linux
+  users can use the script version in that folder.
 
 ### Fixes
 - **Only MONO plays one note at a time now.** Turning PRESETS past MONO left the next machines stuck on it: FM SYN

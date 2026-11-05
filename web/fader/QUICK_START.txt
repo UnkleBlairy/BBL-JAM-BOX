@@ -1,0 +1,27 @@
+BBL FADER - quick start (experimental)
+======================================
+
+Turns your phone into a crossfader for the FM-1. The sound stays on the FM-1: your PC only passes the fader along
+(phone -> Wi-Fi -> PC -> USB -> FM-1). Windows only for now. Needs BBL JAM BOX 0.6 beta or newer.
+
+1. Plug the FM-1 into your PC by USB, switch it on and go to the PERF page.
+2. Double-click BBL Fader.exe. No install needed.
+   - If Windows says "Windows protected your PC": press More info, then Run anyway. It says this because the app
+     isn't paid-for signed.
+   - If the firewall asks: press Allow, or the phone can't connect.
+3. Check the app says "FM-1: connected".
+4. Scan the QR code with your phone's camera. The phone must be on the same Wi-Fi as the PC.
+   The app now says "Phone: connected".
+5. On the phone: tap A, then a macro number. Tap B, then another macro number. Move the fader.
+   The macros need something on them before you'll hear a change.
+
+Not working?
+- "FM-1: another app is using it": close the install or Samples page, your DAW and other music apps.
+- The phone can't open the page: check it's on the same Wi-Fi and not a guest network. If your PC calls this
+  network "Public", allow the app for public networks too, or switch the network to Private.
+- PERF shows nothing: PERF only shows the fader once A or B holds a macro.
+
+When you're done, close the app. ALWAYS close it before installing firmware.
+While the app is open, anyone on your Wi-Fi could send fader moves to the FM-1, so use a network you trust.
+
+Mac or Linux: see the script-version folder, which needs Python and Chrome.
