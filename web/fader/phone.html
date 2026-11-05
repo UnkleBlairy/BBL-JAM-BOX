@@ -141,7 +141,7 @@ body{margin:0;background:var(--body);color:var(--ink);font-family:var(--ui);
   // ---- MIDI ----
   const cc=id=>Math.max(0,Math.min(127,parseInt($(id).value)||0));
   const ch=()=>parseInt($('chSel').value)-1;
-  // Wi-Fi: each CC to the link program on the PC (bridge.py). One post at a time; while one is on its way only the latest value of
+  // Wi-Fi: each CC to the app on the PC (bbl_fader.py, or bridge.py). One post at a time; while one is on its way only the latest value of
   // each CC waits, so a fast fader can't fall behind.
   const pending=new Map();let posting=false;
   async function post(){
@@ -150,11 +150,30 @@ body{margin:0;background:var(--body);color:var(--ink);font-family:var(--ui);
     const batch=[...pending.values()];pending.clear();
     try{
       const r=await fetch('/cc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(batch)});
-      const heard=parseInt(await r.text())||0;
-      $('dot').classList.toggle('ok',heard>0);
-      $('conn').textContent=heard?'Linked to the PC':'Link is on, open the page on the PC';
-    }catch(e){$('dot').classList.remove('ok');$('conn').textContent='Can\'t reach the PC. Same Wi-Fi? Link program running?'}
+      showLink(parseInt(await r.text())||0);
+    }catch(e){showDown()}
     posting=false;post();
+  }
+  // the PC's window shows the phone as connected while this asks; the FM-1 or the app coming back gets the slots and fader again
+  let linkDown=false,hadFm1=true,pinging=false;
+  function showLink(heard){
+    const back=linkDown||(heard>0&&!hadFm1);
+    linkDown=false;hadFm1=heard>0;
+    $('dot').classList.toggle('ok',heard>0);
+    $('conn').textContent=heard?'Linked to the FM-1':'The PC is on, but the FM-1 isn\'t linked';
+    if(back)resendAll();
+  }
+  function showDown(){
+    linkDown=true;
+    $('dot').classList.remove('ok');$('conn').textContent='Can\'t reach the PC. Same Wi-Fi? App open?';
+  }
+  async function ping(){
+    if(pinging)return;
+    pinging=true;
+    const stop=new AbortController(),t=setTimeout(()=>stop.abort(),3000);
+    try{showLink(parseInt(await (await fetch('/ping',{cache:'no-store',signal:stop.signal})).text())||0)}
+    catch(e){showDown()}
+    clearTimeout(t);pinging=false;
   }
   function send(ccNum,val,label){
     const msg=[0xB0|ch(),ccNum,val];
@@ -228,6 +247,7 @@ body{margin:0;background:var(--body);color:var(--ink);font-family:var(--ui);
   window.addEventListener('resize',renderFader);
   render();
   resendAll();
+  ping();setInterval(ping,2000);
 })();
 </script>
 </body>

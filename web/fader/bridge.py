@@ -54,6 +54,10 @@ class Handler(BaseHTTPRequestHandler):
             self.reply((HERE / "BLBPixel7-Chunky.ttf").read_bytes(), "font/ttf")
         elif path == "/events":
             self.events()
+        elif path == "/ping":                 # (the phone asks: is a desktop page listening?)
+            with lock:
+                heard = len(listeners)
+            self.reply(str(heard).encode())
         else:
             self.reply(b"not here", code=404)
 
