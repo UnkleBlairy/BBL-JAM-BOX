@@ -329,7 +329,7 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
 
 - ACID mode (Metropolis-style; seq.c acid_*, ui_input.c acid_*, ui.sgrid 4, song.grid 8): a track plays its steps
   OR its ACID stages (acid.play; both kept). In SEQ mode tap OCT+ = flip the track to ACID, tap again = back to its
-  steps (also SEQ held / picker + OCT+; the picker pop-up has "OCT+ / = ACID"). SEQ and ACID mode follow the selected
+  steps (also SEQ held / picker + OCT+; the picker pop-up has "OCT+ / = ACID"). Tapping SEQ from ACID mode to KEY also puts that track back on its steps (Blair); to leave an ACID line running while you play another track, pick that track first (only the selected track flips). SEQ and ACID mode follow the selected
   track (ui_input.c acid_follow): a SEQ tap from KEY gives ACID mode on an ACID track; the SEQ family shows STAGE/ACID
   in place of the SEQ page there. White keys = stages 1-16 (lit = plays a note, the playing one flips, the picked one
   breathes; stopped they sound their note), black 1-6 tracks, black 8 = STAGE page (PITCH 0..12 from middle C shown

@@ -1971,6 +1971,8 @@ static int page_tap(uint32_t b)
         if (t_last && (int32_t)(fm1_ms - t_last) < (int32_t)SEQ_DBL_MS) {   /* (signed: t_last is | 1) */
             t_last = 0;
             ui.sgrid = was;
+            if (was == 4u)                              /* (the first tap took it off its ACID: it never left) */
+                acid_of(song.sel)->play = 1;
             ui.fam_last[FAM_SEQ] = 0;
             ui.home = 0;
             open_family(FAM_SEQ);
@@ -1978,6 +1980,8 @@ static int page_tap(uint32_t b)
         } else {
             t_last = fm1_ms | 1u;
             was = ui.sgrid;
+            if (ui.sgrid == 4u)                         /* ACID mode to KEY: the track goes back to its steps (the stages stay) */
+                acid_of(song.sel)->play = 0;
             ui.sgrid = (uint8_t)(ui.sgrid == 1u || ui.sgrid == 4u ? 0u : 1u);   /* (SEQ: ACID when the track */
             acid_follow();                              /* .. plays it) */
         }
