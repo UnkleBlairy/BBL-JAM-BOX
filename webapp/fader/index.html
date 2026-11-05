@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>FM-1 Macro Fader</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&display=swap">
+<style>
+/* Layout: one hardware-style screen filled with the track colour, fader with A/B ovals on top, 8 macro ovals below, MIDI settings underneath. Ovals only, white on track colour, like the firmware. */
+:root{
+  --track:#2f6bff;      /* screen fill, set from the colour picker */
+  --ink:#ffffff;        /* all text, dials, outlines */
+  --body:#141416;       /* device body behind the screen */
+  --panel:#1f1f23;      /* settings area */
+  --muted:#9a9aa6;
+  --pixel:"BLB Pixel 7 Chunky","Silkscreen","Courier New",monospace;
+  --ui:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--body);color:var(--ink);font-family:var(--ui);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:24px}
+.wrap{max-width:860px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+
+.screen{background:var(--track);border-radius:28px;padding:28px 24px 30px;display:flex;flex-direction:column;gap:30px;
+  font-family:var(--pixel);user-select:none;-webkit-user-select:none;touch-action:none}
+.head{display:flex;justify-content:space-between;align-items:center;font-size:15px;letter-spacing:.06em}
+.head .bpm{opacity:.85}
+
+.faderRow{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:16px}
+.slot{display:flex;flex-direction:column;align-items:center;gap:8px}
+.ab{width:72px;height:56px;border-radius:50%;border:3px solid var(--ink);background:transparent;color:var(--ink);
+  font:700 26px var(--pixel);cursor:pointer;transition:transform .08s}
+.ab:active{transform:scale(.95)}
+.ab.armed{background:var(--ink);color:var(--track);animation:pulse 1s ease-in-out infinite}
+@keyframes pulse{50%{box-shadow:0 0 0 7px rgba(255,255,255,.28)}}
+.slotName{font-size:13px;letter-spacing:.06em;min-height:1em}
+
+.fader{position:relative;height:64px;border-radius:32px;border:3px solid var(--ink);cursor:pointer;outline:none}
+.fader:focus-visible{box-shadow:0 0 0 4px rgba(255,255,255,.45)}
+.fader .line{position:absolute;left:30px;right:30px;top:50%;height:3px;background:var(--ink);opacity:.45;transform:translateY(-50%)}
+.fader .mid{position:absolute;left:50%;top:14px;bottom:14px;width:3px;background:var(--ink);opacity:.45;transform:translateX(-50%)}
+.fader .thumb{position:absolute;top:50%;width:44px;height:44px;border-radius:50%;background:var(--ink);transform:translate(-50%,-50%)}
+.faderVal{text-align:center;font-size:13px;letter-spacing:.06em;margin-top:8px}
+
+.macros{display:grid;grid-template-columns:repeat(8,1fr);gap:12px}
+.m{position:relative;aspect-ratio:1/1;max-width:100%;border-radius:50%;border:3px solid var(--ink);background:transparent;color:var(--ink);
+  font:700 22px var(--pixel);cursor:pointer;transition:transform .08s}
+.m:active{transform:scale(.94)}
+.m.onA,.m.onB{background:var(--ink);color:var(--track)}
+.m .tag{position:absolute;left:50%;bottom:-22px;transform:translateX(-50%);font-size:12px;color:var(--ink);letter-spacing:.06em}
+.m.shake{animation:shake .3s}
+@keyframes shake{25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
+.hint{text-align:center;font-size:12px;letter-spacing:.06em;min-height:1.2em;margin-top:6px;opacity:.9}
+
+.settings{background:var(--panel);border-radius:20px;padding:18px 20px;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px 18px}
+.settings label{display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.settings select,.settings input{font:14px var(--ui);background:#2b2b31;color:var(--ink);border:1px solid #3c3c45;border-radius:999px;padding:8px 12px;min-width:0}
+.settings input[type=color]{padding:2px;height:38px}
+.btn{font:600 14px var(--ui);background:var(--ink);color:#141416;border:0;border-radius:999px;padding:10px 16px;cursor:pointer;align-self:end}
+.btn.ghost{background:transparent;color:var(--ink);border:1px solid #4a4a55}
+.status{grid-column:1/-1;font:13px ui-monospace,Consolas,monospace;color:var(--muted);display:flex;flex-wrap:wrap;gap:6px 18px}
+.status b{color:var(--ink);font-weight:600}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#e05a5a;margin-right:6px;vertical-align:middle}
+.dot.ok{background:#4fd18b}
+
+@media (max-width:560px){
+  .macros{grid-template-columns:repeat(4,1fr);row-gap:34px}
+  .ab{width:58px;height:46px;font-size:22px}
+  .screen{padding:22px 16px 30px}
+}
+@media (prefers-reduced-motion:reduce){.ab.armed{animation:none}.m.shake{animation:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="screen" id="screen">
+    <div class="head"><span>MACRO FADER</span><span class="bpm" id="chLbl">CH 1</span></div>
+
+    <div>
+      <div class="faderRow">
+        <div class="slot"><button class="ab" id="btnA" aria-label="Arm A">A</button><div class="slotName" id="nameA">--</div></div>
+        <div>
+          <div class="fader" id="fader" role="slider" tabindex="0" aria-valuemin="0" aria-valuemax="127" aria-label="Crossfader">
+            <div class="line"></div><div class="mid"></div><div class="thumb" id="thumb"></div>
+          </div>
+          <div class="faderVal" id="faderVal">0</div>
+        </div>
+        <div class="slot"><button class="ab" id="btnB" aria-label="Arm B">B</button><div class="slotName" id="nameB">--</div></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="macros" id="macros"></div>
+      <div class="hint" id="hint" style="margin-top:30px">PRESS A OR B, THEN A MACRO</div>
+    </div>
+  </div>
+
+  <div class="settings">
+    <label>MIDI out<select id="outSel"><option>Click Connect MIDI</option></select></label>
+    <label>Channel<select id="chSel"></select></label>
+    <label>Fader CC<input id="ccFader" type="number" min="0" max="127" value="104"></label>
+    <label>A slot CC<input id="ccA" type="number" min="0" max="127" value="102"></label>
+    <label>B slot CC<input id="ccB" type="number" min="0" max="127" value="103"></label>
+    <label>Screen colour<input id="col" type="color" value="#2f6bff"></label>
+    <button class="btn" id="connect">Connect MIDI</button>
+    <button class="btn ghost" id="resend">Resend all</button>
+    <div class="status"><span><span class="dot" id="dot"></span><b id="conn">Not connected</b></span><span>Last sent: <b id="last">-</b></span></div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const $=id=>document.getElementById(id);
+  const st={armed:null,A:0,B:0,fader:0};
+  let midi=null,out=null,lastSentFader=-1;
+
+  // ---- settings persistence (per browser, optional) ----
+  const KEY='fm1-macro-fader';
+  function load(){try{return JSON.parse(localStorage.getItem(KEY)||'{}')}catch(e){return{}}}
+  function save(){try{localStorage.setItem(KEY,JSON.stringify({ch:$('chSel').value,ccF:$('ccFader').value,ccA:$('ccA').value,ccB:$('ccB').value,col:$('col').value,out:out?out.name:''}))}catch(e){}}
+
+  for(let i=1;i<=16;i++){const o=document.createElement('option');o.value=i;o.textContent=i;$('chSel').appendChild(o)}
+  const saved=load();
+  if(saved.ch)$('chSel').value=saved.ch;
+  if(saved.ccF)$('ccFader').value=saved.ccF;
+  if(saved.ccA)$('ccA').value=saved.ccA;
+  if(saved.ccB)$('ccB').value=saved.ccB;
+  if(saved.col)$('col').value=saved.col;
+  function applyCol(){document.documentElement.style.setProperty('--track',$('col').value)}
+  applyCol();
+
+  // ---- macro buttons ----
+  const mBtns=[];
+  for(let i=1;i<=8;i++){
+    const b=document.createElement('button');b.className='m';b.textContent=i;b.setAttribute('aria-label','Macro '+i);
+    const t=document.createElement('span');t.className='tag';b.appendChild(t);
+    b.addEventListener('click',()=>pickMacro(i,b));
+    $('macros').appendChild(b);mBtns.push(b);
+  }
+
+  // ---- MIDI ----
+  const cc=id=>Math.max(0,Math.min(127,parseInt($(id).value)||0));
+  const ch=()=>parseInt($('chSel').value)-1;
+  function send(ccNum,val,label){
+    const msg=[0xB0|ch(),ccNum,val];
+    $('last').textContent=label+'  CH'+(ch()+1)+' CC'+ccNum+' = '+val;
+    if(out){try{out.send(msg)}catch(e){$('conn').textContent='Send failed: '+e.message}}
+  }
+  function sendSlot(s){send(cc(s==='A'?'ccA':'ccB'),st[s],s+' slot')}
+  function sendFader(){if(st.fader!==lastSentFader){lastSentFader=st.fader;send(cc('ccFader'),st.fader,'Fader')}}
+  function resendAll(){lastSentFader=-1;sendSlot('A');sendSlot('B');sendFader()}
+
+  function fillOutputs(){
+    const sel=$('outSel');sel.innerHTML='';
+    const outs=[...midi.outputs.values()];
+    if(!outs.length){sel.innerHTML='<option>No MIDI outputs found</option>';out=null;setConn();return}
+    let pick=outs.find(o=>o.name===saved.out)||outs.find(o=>/fm-?1|felucca|m-?vave/i.test(o.name))||outs[0];
+    outs.forEach(o=>{const op=document.createElement('option');op.value=o.id;op.textContent=o.name;if(o===pick)op.selected=true;sel.appendChild(op)});
+    out=pick;setConn();
+  }
+  function setConn(){$('dot').classList.toggle('ok',!!out);$('conn').textContent=out?('Sending to '+out.name):'Not connected'}
+  async function connect(){
+    if(!navigator.requestMIDIAccess){$('conn').textContent='This browser has no Web MIDI. Use Chrome or Edge.';return}
+    try{
+      midi=await navigator.requestMIDIAccess({sysex:false});
+      fillOutputs();midi.onstatechange=fillOutputs;
+      if(out){resendAll();save()}
+    }catch(e){$('conn').textContent='MIDI blocked: '+e.message}
+  }
+  $('connect').addEventListener('click',connect);
+  $('outSel').addEventListener('change',e=>{if(!midi)return;out=midi.outputs.get(e.target.value)||null;setConn();save();resendAll()});
+  $('resend').addEventListener('click',resendAll);
+  ['chSel','ccFader','ccA','ccB'].forEach(id=>$(id).addEventListener('change',()=>{save();updateCh();resendAll()}));
+  $('col').addEventListener('input',()=>{applyCol();save()});
+  function updateCh(){$('chLbl').textContent='CH '+$('chSel').value}
+  updateCh();
+
+  // ---- A / B arming ----
+  function arm(s){st.armed=(st.armed===s)?null:s;render()}
+  $('btnA').addEventListener('click',()=>arm('A'));
+  $('btnB').addEventListener('click',()=>arm('B'));
+
+  function pickMacro(n,btn){
+    if(!st.armed){
+      btn.classList.remove('shake');void btn.offsetWidth;btn.classList.add('shake');
+      $('hint').textContent='PRESS A OR B FIRST';return;
+    }
+    const s=st.armed;
+    st[s]=(st[s]===n)?0:n;          // same macro again clears the slot
+    st.armed=null;sendSlot(s);render();
+  }
+
+  // ---- fader ----
+  const fader=$('fader');
+  function setFromX(clientX){
+    const r=fader.getBoundingClientRect(),pad=30;
+    let f=(clientX-r.left-pad)/(r.width-pad*2);f=Math.max(0,Math.min(1,f));
+    st.fader=Math.round(f*127);renderFader();sendFader();
+  }
+  let dragging=false;
+  fader.addEventListener('pointerdown',e=>{dragging=true;fader.setPointerCapture(e.pointerId);setFromX(e.clientX)});
+  fader.addEventListener('pointermove',e=>{if(dragging)setFromX(e.clientX)});
+  fader.addEventListener('pointerup',()=>dragging=false);
+  fader.addEventListener('pointercancel',()=>dragging=false);
+  fader.addEventListener('keydown',e=>{
+    const step=e.shiftKey?16:4;
+    if(e.key==='ArrowLeft'||e.key==='ArrowDown')st.fader=Math.max(0,st.fader-step);
+    else if(e.key==='ArrowRight'||e.key==='ArrowUp')st.fader=Math.min(127,st.fader+step);
+    else if(e.key==='Home')st.fader=0;else if(e.key==='End')st.fader=127;else return;
+    e.preventDefault();renderFader();sendFader();
+  });
+
+  // ---- render ----
+  function renderFader(){
+    const r=fader.getBoundingClientRect(),pad=30,w=Math.max(0,r.width-pad*2);
+    $('thumb').style.left=(pad+w*st.fader/127)+'px';
+    $('faderVal').textContent=st.fader;fader.setAttribute('aria-valuenow',st.fader);
+  }
+  function render(){
+    $('btnA').classList.toggle('armed',st.armed==='A');
+    $('btnB').classList.toggle('armed',st.armed==='B');
+    $('nameA').textContent=st.A?('M'+st.A):'--';
+    $('nameB').textContent=st.B?('M'+st.B):'--';
+    mBtns.forEach((b,i)=>{
+      const n=i+1,a=st.A===n,bb=st.B===n;
+      b.classList.toggle('onA',a);b.classList.toggle('onB',bb);
+      b.querySelector('.tag').textContent=a&&bb?'A+B':a?'A':bb?'B':'';
+    });
+    $('hint').textContent=st.armed?('PICK A MACRO FOR '+st.armed+' (OR '+st.armed+' AGAIN TO CANCEL)'):'PRESS A OR B, THEN A MACRO';
+    renderFader();
+  }
+  window.addEventListener('resize',renderFader);
+  render();
+  connect(); // tries silently; the button retries
+})();
+</script>
+</body>
+</html>
