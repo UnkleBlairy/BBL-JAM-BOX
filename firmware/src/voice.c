@@ -110,11 +110,12 @@ static uint32_t trk_nvoice(const track_t *t)
     return c && c < NVOICE ? c : NVOICE;
 }
 
-/* the part's voice mode: P_VOICE, POLY for an engine of hits (engine_t.oneshot: DRUM), MONO for MONO (every press
- * retriggers the amp and filter envelopes, from where they are) */
+/* the part's voice mode: MONO for MONO (every press retriggers the amp and filter envelopes, from where they are),
+ * POLY for the rest (the drums and the sampler then play one voice: trk_note_on). P_VOICE doesn't count: no knob sets
+ * it, and what MONO left in it, kept by saves and the last jam, stuck later machines on one note */
 static uint32_t trk_vmode(const track_t *t)
 {
-    return ENGINES[t->engine]->oneshot || t->engine == ENGI_SAMPLER ? V_POLY : t->engine == ENGI_MONO ? V_MONO : (uint32_t)t->p[P_VOICE];   /* (SAMPLER: one voice, a hit takes over; a LEGATO left by the machine before only bent the pitch of a voice holding) */
+    return t->engine == ENGI_MONO ? V_MONO : V_POLY;
 }
 
 /* ------------------------------------------------- the shared voice budget --- */
