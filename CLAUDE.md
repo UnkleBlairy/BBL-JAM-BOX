@@ -191,6 +191,7 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
   values like held macros; xf.base keeps the real ones: saves and the last jam take them (xf_save), a load replaces them (xf_leave), a knob turn moves them (xf_knob, heard
   only at a base end). Held macros win. BLE would call xf_cc too. Slots aren't saved. PERF shows A/B pills and a small fader; covered dials invert. Phone link: web/fader.
 - BBL Fader (web/fader/bbl_fader.py, web/fader/build_exe.sh; Blair tested it on the FM-1, 2026-11-06): the phone fader as one Windows .exe: QR code + FM-1 and phone status, Windows' own MIDI, the port held only while the fader moves (5 s). No Python, script or PC page. bridge.py + desktop.html stay as the Mac / Linux route.
+- Releases (RELEASES.md, keep it updated): members get features first (0.6, 0.7), the public gets the same features later plus fixes (0.6.1), from a release/X.Y branch; main isn't pushed; every fix goes on both.
 - PERF page: black keys 1-6 are lit while that track is NOT muted.
 - OCT+ held (any page): black keys 1-6 are lit while that track is NOT muted.
 - Going to PERF turns the step keys off, so leaving PERF the keys are the keyboard.
