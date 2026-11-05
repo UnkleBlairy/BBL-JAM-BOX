@@ -1,0 +1,25 @@
+BBL phone fader (experimental)
+==============================
+
+Turns your phone into a crossfader for the FM-1. For now a Windows PC sits in the middle:
+phone -> Wi-Fi -> PC -> USB cable -> FM-1. Your PC plays no part in the sound, it only passes the fader on.
+
+What you need
+- BBL JAM BOX 0.6 beta or newer on the FM-1, plugged into the PC by USB.
+- Python on the PC (free, from python.org; tick "Add python to PATH" when installing).
+- Chrome on the PC and on the phone. The phone and the PC on the same Wi-Fi.
+
+Start it
+1. Double-click START.bat. A window opens and shows two addresses. Keep it open.
+   If Windows Firewall asks, allow it on private networks.
+2. On the PC, in Chrome, open the first address (http://localhost:8765/desktop). Don't double-click the html files.
+3. Press CONNECT, allow MIDI and choose the FM-1 in the list. Keep this tab open.
+4. On the phone, in Chrome, type the second address in full, starting with http://
+   Typed without http://, Chrome may try a secure connection and say the site can't provide one.
+5. Move the fader. The PERF page on the FM-1 shows the A and B slots and a small fader.
+
+Good to know
+- Close the PC's fader tab before installing firmware, and close other apps that use the FM-1's MIDI.
+- It uses your Wi-Fi, so expect a little delay. On a busy network it can stutter.
+- Any address on your network can reach the fader while START.bat runs, so use it on a network you trust,
+  and close the window when you're done. Only MIDI CC messages get through.
