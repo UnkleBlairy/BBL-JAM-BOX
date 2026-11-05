@@ -147,6 +147,7 @@ typedef struct {                 /* a track's tape head: outlives the voices, so
     uint32_t since, tau, idle;   /* samples: since the knob's last step, the chase's time, the head still */
 } smp_s_t;
 static smp_s_t smp_s[NPART];
+static volatile uint8_t smp_freeze;                 /* ui.c xf_save: the live values hold the saved ones for a moment, not a knob move */
 static uint32_t smp_rcp;                            /* 2^32 / (pitch_inc(SMP_NOTE) >> 8): pitch ratios without a divide */
 
 static inline smp_v_t *smp_of(track_t *t, voice_t *v)
@@ -592,6 +593,8 @@ static void sampler_block(track_t *t)
     int32_t val = clamp(t->p[P_DIST], 0, 127), d = val - s->pv;
     uint32_t play = !h->scr && !h->done && h->gen == smp_gen && h->owner && h->owner <= NVOICE &&
                     t->v[h->owner - 1u].active && t->v[h->owner - 1u].stage != 4u;
+    if (smp_freeze)
+        return;
     if (s->hold) {                                    /* a trig just played: it sounds whatever the knob is doing */
         s->hold = s->hold > CTL ? s->hold - CTL : 0u;
         s->pv = (uint8_t)val;                         /* (not put off: only a move after this counts) */

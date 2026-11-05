@@ -1031,6 +1031,8 @@ static void xf_leave(uint32_t tr)
 static void xf_save(int begin)
 {
     uint32_t i;
+    if (begin)
+        smp_freeze = 1;
     for (i = 0; i < xf.n; i++) {
         int16_t *vp = pm_ptr(xf.trk[i], xf.id[i]);
         if (begin) {
@@ -1041,6 +1043,8 @@ static void xf_save(int begin)
             *vp = xf.keep[i];
         }
     }
+    if (!begin)
+        smp_freeze = 0;
 }
 static int32_t xf_end(const perf_mac_t *m, uint32_t tr, uint32_t id, int32_t base)   /* a slot's value for a parameter */
 {
