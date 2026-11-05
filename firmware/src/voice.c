@@ -114,7 +114,7 @@ static uint32_t trk_nvoice(const track_t *t)
  * retriggers the amp and filter envelopes, from where they are) */
 static uint32_t trk_vmode(const track_t *t)
 {
-    return ENGINES[t->engine]->oneshot ? V_POLY : t->engine == ENGI_MONO ? V_MONO : (uint32_t)t->p[P_VOICE];
+    return ENGINES[t->engine]->oneshot || t->engine == ENGI_SAMPLER ? V_POLY : t->engine == ENGI_MONO ? V_MONO : (uint32_t)t->p[P_VOICE];   /* (SAMPLER: one voice, a hit takes over; a LEGATO left by the machine before only bent the pitch of a voice holding) */
 }
 
 /* ------------------------------------------------- the shared voice budget --- */

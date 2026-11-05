@@ -15,6 +15,7 @@ int main(int argc,char**argv){
   for(int a=1;a<argc;a++){ char *s=argv[a];
     if(!strncmp(s,"rec:",4)) recf=fopen(s+4,"wb");
     else if(!strncmp(s,"recstop",7)){ fclose(recf); recf=0; }
+    else if(!strncmp(s,"smploop:",8)) { int n,rate,hits; sscanf(s+8,"%d,%d,%d",&n,&rate,&hits); for(int i=0;i<n;i++){ int per=n/hits, ph=i%per; double v=30000*exp(-ph*40.0/rate)*sin(6.283185307*(ph*300.0/rate)); int b=0,bd=1<<30; for(int k=0;k<256;k++){int e=abs(SMP_ULAW[k]-(int)v); if(e<bd){bd=e;b=k;}} ((uint8_t*)nor)[SMP_DATA+i]=(uint8_t)b; } smp_tab[0].off=SMP_DATA; smp_tab[0].len=n; smp_tab[0].rate=rate; smp_n=1; }   /* slot 0: a drum loop, n samples at rate, hits decaying hits */
     else if(!strncmp(s,"smptest:",8)) { int n; sscanf(s+8,"%d",&n); for(int i=0;i<n;i++){ double f=i<n/2?500:2000, v=32000*sin(6.283185307*f*i/22050.0); int b=0,bd=1<<30; for(int k=0;k<256;k++){int e=abs(SMP_ULAW[k]-(int)v); if(e<bd){bd=e;b=k;}} ((uint8_t*)nor)[SMP_DATA+i]=(uint8_t)b; } smp_tab[0].off=SMP_DATA; smp_tab[0].len=n; smp_tab[0].rate=22050; smp_n=1; }   /* slot 0: half 500 Hz, half 2 kHz at 22 kHz (not uploaded: no table) */
     else if(!strncmp(s,"cc:",3)) { int c,v; sscanf(s+3,"%d,%d",&c,&v); web_midi(0xB0,c,v); run(5); }   /* a CC in, channel 1 */
     else if(!strncmp(s,"mac:",4)) { int m,t,i,v; sscanf(s+4,"%d,%d,%d,%d",&m,&t,&i,&v); perf_mac_t *pm=&pm_mac[m]; pm->trk[pm->n]=(uint8_t)t; pm->id[pm->n]=(uint8_t)i; pm->val[pm->n]=(int16_t)v; pm->n++; }   /* macro m holds track t's id (t 255: a global) at v */
