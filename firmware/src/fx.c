@@ -560,7 +560,7 @@ static __attribute__((noinline)) void mix_spread(track_t *t, int32_t *b, uint32_
     for (i = 0; i < n; i++)
         d[i] = (d[i] << 1) - b[i];                      /* left - right */
     for (i = 0; i < n; i++) {
-        int32_t x = ((b[i] >> 2) * lvl) >> 10, a = x < 0 ? -x : x, y = ((d[i] >> 2) * lvl) >> 10;
+        int32_t x = mulq12r(b[i], lvl), a = x < 0 ? -x : x, y = mulq12r(d[i], lvl);
         int32_t xs = clamp(x, -xmax, xmax);
         if (a > pk)
             pk = a;
@@ -608,7 +608,7 @@ static __attribute__((noinline)) void mix_glide(track_t *t, const int32_t *b, ui
             c[k] += st[k];
         dv = c[3] >> 8;
         rv = c[4] >> 8;
-        x = ((b[i] >> 2) * (c[0] >> 8)) >> 10;
+        x = mulq12r(b[i], c[0] >> 8);
         a = x < 0 ? -x : x;
         xs = clamp(x, -xm, xm);
         if (a > pk)
@@ -674,7 +674,7 @@ static void mix_part(track_t *t, uint32_t n SM_DECL)
             n = 0;                                      /* (done: the plain loop below has nothing to do) */
         }
         for (i = 0; i < n; i++) {
-            int32_t x = ((b[i] >> 2) * lvl) >> 10, a = x < 0 ? -x : x;   /* pre-shift: 8 loud voices */
+            int32_t x = mulq12r(b[i], lvl), a = x < 0 ? -x : x;   /* pre-shift: 8 loud voices */
             int32_t xs = clamp(x, -xmax, xmax);         /* sends: mulq15 would overflow */
             if (a > pk)
                 pk = a;
@@ -712,8 +712,8 @@ static __attribute__((noinline)) void perf_master(int32_t *out, uint32_t n)
     uint32_t i;
     int32_t mg = fx_usb_fixed ? MASTER_FULL : (int32_t)song.master_q12;   /* (USB LEVEL FIXED: MASTER after) */
     for (i = 0; i < n; i++) {
-        mix_l[i] = (((mix_l[i] + wet[i]) >> 2) * mg) >> 10;
-        mix_r[i] = (((mix_r[i] + wet[i]) >> 2) * mg) >> 10;
+        mix_l[i] = mulq12r(mix_l[i] + wet[i], mg);
+        mix_r[i] = mulq12r(mix_r[i] + wet[i], mg);
     }
     perf_block(mix_l, mix_r, n);
     mfx_block(mix_l, mix_r, n);
@@ -837,8 +837,8 @@ static void mix_block(int32_t *out, uint32_t n)
         return;
     }
     for (i = 0; i < n; i++) {
-        mix_l[i] = (((mix_l[i] + wet[i]) >> 2) * mg) >> 10;
-        mix_r[i] = (((mix_r[i] + wet[i]) >> 2) * mg) >> 10;
+        mix_l[i] = mulq12r(mix_l[i] + wet[i], mg);
+        mix_r[i] = mulq12r(mix_r[i] + wet[i], mg);
     }
     mfx_block(mix_l, mix_r, n);
     amp_block(n);
@@ -851,8 +851,8 @@ static void mix_block(int32_t *out, uint32_t n)
     }
     return;
     for (i = 0; i < n; i++) {
-        int32_t l = (((mix_l[i] + wet[i]) >> 2) * mg) >> 10;
-        int32_t r = (((mix_r[i] + wet[i]) >> 2) * mg) >> 10;
+        int32_t l = mulq12r(mix_l[i] + wet[i], mg);
+        int32_t r = mulq12r(mix_r[i] + wet[i], mg);
         master_out(&l, &r);
         out[2u * i] = l;
         out[2u * i + 1u] = r;

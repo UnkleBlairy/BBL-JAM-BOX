@@ -12,6 +12,9 @@ static inline int32_t mulq16(int32_t a, uint32_t k)
     return (int32_t)(((a >> 16) * (int32_t)k) + (int32_t)(((uint32_t)(a & 0xFFFF) * k) >> 16));
 }
 static inline int32_t clamp(int32_t v, int32_t lo, int32_t hi) { return v < lo ? lo : v > hi ? hi : v; }
+/* a * k / 4096, rounded, keeping a's low bits (k up to 2^19). The mix and master use it: dropping 2 bits first, to make
+ * room, was a faint bitcrusher that followed every sound (Blair heard it, an 808 kick's fade most of all) */
+static inline int32_t mulq12r(int32_t a, int32_t k) { return (a >> 12) * k + (((a & 0xFFF) * k + 2048) >> 12); }
 
 /* sine, linearly interpolated between the 1024 table points (plain lookup: THD -55 dB) */
 static inline int32_t sine_i(uint32_t ph)
@@ -40,9 +43,30 @@ static inline int32_t blep(uint32_t ph, uint32_t inc)
     return 0;
 }
 
+/* the same over 4 samples (the integral of a cubic B-spline): false tones ~14 dB lower than blep at middle C, a touch
+ * less of the very top. Knows the wrap ahead from the phase, so no delay */
+static inline int32_t blep4(uint32_t ph, uint32_t inc)
+{
+    int32_t sp = (int32_t)ph, x, x2, r;
+    uint32_t a = sp < 0 ? 0u - (uint32_t)sp : (uint32_t)sp, d = inc >> 15, u;
+    if (!d || (a >> 1) >= inc)
+        return 0;
+    u = a / d;                                       /* samples from the wrap, Q15: 0 .. 2 */
+    if (u >= 32768u) {
+        x = u >= 65536u ? 0 : 65536 - (int32_t)u;
+        x2 = (x * x) >> 15;
+        r = (((x2 * x2) >> 15) * 2731) >> 15;        /* x^4 / 24, Q16 */
+    } else {
+        x = 32768 - (int32_t)u;
+        x2 = (x * x) >> 15;                          /* 1/24 + x/6 + x^2/4 + x^3/6 - x^4/8, Q16 */
+        r = 2731 + ((x * 10923) >> 15) + (x2 >> 1) + ((((x2 * x) >> 15) * 10923) >> 15) - (((x2 * x2) >> 15) >> 2);
+    }
+    return sp < 0 ? r : -r;
+}
+
 static inline int32_t osc_saw(uint32_t ph, uint32_t inc)
 {
-    return ((int32_t)(ph >> 16) - 32768) - blep(ph, inc);
+    return ((int32_t)(ph >> 16) - 32768) - blep4(ph, inc);
 }
 
 static inline int32_t osc_pulse(uint32_t ph, uint32_t inc, uint32_t pw)

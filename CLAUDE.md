@@ -171,6 +171,9 @@ Build flags: `FELUCCA_SIMPLE=1` and `FELUCCA_FM4=1`.
 - Copy / paste trig (ui_input.c clip_*): SEQ mode, hold a step + SAVE = "TRIG
   COPIED" (notes, CHANCE, TRIG, locks); hold an empty step = "PASTE TRIG / PRESS
   SAVE", SAVE pastes. Not saved.
+- Clean sound (Blair, confirmed on the FM-1, 2026-11-06: "SO MUCH better"): the mix and master keep every bit (dsp.c mulq12r, never `>> 2` before a level);
+  FM SYN's modulator depths ramp sample by sample (eng_digital.c syn_render, Q16); MONO's saws and pulses use the 4-point blep4 (hard sync keeps blep). Measure at full MASTER,
+  by ear A/B against a perfect render: tools/emu_shot.c at MASTER 700 made a real crunch look clean. Other block-rate steps may still be there (FM drums, filter envelopes).
 - Master FX must never click: DJ and COMB fade in/out over ~23 ms
   (MFX_CSLOPE), the comb loop soft-limits (mfx_soft), the DJ filter updates
   every 32 samples with smooth resonance. Test with a sine + 2nd-difference

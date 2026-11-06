@@ -549,7 +549,7 @@ static inline void mono_glide(int32_t *cs, int32_t ct)
 /* FM SYN (see SYN_D): op A ph[0], B ph[1], C ph[2], D s[7]; s[0..1] the filter, s[2..3] its envelope (s[3] & 7: stage,
  * s[3] >> 4: D's envelope), s[4] C's envelope, s[5] CUT's glide (mono_glide), s[6] D's feedback history (two int16).
  * The filter: MONO's (mono_filter, TYPE a blend: P_LN1) */
-#define SYN_M(x, k) ((uint32_t)((x) * (k)) * 129u)     /* (the phase push of an op's output x, depth k 0..2032) */
+#define SYN_M(x, k) ((uint32_t)(((x) * (k)) >> 5) * 129u)   /* (the phase push of an op's output x, depth k 0..2032 in Q5) */
 static __attribute__((noinline)) void syn_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const vmod_t *m)
 {
     const int16_t *p = t->p;
@@ -564,11 +564,16 @@ static __attribute__((noinline)) void syn_render(track_t *t, voice_t *v, int32_t
     uint32_t ic = fm_ratio_inc(m->inc, SYN_R[clamp(p[P_E2], 0, SYN_NR - 1)]);
     uint32_t id = fm_ratio_inc(m->inc, SYN_R[clamp(p[P_E3], 0, SYN_NR - 1)]);
     /* the modulator envelopes, one block on: the depths 0..2032 (AMT x envelope) */
-    ec = syn_env(v->s[4], p[P_FM3_ATK], p[P_FM3_DEC]);
-    ed = syn_env((int32_t)((uint32_t)v->s[3] >> 4), p[P_FM4_ATK], p[P_FM4_DEC]);
+    int32_t ec0 = v->s[4], ed0 = (int32_t)((uint32_t)v->s[3] >> 4), kca = clamp(p[P_E4], 0, 127), kda = clamp(p[P_E5], 0, 127);
+    ec = syn_env(ec0, p[P_FM3_ATK], p[P_FM3_DEC]);
+    ed = syn_env(ed0, p[P_FM4_ATK], p[P_FM4_DEC]);
     v->s[4] = ec;
-    kc = (int32_t)(((int64_t)clamp(p[P_E4], 0, 127) * ((ec & (SYN_ATTACK - 1)) >> 9)) >> 11);
-    kd = (int32_t)(((int64_t)clamp(p[P_E5], 0, 127) * ((ed & (SYN_ATTACK - 1)) >> 9)) >> 11);
+    /* ... ramped sample by sample across the block (Q16 here, Q5 in SYN_M): a depth that jumped each block made tones
+     * 1378 Hz apart, a stepped crunch on every note. The << 5 divides by CTL exactly, so the ramp never jumps */
+    kc = (kca * ((ec0 & (SYN_ATTACK - 1)) >> 9)) << 5;
+    kd = (kda * ((ed0 & (SYN_ATTACK - 1)) >> 9)) << 5;
+    int32_t kcs = (((kca * ((ec & (SYN_ATTACK - 1)) >> 9)) << 5) - kc) >> CTL_LOG2;
+    int32_t kds = (((kda * ((ed & (SYN_ATTACK - 1)) >> 9)) << 5) - kd) >> CTL_LOG2;
     /* the filter and its envelope (as the legacy path) */
     int32_t ct = (p[P_FLT_CUT] << 8) + m->cutoff, cut = p[P_FLT_KTR] * (v->pitch16 - 60 * 16) >> 4;
     {
@@ -596,7 +601,9 @@ static __attribute__((noinline)) void syn_render(track_t *t, voice_t *v, int32_t
     uint32_t pa = v->ph[0], pb = v->ph[1], pc = v->ph[2], pd = (uint32_t)v->s[7];
     int32_t fb1 = (int16_t)(v->s[6] & 0xFFFF), fb2 = v->s[6] >> 16;
     for (i = 0; i < n; i++) {
-        int32_t a, b, c, d, s;
+        int32_t a, b, c, d, s, kq = kc >> 11, kr = kd >> 11;
+        kc += kcs;
+        kd += kds;
         if (!(i & 7u)) {                                /* (CUT's glide) */
             mono_glide(&cs, ct);
             mono_fcoef(&flt, cs - 1 + cut, p[P_FLT_RES]);
@@ -605,14 +612,14 @@ static __attribute__((noinline)) void syn_render(track_t *t, voice_t *v, int32_t
         fb2 = fb1;
         fb1 = d;
         switch (alg) {
-        case 0: c = sine_i(pc); a = sine_i(pa + SYN_M(c, kc)); b = sine_i(pb + SYN_M(d, kd)); break;
-        case 1: c = sine_i(pc); a = sine_i(pa + SYN_M(c, kc) + SYN_M(d, kd)); b = sine_i(pb); break;
-        case 2: c = sine_i(pc); a = sine_i(pa + SYN_M(c, kc) + SYN_M(d, kd)); b = sine_i(pb + SYN_M(d, kd)); break;
-        case 3: c = sine_i(pc); a = sine_i(pa + SYN_M(c, kc)); b = sine_i(pb + SYN_M(c, kc) + SYN_M(d, kd)); break;
-        case 4: { uint32_t mm; c = sine_i(pc); mm = SYN_M(c, kc) + SYN_M(d, kd); a = sine_i(pa + mm); b = sine_i(pb + mm); break; }
-        case 5: c = sine_i(pc + SYN_M(d, kd)); a = sine_i(pa + SYN_M(c, kc)); b = sine_i(pb); break;
-        case 6: c = sine_i(pc + SYN_M(d, kd)); a = sine_i(pa + SYN_M(c, kc)); b = sine_i(pb + SYN_M(c, kc)); break;
-        default: c = sine_i(pc + SYN_M(d, kd)); a = sine_i(pa + SYN_M(c, kc)); b = sine_i(pb + SYN_M(d, kd)); break;
+        case 0: c = sine_i(pc); a = sine_i(pa + SYN_M(c, kq)); b = sine_i(pb + SYN_M(d, kr)); break;
+        case 1: c = sine_i(pc); a = sine_i(pa + SYN_M(c, kq) + SYN_M(d, kr)); b = sine_i(pb); break;
+        case 2: c = sine_i(pc); a = sine_i(pa + SYN_M(c, kq) + SYN_M(d, kr)); b = sine_i(pb + SYN_M(d, kr)); break;
+        case 3: c = sine_i(pc); a = sine_i(pa + SYN_M(c, kq)); b = sine_i(pb + SYN_M(c, kq) + SYN_M(d, kr)); break;
+        case 4: { uint32_t mm; c = sine_i(pc); mm = SYN_M(c, kq) + SYN_M(d, kr); a = sine_i(pa + mm); b = sine_i(pb + mm); break; }
+        case 5: c = sine_i(pc + SYN_M(d, kr)); a = sine_i(pa + SYN_M(c, kq)); b = sine_i(pb); break;
+        case 6: c = sine_i(pc + SYN_M(d, kr)); a = sine_i(pa + SYN_M(c, kq)); b = sine_i(pb + SYN_M(c, kq)); break;
+        default: c = sine_i(pc + SYN_M(d, kr)); a = sine_i(pa + SYN_M(c, kq)); b = sine_i(pb + SYN_M(d, kr)); break;
         }
         s = a + (((b - a) * mix) >> 7);
         pa += ia;
