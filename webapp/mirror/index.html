@@ -1,0 +1,228 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-only
+     BBL JAM BOX screen mirror (test): the FM-1's screen over USB MIDI SysEx (firmware/src/mirror.c has the stream),
+     its USB audio through the page. Chrome / Edge. H hides the controls (for OBS). -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BBL Mirror</title>
+<style>
+  :root { --bg: #111; --ink: #ddd; --dim: #888; --edge: #333; --ok: #5fe08a; --bad: #ff8a80; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; }
+  main { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 16px; }
+  .bar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: center; }
+  button, select { font: inherit; padding: 4px 12px; border-radius: 6px; border: 1px solid var(--edge); background: #222; color: #fff; cursor: pointer; }
+  canvas { image-rendering: pixelated; image-rendering: crisp-edges; background: #000; max-width: 100%; }
+  .msg { color: var(--dim); min-height: 1.5em; text-align: center; }
+  .msg.bad { color: var(--bad); }
+  .stats { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--dim); }
+  .meter { width: 160px; height: 8px; background: #222; border-radius: 4px; overflow: hidden; }
+  .meter div { height: 100%; width: 0; background: var(--ok); }
+  body.clean .bar, body.clean .msg, body.clean .stats { display: none; }
+  body.clean main { padding: 0; }
+</style>
+</head>
+<body>
+<main>
+  <div class="bar">
+    <button id="ser">Connect screen (USB serial)</button>
+    <button id="go">Connect screen (MIDI)</button>
+    <button id="listen">Listen to audio</button>
+    <label>Size <select id="size"><option>2</option><option selected>3</option><option>4</option></select>x</label>
+    <label>Smooth <input id="fade" type="range" min="0" max="8" value="3"></label>
+    <div class="meter"><div id="lvl"></div></div>
+  </div>
+  <canvas id="scr" width="240" height="240"></canvas>
+  <div class="msg" id="msg">Plug in the FM-1 (BBL JAM BOX firmware), then Connect (USB serial is faster: pick the FM-1's
+    port in the list). H = hide these controls.</div>
+  <div class="stats" id="stats"></div>
+</main>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const say = (t, bad) => { $("msg").textContent = t; $("msg").className = "msg" + (bad ? " bad" : ""); };
+const CMD = 0x70;
+
+function pack7(data) {
+  const out = []; let acc = 0, nb = 0;
+  for (const b of data) { acc |= b << nb; nb += 8; while (nb >= 7) { out.push(acc & 0x7F); acc >>>= 7; nb -= 7; } }
+  if (nb) out.push(acc & 0x7F);
+  return out;
+}
+function unpack7(s, a, b) {
+  const out = []; let acc = 0, nb = 0;
+  for (let i = a; i < b; i++) { acc |= (s[i] & 0x7F) << nb; nb += 7; while (nb >= 8) { out.push(acc & 0xFF); acc >>>= 8; nb -= 8; } }
+  return out;
+}
+function frame(cmd, body) {
+  const m = [0, 0x59, cmd, body.length & 255, 0, 0, ...body];
+  let s = 0; for (const b of body) s += b;
+  m.push(~s & 255);
+  return [0xF0, ...pack7(m), 0xF7];
+}
+
+// the picture: 240 x 240, RGB 3-3-2 -> RGBA
+// the pictures arrive in src; the screen (ctx) fades to it over a few refreshes (Smooth: 0 = at once)
+const ctx = $("scr").getContext("2d"), srcC = document.createElement("canvas");
+srcC.width = srcC.height = 240;
+const sctx = srcC.getContext("2d"), img = sctx.createImageData(240, 240), px = new Uint32Array(img.data.buffer);
+const PAL = new Uint32Array(256);
+for (let c = 0; c < 256; c++) {
+  const r = Math.round((c >> 5) * 255 / 7), g = Math.round(((c >> 2) & 7) * 255 / 7), b = Math.round((c & 3) * 255 / 3);
+  PAL[c] = 0xFF000000 | b << 16 | g << 8 | r;
+}
+let dirty = false, pend = false, pendT = 0;     // dirty: show now; pend: drawn into, waiting for its 04
+// the stream's decoder: records may span frames (mirror.c)
+const st = { t: 0, h: [], x: 0, y: 0, w: 0, hh: 0, pos: 0, n: -1 };
+function feed(b) {
+  if (!st.t) {
+    if (b === 3) { px.fill(PAL[0]); dirty = true; return; }
+    if (b === 4) { dirty = true; pend = false; return; }   // a whole picture: show it
+    if (b === 1 || b === 2) { st.t = b; st.h = []; st.n = -1; st.pos = 0; return; }
+    lost++; return;                                    // (out of step: wait for the next start)
+  }
+  if (st.h.length < 4) {
+    st.h.push(b);
+    if (st.h.length === 4) { st.x = st.h[0]; st.y = st.h[1]; st.w = st.h[2] || 240; st.hh = st.h[3] || 240; }
+    return;
+  }
+  if (st.t === 1) {                                    // a rectangle of one colour
+    const c = PAL[b];
+    for (let j = 0; j < st.hh && st.y + j < 240; j++) {
+      const o = (st.y + j) * 240 + st.x;
+      px.fill(c, o, o + Math.min(st.w, 240 - st.x));
+    }
+    st.t = 0; if (!pend) pendT = performance.now(); pend = true; return;
+  }
+  if (st.n < 0) { st.n = b; return; }                  // a run: its length, then its colour
+  const c = PAL[b], end = st.w * st.hh;
+  for (let k = 0; k < st.n && st.pos < end; k++, st.pos++) {
+    const x = st.x + st.pos % st.w, y = st.y + (st.pos / st.w | 0);
+    if (x < 240 && y < 240) px[y * 240 + x] = c;
+  }
+  st.n = -1; if (!pend) pendT = performance.now(); pend = true;
+  if (st.pos >= end) st.t = 0;
+}
+
+let access = null, outs = [], seq = -1, bytes = 0, msgs = 0, lost = 0, gaps = 0, alive = null;
+function send(m) { for (const o of outs) try { o.send(m); } catch {} }
+function onMsg(e) {
+  const d = e.data;
+  if (d[0] !== 0xF0 || d[d.length - 1] !== 0xF7) return;
+  const u = unpack7(d, 1, d.length - 1);
+  if (u.length < 8 || u[0] !== 0 || u[1] !== 0x59 || u[2] !== CMD || u.length !== u[3] + 7) return;
+  let s = 0; for (let i = 6; i < u.length - 1; i++) s += u[i];
+  if ((~s & 255) !== u[u.length - 1]) { gaps++; restart(); return; }
+  if (seq >= 0 && u[6] !== ((seq + 1) & 255)) { gaps++; restart(); }
+  seq = u[6];
+  for (let i = 7; i < u.length - 1; i++) feed(u[i]);
+  bytes += u.length - 8; msgs++;
+}
+function restart() { st.t = 0; seq = -1; send(frame(CMD, [0])); send(frame(CMD, [1])); }
+
+async function connect() {
+  if (!navigator.requestMIDIAccess) return say("This browser has no Web MIDI: use Chrome or Edge.", true);
+  try { access = await navigator.requestMIDIAccess({ sysex: true }); }
+  catch { return say("The browser did not allow MIDI access. Allow it (the lock icon by the address) and try again.", true); }
+  const pick = (m) => { const all = [...m.values()], f = all.filter((p) => /fm-?1|felucca|bbl/i.test(p.name || "")); return f.length ? f : all; };
+  outs = pick(access.outputs);
+  for (const i of pick(access.inputs)) i.onmidimessage = onMsg;
+  if (!outs.length) return say("No MIDI device found. Check the USB cable, and close apps using the FM-1.", true);
+  seq = -1; st.t = 0;
+  send(frame(CMD, [1]));
+  clearInterval(alive);
+  alive = setInterval(() => send(frame(CMD, [1])), 1000);   // (the FM-1 stops 3 s after the last)
+  say("Connected to " + outs.map((o) => o.name).join(", ") + ". Turn a knob if the screen stays black.");
+  $("go").textContent = "Reconnect";
+}
+$("go").onclick = connect;
+
+// the serial port (mirror.c: S start, M keep alive; raw records after 03 'B' 'J' 'B')
+let port = null, sync = 0, serAlive = null;
+const SYNC = [3, 0x42, 0x4A, 0x42];
+async function serial() {
+  if (!navigator.serial) return say("This browser has no Web Serial: use Chrome or Edge on a computer.", true);
+  try {
+    if (port) { try { await port.close(); } catch {} }
+    port = await navigator.serial.requestPort();
+    await port.open({ baudRate: 115200, bufferSize: 65536 });
+    try { await port.setSignals({ dataTerminalReady: true }); } catch {}
+  } catch (e) { return say("Serial: " + e.message, true); }
+  const w = port.writable.getWriter(), enc = (c) => new TextEncoder().encode(c);
+  sync = 0; st.t = 0;
+  await w.write(enc("S"));
+  clearInterval(serAlive);
+  serAlive = setInterval(() => w.write(enc("M")).catch(() => {}), 1000);
+  say("Connected over USB serial.");
+  $("ser").textContent = "Reconnect (USB serial)";
+  const rd = port.readable.getReader();
+  try {
+    for (;;) {
+      const { value, done } = await rd.read();
+      if (done) break;
+      bytes += value.length; msgs++;
+      for (const b of value) {
+        if (sync < 4) {                                 // (an old stream's bytes until the start)
+          sync = b === SYNC[sync] ? sync + 1 : b === SYNC[0] ? 1 : 0;
+          if (sync === 4) { px.fill(PAL[0]); dirty = true; }
+          continue;
+        }
+        feed(b);
+      }
+    }
+  } catch (e) { say("Serial stopped: " + e.message + ". Reconnect.", true); }
+  clearInterval(serAlive);
+}
+$("ser").onclick = serial;
+addEventListener("beforeunload", () => send(frame(CMD, [0])));
+
+// audio: the FM-1's USB audio as an input, played here (for OBS, adding the FM-1 as an audio input is better)
+let actx = null;
+$("listen").onclick = async () => {
+  try {
+    await navigator.mediaDevices.getUserMedia({ audio: true });   // (device names only after a permission)
+    const devs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === "audioinput");
+    const fm = devs.find((d) => /fm-?1|felucca|bbl/i.test(d.label)) || devs[0];
+    const s = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: fm ? { exact: fm.deviceId } : undefined,
+      echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 2 } });
+    actx = actx || new AudioContext({ latencyHint: "interactive" });
+    const src = actx.createMediaStreamSource(s), an = actx.createAnalyser();
+    an.fftSize = 1024;
+    src.connect(actx.destination);
+    src.connect(an);
+    const buf = new Float32Array(an.fftSize);
+    (function tick() {
+      an.getFloatTimeDomainData(buf);
+      let m = 0; for (const v of buf) m = Math.max(m, Math.abs(v));
+      $("lvl").style.width = Math.min(100, m * 100) + "%";
+      requestAnimationFrame(tick);
+    })();
+    $("listen").textContent = "Listening: " + (fm ? fm.label : "default input");
+  } catch (e) { say("Audio: " + e.message, true); }
+};
+
+function size() { const k = +$("size").value; $("scr").style.width = 240 * k + "px"; $("scr").style.height = 240 * k + "px"; }
+$("size").onchange = size; size();
+addEventListener("keydown", (e) => { if (e.target.tagName !== "INPUT" && (e.key === "h" || e.key === "H")) document.body.classList.toggle("clean"); });
+
+let t0 = performance.now(), draws = 0, fadeN = -1;
+(function loop(t) {
+  if (pend && t - pendT > 300) { dirty = true; pend = false; }   // (no 04 coming: a screen outside the UI's)
+  if (dirty) { sctx.putImageData(img, 0, 0); dirty = false; draws++; fadeN = 0; }
+  if (fadeN >= 0) {                                     // (a blend each refresh, then exact)
+    const k = +$("fade").value, steps = k * 3;
+    fadeN++;
+    ctx.globalAlpha = !k || fadeN >= steps ? 1 : 1 - Math.pow(0.5, 6 / steps);
+    ctx.drawImage(srcC, 0, 0);
+    if (ctx.globalAlpha === 1) fadeN = -1;
+  }
+  if (t - t0 >= 1000) {
+    $("stats").textContent = `${(bytes / 1024).toFixed(1)} KB/s  ${msgs} reads/s  ${draws} updates/s  gaps ${gaps}  bad ${lost}`;
+    bytes = msgs = draws = 0; t0 = t;
+  }
+  requestAnimationFrame(loop);
+})(performance.now());
+</script>
+</body>
+</html>

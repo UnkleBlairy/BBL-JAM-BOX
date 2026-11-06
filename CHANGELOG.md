@@ -1,5 +1,158 @@
 # Changelog
 
+## 0.6.1 beta (2026-11-06)
+
+The same features as 0.6, with a much cleaner sound. If you're coming from 0.2, the sections below cover everything
+new in 0.3 to 0.6.
+
+### Fixes
+- **Cleaner sound on every machine.** The mix was throwing away detail on its way out, like a very faint bitcrusher that
+  followed every sound. It's gone, and you'll hear it most on the fade of an 808 kick.
+- **FM SYN no longer crunches.** Its modulators moved in tiny jumps, which added a stepped noise to every note. They
+  now move smoothly.
+- **MONO's saw and square waves are cleaner**, with far fewer false tones. Hard sync (saw with PW up) is unchanged.
+
+Your saved sounds and kits are safe; they just sound cleaner. The reverb's crunch is next on the list.
+
+## 0.6 beta (2026-11-05)
+
+SCRUB, a tape head for the sampler; a crossfader between two macros; CRUSH on the 808s; and a stack of fixes.
+
+### New
+- **SCRUB** (sampler, page 3, knob 2): move the knob and a tape head travels over your sample, so you can scratch and
+  do hand tape stops. The whole knob covers the part set by START and LEN, however tiny. The note you last played sets
+  the pitch along with your hand speed, so a low note and a high note give different textures. A key or trig always
+  plays the sample as normal from its start; move SCRUB after that and the head travels from where the sound has got
+  to until it meets the knob. It can be put on a macro, the crossfader, an LFO or a lock. 0 = off.
+- **Crossfader**, in the style of the Octatrack: fade between two macros. Send MIDI CCs on the channels the FM-1
+  already listens to: 102 = the A slot, 103 = the B slot (1-8 = M1-M8, 0 = empty), 104 = the fader. PERF shows it.
+  Slots aren't saved, and saves keep your real values. Any controller that sends CCs can drive it.
+- **CRUSH replaces AGE on the 808s**: one knob, sample rate and bits down together, Octatrack-style. A sound saved
+  with AGE loads with that value as CRUSH, so it will sound different.
+- **BBL Fader, a phone fader app (experimental, Windows)**: one double-click, scan the QR code and your phone is the
+  crossfader, with no install. Your PC stays in the middle for now. Download it from the release page:
+  https://github.com/UnkleBlairy/BBL-JAM-BOX/releases. Mac and Linux users can run web/fader/bridge.py from the source.
+
+### Fixes
+- **Only MONO plays one note at a time now.** Turning PRESETS past MONO left the next machines stuck on it: FM SYN
+  played one note of a chord, and the sampler could miss a key press. Saved sounds and last jams that caught this are
+  put right on their own.
+- **The ARP in the sequencer walks on through the steps** (it restarted on its first note every step), so a run of
+  chord steps now climbs the arp. With the ARP on, MONO records chords too.
+- **808 levels**: a hit no longer takes the level trim of the last hit, which made the kick louder on steps with a hat.
+- **Leaving ACID**: tapping SEQ from ACID mode to KEY puts the track back on its steps. To leave an ACID line running
+  while you play another track, pick that track first.
+
+### Still not tested
+- **Newer FM-1s** (the memory chip change in 0.5): I still haven't had a report from one of those units, so please
+  tell me if yours saves.
+
+## 0.5 beta (2026-11-04)
+
+Bug fixes from your reports, saves on newer FM-1s, and a better Samples page.
+
+### Fixes
+- **Newer FM-1s can now save.** Some newer units have a different memory chip, and sounds, kits, the last jam and
+  samples didn't work on them. They should now: this one hasn't been tested on a newer unit yet, so please tell me.
+- **LFOs on VOL, PAN and the sends no longer add crunch or buzz**: those levels now glide.
+- **A saved sound keeps its step note / chord**, so it sounds the same from the track key after loading. Sounds saved
+  before this version start on middle C, as they did.
+- **Clearing a track's steps needs OCT- pressed twice** within a moment ("OCT- AGAIN TO CLEAR"), so a pattern can't
+  go by accident. The same goes for ACID and the FX lane.
+- **ALGO back from the FX track** returns to the track you came from.
+- **The Samples page no longer stops with "The FM-1 stopped answering"**: it now asks the FM-1 how much memory it has.
+
+### Easier to use
+- **The LFO and ENV DEST knobs skip anything that does nothing** on the track's machine.
+- **Samples page**: a playhead on the waveform, and LOOP: the part plays round and round while START and END move it
+  live, so you can find a loop by ear.
+- **The Samples and install pages have the firmware's look.**
+
+## 0.4 beta (2026-11-03)
+
+A Metropolis-style ACID sequencer, length changes that land in time at once, and tracks that remember how you left them.
+
+### ACID sequencer
+- **ACID mode**: a stage sequencer in the style of the Intellijel Metropolis, on any track. In SEQ mode **tap
+  OCT+** to flip the track between its steps and its ACID stages (tap again to go back; both are kept).
+- **White keys = stages 1-16.** Press one to edit it. **STAGE** page (black key 8): PITCH (0-12 semitones from
+  middle C, shown as the note), PULSE (1-8 repeats), GATE (MUTE, FIRST, EVERY, HOLD), OCT (-3..+3).
+- **ACID** page (black key 9): LEN (1-16 stages), DIR (FWD, REV, PING, RAND, BRWN), SPD, GATE length.
+- **Slides**: hold a stage key for its SLIDE pop-up: knob 1 = slide on/off, knob 2 = slide time. The note before
+  glides into it, legato, 303-style.
+- OCT- clears the track's ACID; hold a stage + OCT- resets that stage.
+
+### Sequencer
+- **Length and speed changes land in time at once**: add a page, change LEN or SPD while playing and the track jumps
+  straight to where it would be if it had always been that length / speed, so tracks never drift apart and you never
+  need to stop and start. Nothing restarts every few bars, so odd lengths (3, 5, 7 steps..) keep running against each
+  other as polyrhythms.
+- **New steps start on middle C** after a sound or kit load, a clear, SOUND RESET or CLEAR ALL, until you play a
+  note on the keys (then new steps use your last note or chord, as before).
+- **Kits keep each track's step note / chord**: set the kick two octaves down, save the kit, and it comes back that
+  way. The key you load a sound or kit with no longer plays a note.
+
+### Playing
+- **Tracks remember their mode**: a track left in PARAM, LOCKS or ACID comes back to it when you pick it again.
+  KEY and SEQ aren't remembered, so scrolling through tracks in SEQ mode stays in SEQ.
+- **Each track keeps its own octave**: bass low on track 1, lead high on track 2, and swapping back and forth keeps
+  both.
+- **LOCKS mode has 8 keys** a track (white keys 1-8); keys 9-16 are free for later.
+
+### Sound
+- When too many notes play at once and a sound has to be cut for another, it now fades out smoothly instead of
+  clicking (808 drums too).
+
+## 0.3 beta (2026-11-01)
+
+Two new synths, a much deeper sequencer, an FX track and a jam that survives switching off.
+
+### New sounds
+- **MONO**: a new mono analog-style synth (in the vein of a Minimoog). Two oscillators (WAVE picks the pair, MIX
+  blends them, FINE and SEMI tune osc 2), a SUB oscillator (-1/-2/-3 octaves), **PW** that reshapes osc 1 (pulse
+  width on square, wavefold on triangle, bit-crush on sine, **hard sync** on saw) and **SAT** drive before the
+  filter. Every key press restarts the envelopes.
+- **New MS-20-style filter** on MONO and FM SYN: high RES rings, squeals and whistles on its own. **TYPE** now
+  blends smoothly from low-pass through band-pass to high-pass. CUT glides instead of stepping.
+- **FM SYN rebuilt, Digitone-style.** A and B are the operators you hear (MIX between them), C and D modulate,
+  each with its own **ATK / DEC / AMT** (DEC fully right = HOLD). 8 algorithms, **A:B** ratio pairs on one knob,
+  C and D ratios shown as real ratios, **FB** and **DTUN**. Pages: OSC 1, MOD C, MOD D, TUNE.
+  *FM SYN sounds saved in 0.2 load but sound different.*
+
+### Sequencer
+- **64 steps** on up to 4 pages (black keys 8-11 in SEQ mode). Tap a page key past the end to add a page, hold it
+  to set the length, hold + OCT- to delete pages.
+- **Live recording keeps your timing** (no forced quantize). Hold REC to turn quantize on for recording. Hold
+  step(s) + SELECT to nudge them.
+- **REC records every track you play**: finger drum on the track keys in SEQ mode.
+
+### FX track
+- **An FX track** (black key 7 in SEQ mode, or turn ALGO past 6): its own DELAY, VERB, three LFOs and its own
+  sequencer lane to lock master FX per step. Tracks get a **SENDS** page.
+- **Double-tap FX** on a track to jump to the master DELAY page.
+- **PERF, COMB, DJ and AMP** (the whole mix's level and **PAN**) live on the FX track.
+
+### Mixing and pages
+- **MIX pages**: two tracks' VOL and PAN on each (HOME button).
+- **VOL / PAN page** on the ENV button: modulate a track's level and pan with the LFO.
+- **LFO page** tidied: RATE WAVE DEST AMT.
+- **Reset a page**: hold its button + OCT-.
+- **Reset a track's sound**: in SEQ mode hold its track key + OCT-.
+- **CLEAR ALL**: hold OCT- for a second, then press OCT+ to confirm (a fresh start).
+- **PLAY twice** (stop, then PLAY again quickly) = all sound off, for stuck notes.
+
+### Saving
+- **The last jam is kept**: switch off and on and everything is back (stop before switching off).
+- Sounds save by type (KICK, SNARE, CYMBAL, PERC, SYNTH, SAMPLE: 16 each). Kits keep the LOCKS keys.
+
+### Sampler
+- **START and LEN** move live while a sound plays, with no clicks. LEN is the window's size: START slides it, and
+  at the end of the sample START keeps going and the window shrinks. The LEN knob always shows the real size.
+
+### Screen
+- **Black background**, with the track's colour as a strip behind the page name.
+- (Experimental) a **screen mirror** page for streaming the screen to a computer.
+
 ## 0.2 beta (2026-10-30)
 
 A big update to how BBL JAM BOX plays: quicker gestures, touch modulation, Elektron-style trig conditions and a
