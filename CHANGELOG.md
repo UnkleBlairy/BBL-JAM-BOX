@@ -1,6 +1,20 @@
 # Changelog
 
-## 0.6 beta (2026-11-05): members' preview
+## 0.6.1 beta (2026-11-06)
+
+The same features as 0.6, with a much cleaner sound. If you're coming from 0.2, the sections below cover everything
+new in 0.3 to 0.6.
+
+### Fixes
+- **Cleaner sound on every machine.** The mix was throwing away detail on its way out, like a very faint bitcrusher that
+  followed every sound. It's gone, and you'll hear it most on the fade of an 808 kick.
+- **FM SYN no longer crunches.** Its modulators moved in tiny jumps, which added a stepped noise to every note. They
+  now move smoothly.
+- **MONO's saw and square waves are cleaner**, with far fewer false tones. Hard sync (saw with PW up) is unchanged.
+
+Your saved sounds and kits are safe; they just sound cleaner. The reverb's crunch is next on the list.
+
+## 0.6 beta (2026-11-05)
 
 SCRUB, a tape head for the sampler; a crossfader between two macros; CRUSH on the 808s; and a stack of fixes.
 
@@ -16,8 +30,8 @@ SCRUB, a tape head for the sampler; a crossfader between two macros; CRUSH on th
 - **CRUSH replaces AGE on the 808s**: one knob, sample rate and bits down together, Octatrack-style. A sound saved
   with AGE loads with that value as CRUSH, so it will sound different.
 - **BBL Fader, a phone fader app (experimental, Windows)**: one double-click, scan the QR code and your phone is the
-  crossfader, with no install. Your PC stays in the middle for now. See phone-fader/QUICK_START.txt. Mac and Linux
-  users can use the script version in that folder.
+  crossfader, with no install. Your PC stays in the middle for now. Download it from the release page:
+  https://github.com/UnkleBlairy/BBL-JAM-BOX/releases. Mac and Linux users can run web/fader/bridge.py from the source.
 
 ### Fixes
 - **Only MONO plays one note at a time now.** Turning PRESETS past MONO left the next machines stuck on it: FM SYN
@@ -33,7 +47,7 @@ SCRUB, a tape head for the sampler; a crossfader between two macros; CRUSH on th
 - **Newer FM-1s** (the memory chip change in 0.5): I still haven't had a report from one of those units, so please
   tell me if yours saves.
 
-## 0.5 beta (2026-11-04): members' preview
+## 0.5 beta (2026-11-04)
 
 Bug fixes from your reports, saves on newer FM-1s, and a better Samples page.
 
@@ -54,7 +68,7 @@ Bug fixes from your reports, saves on newer FM-1s, and a better Samples page.
   live, so you can find a loop by ear.
 - **The Samples and install pages have the firmware's look.**
 
-## 0.4 beta (2026-11-03): members' preview
+## 0.4 beta (2026-11-03)
 
 A Metropolis-style ACID sequencer, length changes that land in time at once, and tracks that remember how you left them.
 
@@ -89,7 +103,7 @@ A Metropolis-style ACID sequencer, length changes that land in time at once, and
 - When too many notes play at once and a sound has to be cut for another, it now fades out smoothly instead of
   clicking (808 drums too).
 
-## 0.3 beta (2026-11-01): members' preview
+## 0.3 beta (2026-11-01)
 
 Two new synths, a much deeper sequencer, an FX track and a jam that survives switching off.
 

@@ -14,7 +14,7 @@ Who has what. `CHANGELOG.md` is the friendly version for users; this is the behi
 ## Who has what now
 
 - **Members:** 0.6 beta
-- **Public:** 0.2 beta (0.6.1 planned for 2026-11-07, after the video)
+- **Public:** 0.6.1 beta from 2026-11-06, once Blair pushes it (0.2 beta until then)
 
 ## The releases
 
@@ -26,7 +26,7 @@ Who has what. `CHANGELOG.md` is the friendly version for users; this is the behi
 | 0.4 beta | Members | 2026-11-03 | FM-1_904 | ACID, length and speed changes land in time, tracks remember mode and octave, 8 LOCKS keys | Clicks when a voice is stolen |
 | 0.5 beta | Members | 2026-11-04 | FM-1_905 | DEST knobs skip dead options, Samples page playhead and loop | Newer FM-1 saves, LFO buzz on VOL / PAN, saved step notes, OCT- twice to clear, Samples page "stopped answering" |
 | 0.6 beta | Members | 2026-11-05 | FM-1_906 | SCRUB, crossfader, CRUSH, BBL Fader app | Stuck on MONO, sequencer arp, 808 levels, leaving ACID |
-| 0.6.1 beta | Public, offered to members | Planned 2026-11-07 | FM-1_906 | Same as 0.6 | Whatever members report before then |
+| 0.6.1 beta | Public, offered to members | 2026-11-06 | FM-1_906 | Same as 0.6 | Cleaner sound: the mix keeps its detail, FM SYN's stepped noise, MONO's false tones |
 
 Public users jump from 0.2 to 0.6.1, so the public changelog has to cover 0.3 to 0.6 as well.
 
