@@ -44,3 +44,5 @@ Thanks to Leo Kuroshita for Felucca, and to everyone credited in [CREDITS.md](CR
 
 Like Felucca, this firmware is developed with the help of AI coding agents. The design, features, sound design and
 direction are Blair's.
+
+You can also try BBL JAM BOX in the browser, no flashing needed, in the free community [FM-1 Emulator](https://fm1-emulator.atst.tools/).
